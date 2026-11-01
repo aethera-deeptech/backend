@@ -119,6 +119,18 @@ func TestTheProxyListIsWrittenInItsPlainForm(t *testing.T) {
 	}
 }
 
+func TestAMappedRangeShorterThan96BitsIsRefused(t *testing.T) {
+	for _, in := range []string{"::ffff:10.0.0.0/80", "::FFFF:10.0.0.0/95"} {
+		if _, err := parse(withDB(map[string]string{"TRUST_PROXY_CIDRS": in})); err == nil {
+			t.Fatalf("%s was accepted", in)
+		}
+	}
+
+	if _, err := parse(withDB(map[string]string{"TRUST_PROXY_CIDRS": "::ffff:10.0.0.0/104"})); err != nil {
+		t.Fatalf("a mapped range of 104 bits was refused %v", err)
+	}
+}
+
 func TestTheProxyListHoldsAddressesAndRanges(t *testing.T) {
 	got, err := parse(withDB(map[string]string{"TRUST_PROXY_CIDRS": "172.18.0.1,10.0.0.0/8"}))
 	if err != nil || !reflect.DeepEqual(got.TrustProxyCIDRs, []string{"172.18.0.1", "10.0.0.0/8"}) {
