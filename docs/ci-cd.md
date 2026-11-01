@@ -61,7 +61,7 @@ A dependency update bot cannot read a tool that is named inside a `run` step, so
 - `.github/tools/Dockerfile` has one stage for each image that a job starts with `docker run`, which are actionlint, zizmor and ShellCheck. Nothing builds it. The workflows get the image from `.github/tools/image.sh <stage>`, so the version of a bump is the version the jobs run.
 - The version of ls-lint sits in the `env` of its step. A comment such as `# renovate: datasource=npm depName=@ls-lint/ls-lint` right above the line tells the update bot where to look, so keep the comment when you edit the line.
 
-All actions are pinned to commit SHAs with the version in a comment, and the setting "require actions to be pinned to a full length commit SHA" is on for the repository.
+All actions are pinned to commit SHAs with the version in a comment, and the setting "require actions to be pinned to a full-length commit SHA" is on for the repository.
 
 ## Pulling images
 
@@ -71,4 +71,4 @@ Docker Hub limits anonymous pulls per IP address, and every GitHub runner shares
 - It then logs in to Docker Hub with a read-only token, so an image that the mirror does not have is pulled as a known account. A login that fails does not fail the job.
 - `.github/actions/pull-images/pull.sh` pulls an image through the mirror first and falls back to Docker Hub.
 
-The account name is the repository variable `DOCKERHUB_USERNAME` and the token is the secret `DOCKERHUB_PULL_TOKEN`. Without them everything still works through the mirror alone. Pull requests from forks never get the secret, so they rely on the mirror.
+The account name is the repository variable `DOCKERHUB_USERNAME` and the token is the secret `DOCKERHUB_PULL_TOKEN`. Without them everything still works through the mirror alone. Pull requests from forks never get the secret, so they pull through the mirror and fall back to anonymous Docker Hub pulls, which the limit can refuse.
