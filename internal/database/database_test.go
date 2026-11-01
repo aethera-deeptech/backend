@@ -49,10 +49,8 @@ func TestBusinessesRefuseValuesOutsideTheRules(t *testing.T) {
 	}
 }
 
-func TestMigrateTwiceAndFromTwoCopiesAtOnce(t *testing.T) {
-	pool := dbtest.New(t)
-
-	url := pool.Config().ConnString()
+func TestMigrateFromThreeCopiesAtOnceOnAnEmptyDatabase(t *testing.T) {
+	url := dbtest.Empty(t)
 
 	var wg sync.WaitGroup
 
@@ -67,8 +65,37 @@ func TestMigrateTwiceAndFromTwoCopiesAtOnce(t *testing.T) {
 
 	for err := range errs {
 		if err != nil {
-			t.Fatalf("a migrate on an up to date database failed %v", err)
+			t.Fatalf("a migrate on an empty database failed %v", err)
 		}
+	}
+
+	if err := database.Migrate(url); err != nil {
+		t.Fatalf("a migrate on an up to date database failed %v", err)
+	}
+}
+
+func TestMigrateSkipsWhenTheDatabaseIsAheadOfTheBinary(t *testing.T) {
+	pool := dbtest.New(t)
+
+	// a newer copy applied a migration that this binary has no file for
+	if _, err := pool.Exec(context.Background(), "UPDATE schema_migrations SET version = 9999"); err != nil {
+		t.Fatalf("set the version %v", err)
+	}
+
+	if err := database.Migrate(pool.Config().ConnString()); err != nil {
+		t.Fatalf("a binary that is behind the database must still start, got %v", err)
+	}
+}
+
+func TestMigrateRefusesADirtyDatabase(t *testing.T) {
+	pool := dbtest.New(t)
+
+	if _, err := pool.Exec(context.Background(), "UPDATE schema_migrations SET dirty = true"); err != nil {
+		t.Fatalf("mark it dirty %v", err)
+	}
+
+	if err := database.Migrate(pool.Config().ConnString()); err == nil {
+		t.Fatal("a dirty database was accepted, it needs a person to repair it")
 	}
 }
 

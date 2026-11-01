@@ -43,12 +43,18 @@ func serverURL(name string) (string, bool) {
 	return u.String(), true
 }
 
-// New creates a database for the test, migrates it and returns a pool on it. The database is dropped when the test ends.
-func New(t *testing.T) *pgxpool.Pool {
+// Empty creates a database with no tables for the test and returns its URL. The database is dropped when the test ends. Point the
+// TEST_DB_ variables at a throwaway server only, because a run that is killed leaves its database behind.
+func Empty(t *testing.T) string {
 	t.Helper()
 
 	adminURL, ok := serverURL("postgres")
 	if !ok {
+		// a CI run without a server would pass with every database test skipped, so it fails instead
+		if os.Getenv("CI") != "" {
+			t.Fatal("TEST_DB_HOST is not set in CI, so the database tests would not run")
+		}
+
 		t.Skip("TEST_DB_HOST is not set, so the test has no database")
 	}
 
@@ -68,25 +74,10 @@ func New(t *testing.T) *pgxpool.Pool {
 	}
 
 	name := "t_" + hex.EncodeToString(raw)
+	quoted := pgx.Identifier{name}.Sanitize()
 
-	if _, err := admin.Exec(ctx, "CREATE DATABASE "+name); err != nil {
-		t.Fatalf("create the test database %v", err)
-	}
-
-	dbURL, _ := serverURL(name)
-
-	if err := database.Migrate(dbURL); err != nil {
-		t.Fatalf("migrate the test database %v", err)
-	}
-
-	pool, err := database.Open(ctx, dbURL, 4)
-	if err != nil {
-		t.Fatalf("open the test database %v", err)
-	}
-
+	// the cleanup is registered before the database exists, so a failure further on still drops it
 	t.Cleanup(func() {
-		pool.Close()
-
 		dropCtx, dropCancel := context.WithTimeout(context.Background(), setupTimeout)
 		defer dropCancel()
 
@@ -99,10 +90,39 @@ func New(t *testing.T) *pgxpool.Pool {
 
 		defer func() { _ = conn.Close(dropCtx) }()
 
-		if _, err := conn.Exec(dropCtx, "DROP DATABASE IF EXISTS "+name+" WITH (FORCE)"); err != nil {
+		if _, err := conn.Exec(dropCtx, "DROP DATABASE IF EXISTS "+quoted+" WITH (FORCE)"); err != nil {
 			t.Errorf("drop the test database %v", err)
 		}
 	})
+
+	if _, err := admin.Exec(ctx, "CREATE DATABASE "+quoted); err != nil {
+		t.Fatalf("create the test database %v", err)
+	}
+
+	dbURL, _ := serverURL(name)
+
+	return dbURL
+}
+
+// New creates a database for the test, migrates it and returns a pool on it
+func New(t *testing.T) *pgxpool.Pool {
+	t.Helper()
+
+	dbURL := Empty(t)
+
+	if err := database.Migrate(dbURL); err != nil {
+		t.Fatalf("migrate the test database %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), setupTimeout)
+	defer cancel()
+
+	pool, err := database.Open(ctx, dbURL, 4)
+	if err != nil {
+		t.Fatalf("open the test database %v", err)
+	}
+
+	t.Cleanup(pool.Close)
 
 	return pool
 }

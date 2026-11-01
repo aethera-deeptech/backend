@@ -55,16 +55,17 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	// the migrations run before the service listens, so a copy that cannot migrate never reports healthy and the rolling update stops
-	if err := database.Migrate(cfg.DatabaseURL()); err != nil {
-		return fmt.Errorf("migrate the database %w", err)
-	}
-
+	// the pool opens first because it waits for a database that is still starting. The migrations run before the service listens, so a
+	// copy that cannot migrate never reports healthy and the rolling update stops.
 	pool, err := database.Open(ctx, cfg.DatabaseURL(), cfg.DBMaxConns)
 	if err != nil {
 		return fmt.Errorf("open the database %w", err)
 	}
 	defer pool.Close()
+
+	if err := database.Migrate(cfg.DatabaseURL()); err != nil {
+		return fmt.Errorf("migrate the database %w", err)
+	}
 
 	app := server.New(version, pool)
 
