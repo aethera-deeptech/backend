@@ -27,7 +27,7 @@ func TestParse(t *testing.T) {
 		{name: "defaults", environ: withDB(nil), want: Config{
 			AppEnv: EnvDevelopment, AppPort: 8080, DBHost: "db", DBPort: 5432, DBName: "app", DBUsername: "user", DBPassword: "pass",
 			DBSSLMode: "require", DBMaxConns: 8, AppOrigin: "http://localhost:5173", ProxyHeader: "X-Real-IP", SMTPPort: 465,
-			SMTPSecurity: "tls", SMTPFromName: "Aethera",
+			SMTPSecurity: "tls", SMTPFromName: "Aethera", SentryEnvironment: "development", SentryEventsPerMinute: 30,
 		}},
 		{
 			name: "values from the environment",
@@ -38,7 +38,7 @@ func TestParse(t *testing.T) {
 			want: Config{
 				AppEnv: EnvProduction, AppPort: 9090, DBHost: "db", DBPort: 6432, DBName: "app", DBUsername: "user", DBPassword: "pass",
 				DBSSLMode: "disable", DBMaxConns: 4, AppOrigin: "https://app.example.com", ProxyHeader: "X-Real-IP",
-				SMTPHost: "smtp.example.com", SMTPPort: 465, SMTPSecurity: "tls", SMTPFromName: "Aethera", SMTPFromAddress: "no-reply@example.com",
+				SMTPHost: "smtp.example.com", SMTPPort: 465, SMTPSecurity: "tls", SMTPFromName: "Aethera", SentryEnvironment: "production", SentryEventsPerMinute: 30, SMTPFromAddress: "no-reply@example.com",
 			},
 		},
 		{name: "unknown environment", environ: withDB(map[string]string{"APP_ENV": "staging"}), wantErr: "APP_ENV"},
@@ -55,6 +55,7 @@ func TestParse(t *testing.T) {
 		{name: "empty password", environ: withDB(map[string]string{"DB_PASSWORD": ""}), wantErr: "DB_PASSWORD"},
 		{name: "a bad proxy list", environ: withDB(map[string]string{"TRUST_PROXY_CIDRS": "10.0.0.0/8,nope"}), wantErr: "TRUST_PROXY_CIDRS"},
 		{name: "origin with a user name", environ: withDB(map[string]string{"APP_ORIGIN": "https://user@app.example.com"}), wantErr: "APP_ORIGIN"},
+		{name: "no error reports allowed", environ: withDB(map[string]string{"SENTRY_EVENTS_PER_MINUTE": "0"}), wantErr: "SENTRY_EVENTS_PER_MINUTE"},
 		{name: "database port zero", environ: withDB(map[string]string{"DB_PORT": "0"}), wantErr: "DB_PORT"},
 		{name: "unknown ssl mode", environ: withDB(map[string]string{"DB_SSL_MODE": "yes"}), wantErr: "DB_SSL_MODE"},
 		{name: "no connections", environ: withDB(map[string]string{"DB_MAX_CONNS": "0"}), wantErr: "DB_MAX_CONNS"},

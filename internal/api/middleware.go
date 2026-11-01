@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+
+	"github.com/aethera-deeptech/backend/internal/errorreport"
 )
 
 // RequestedWith is the value of the header X-Requested-With that every request which changes data must carry
@@ -64,6 +66,7 @@ func Recover() fiber.Handler {
 		defer func() {
 			if r := recover(); r != nil {
 				slog.Error("a route panicked", "method", c.Method(), "path", c.Path(), "panic", fmt.Sprint(r))
+				errorreport.Panic(r, infoOf(c, http.StatusInternalServerError))
 
 				err = NewError(http.StatusInternalServerError, "internal", "Something went wrong")
 			}

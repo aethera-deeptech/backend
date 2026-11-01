@@ -19,6 +19,7 @@ import (
 	"github.com/aethera-deeptech/backend/internal/auth"
 	"github.com/aethera-deeptech/backend/internal/config"
 	"github.com/aethera-deeptech/backend/internal/database"
+	"github.com/aethera-deeptech/backend/internal/errorreport"
 	"github.com/aethera-deeptech/backend/internal/healthcheck"
 	"github.com/aethera-deeptech/backend/internal/janitor"
 	"github.com/aethera-deeptech/backend/internal/logging"
@@ -56,13 +57,28 @@ func main() {
 	}
 }
 
-func run() error {
+func run() (err error) {
 	cfg, err := config.Load()
 	if err != nil {
 		return fmt.Errorf("load the settings %w", err)
 	}
 
 	log.Printf("starting backend %s in %s", version, cfg.AppEnv)
+
+	// the reports start first, so a failure while the service starts is sent too. The returned function sends what is still queued.
+	stopReports := errorreport.Start(errorreport.Config{
+		DSN: cfg.SentryDSN, Environment: cfg.SentryEnvironment, ServerName: cfg.SentryServerName, Release: version,
+		EventsPerMinute: cfg.SentryEventsPerMinute,
+	})
+	defer stopReports()
+
+	// a failure that stops the service, such as a migration that fails or a database that does not answer, is sent before the reports
+	// stop, because a crash loop after a bad deploy is the case in which the report matters most
+	defer func() {
+		if err != nil {
+			errorreport.Report(err, errorreport.Info{})
+		}
+	}()
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

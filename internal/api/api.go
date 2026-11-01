@@ -11,6 +11,8 @@ import (
 	"strconv"
 
 	"github.com/gofiber/fiber/v3"
+
+	"github.com/aethera-deeptech/backend/internal/errorreport"
 )
 
 // Error is an error that the service answers with a status and a stable code. The app reads the code and writes its own text.
@@ -73,6 +75,7 @@ func ErrorHandler(c fiber.Ctx, err error) error {
 		apiErr = fromFiber(fiberErr)
 	default:
 		slog.Error("a route failed", "method", c.Method(), "path", c.Path(), "error", err)
+		errorreport.Report(err, infoOf(c, http.StatusInternalServerError))
 
 		apiErr = NewError(http.StatusInternalServerError, "internal", "Something went wrong")
 	}
@@ -119,4 +122,16 @@ func Decode(c fiber.Ctx, dst any) error {
 	}
 
 	return nil
+}
+
+// infoOf collects what an error report may hold of a request, the pattern of the route and the status. It never reads the path, the
+// query, a header or the body, so what a client typed cannot leave.
+func infoOf(c fiber.Ctx, status int) errorreport.Info {
+	info := errorreport.Info{Status: status}
+
+	if route := c.Route(); route != nil {
+		info.Route = route.Path
+	}
+
+	return info
 }
