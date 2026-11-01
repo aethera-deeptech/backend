@@ -52,7 +52,7 @@ func New(d Deps) *fiber.App {
 
 	// the labels of the metrics are the routes that exist now, so a path that a client made up is counted as one series
 	if d.Metrics != nil {
-		d.Metrics.AllowRoutes(app.GetRoutes())
+		d.Metrics.AllowRoutes(app.GetRoutes(true))
 	}
 
 	return app

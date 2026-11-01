@@ -4,7 +4,6 @@
 package metrics
 
 import (
-	"errors"
 	"net/http"
 	"strconv"
 	"time"
@@ -22,9 +21,6 @@ import (
 const Unknown = "unmatched"
 
 const namespace = "aethera"
-
-// rateLimitedCode is the code of every 429 that a limiter gives
-const rateLimitedCode = "rate_limited"
 
 // Metrics holds the collectors and the registry that the listener serves
 type Metrics struct {
@@ -79,26 +75,61 @@ func New() *Metrics {
 // Registry is where more collectors are added
 func (m *Metrics) Registry() *prometheus.Registry { return m.registry }
 
-// RegisterPool adds the statistics of the connection pool of the database
+// RegisterPool adds the statistics of the connection pool of the database. One scrape reads the statistics once, so the numbers of a
+// scrape belong together.
 func (m *Metrics) RegisterPool(pool *pgxpool.Pool) {
-	gauge := func(name, help string, value func(*pgxpool.Stat) float64) {
-		m.registry.MustRegister(prometheus.NewGaugeFunc(prometheus.GaugeOpts{Namespace: namespace, Subsystem: "db_pool", Name: name, Help: help},
-			func() float64 { return value(pool.Stat()) }))
+	m.registry.MustRegister(newPoolCollector(pool))
+}
+
+type poolCollector struct {
+	pool *pgxpool.Pool
+	descs
+}
+
+type descs struct {
+	acquired, idle, total, max              *prometheus.Desc
+	acquires, waited, canceled, waitSeconds *prometheus.Desc
+}
+
+func newPoolCollector(pool *pgxpool.Pool) *poolCollector {
+	d := func(name, help string) *prometheus.Desc {
+		return prometheus.NewDesc(prometheus.BuildFQName(namespace, "db_pool", name), help, nil, nil)
 	}
 
-	counter := func(name, help string, value func(*pgxpool.Stat) float64) {
-		m.registry.MustRegister(prometheus.NewCounterFunc(prometheus.CounterOpts{Namespace: namespace, Subsystem: "db_pool", Name: name, Help: help},
-			func() float64 { return value(pool.Stat()) }))
+	return &poolCollector{pool: pool, descs: descs{
+		acquired:    d("connections_acquired", "Connections that a query holds now."),
+		idle:        d("connections_idle", "Connections that wait in the pool."),
+		total:       d("connections_total", "Connections that are open."),
+		max:         d("connections_max", "The most connections that the pool opens."),
+		acquires:    d("acquires_total", "Acquires of a connection."),
+		waited:      d("acquires_waited_total", "Acquires that had to wait because every connection was taken."),
+		canceled:    d("acquires_canceled_total", "Acquires that gave up before they got a connection."),
+		waitSeconds: d("acquire_wait_seconds_total", "Time that acquires waited for a connection."),
+	}}
+}
+
+func (c *poolCollector) Describe(ch chan<- *prometheus.Desc) {
+	for _, d := range []*prometheus.Desc{c.acquired, c.idle, c.total, c.max, c.acquires, c.waited, c.canceled, c.waitSeconds} {
+		ch <- d
+	}
+}
+
+func (c *poolCollector) Collect(ch chan<- prometheus.Metric) {
+	s := c.pool.Stat()
+
+	gauge := func(d *prometheus.Desc, v float64) { ch <- prometheus.MustNewConstMetric(d, prometheus.GaugeValue, v) }
+	counter := func(d *prometheus.Desc, v float64) {
+		ch <- prometheus.MustNewConstMetric(d, prometheus.CounterValue, v)
 	}
 
-	gauge("connections_acquired", "Connections that a query holds now.", func(s *pgxpool.Stat) float64 { return float64(s.AcquiredConns()) })
-	gauge("connections_idle", "Connections that wait in the pool.", func(s *pgxpool.Stat) float64 { return float64(s.IdleConns()) })
-	gauge("connections_total", "Connections that are open.", func(s *pgxpool.Stat) float64 { return float64(s.TotalConns()) })
-	gauge("connections_max", "The most connections that the pool opens.", func(s *pgxpool.Stat) float64 { return float64(s.MaxConns()) })
-	counter("acquires_total", "Acquires of a connection.", func(s *pgxpool.Stat) float64 { return float64(s.AcquireCount()) })
-	counter("acquires_waited_total", "Acquires that had to wait because every connection was taken.", func(s *pgxpool.Stat) float64 { return float64(s.EmptyAcquireCount()) })
-	counter("acquires_canceled_total", "Acquires that gave up before they got a connection.", func(s *pgxpool.Stat) float64 { return float64(s.CanceledAcquireCount()) })
-	counter("acquire_wait_seconds_total", "Time that acquires waited for a connection.", func(s *pgxpool.Stat) float64 { return s.AcquireDuration().Seconds() })
+	gauge(c.acquired, float64(s.AcquiredConns()))
+	gauge(c.idle, float64(s.IdleConns()))
+	gauge(c.total, float64(s.TotalConns()))
+	gauge(c.max, float64(s.MaxConns()))
+	counter(c.acquires, float64(s.AcquireCount()))
+	counter(c.waited, float64(s.EmptyAcquireCount()))
+	counter(c.canceled, float64(s.CanceledAcquireCount()))
+	counter(c.waitSeconds, s.AcquireDuration().Seconds())
 }
 
 // AllowRoutes names the paths that may appear as a label, the routes and the groups whose middleware can refuse a request before it
@@ -114,8 +145,8 @@ func (m *Metrics) AllowRoutes(routes []fiber.Route) {
 	}
 }
 
-// Middleware measures every request that reaches it. It sits inside the access log and answers an error itself, with the error
-// handler of the app, so the status it counts is the one the client gets.
+// Middleware measures every request that reaches it. It sits inside the access log and outside the recovery, and it returns the error
+// that it saw, so the access log keeps the code of the error.
 func (m *Metrics) Middleware() fiber.Handler {
 	return func(c fiber.Ctx) error {
 		start := m.now()
@@ -124,17 +155,21 @@ func (m *Metrics) Middleware() fiber.Handler {
 		defer m.inFlight.Dec()
 
 		err := c.Next()
-		if err != nil {
-			if handled := c.App().Config().ErrorHandler(c, err); handled != nil {
-				_ = c.SendStatus(http.StatusInternalServerError)
-			}
 
-			m.countRefusal(c, err)
+		// the error goes on to the access log and then to the error handler, once, so this middleware reads the status that the handler
+		// will give and changes nothing
+		status := c.Response().StatusCode()
+		if err != nil {
+			status = api.StatusOf(err)
 		}
 
-		m.record(c, c.Response().StatusCode(), start)
+		m.record(c, status, start)
 
-		return nil
+		if status == http.StatusTooManyRequests {
+			m.limited.WithLabelValues(m.routeOf(c)).Inc()
+		}
+
+		return err
 	}
 }
 
@@ -162,12 +197,4 @@ func (m *Metrics) routeOf(c fiber.Ctx) string {
 	}
 
 	return route.Path
-}
-
-// countRefusal counts the 429 of a limiter
-func (m *Metrics) countRefusal(c fiber.Ctx, err error) {
-	var apiErr *api.Error
-	if errors.As(err, &apiErr) && apiErr.Code == rateLimitedCode {
-		m.limited.WithLabelValues(m.routeOf(c)).Inc()
-	}
 }

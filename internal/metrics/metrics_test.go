@@ -1,6 +1,7 @@
 package metrics
 
 import (
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -18,10 +19,11 @@ func newApp(t *testing.T) (*fiber.App, *Metrics) {
 	m := New()
 	app := fiber.New(fiber.Config{ErrorHandler: api.ErrorHandler})
 	app.Use(m.Middleware(), api.Recover())
+	app.Use("/v1", func(c fiber.Ctx) error { return c.Next() })
 	app.Get("/v1/things/:id", func(c fiber.Ctx) error { return c.SendString(c.Params("id")) })
 	app.Get("/v1/limited", func(fiber.Ctx) error { return api.NewError(http.StatusTooManyRequests, "rate_limited", "slow down") })
 	app.Get("/v1/boom", func(fiber.Ctx) error { panic("a nil map") })
-	m.AllowRoutes(app.GetRoutes())
+	m.AllowRoutes(app.GetRoutes(true))
 
 	return app, m
 }
@@ -59,6 +61,45 @@ func TestAPathThatNoRouteOwnsIsOneSeries(t *testing.T) {
 
 	if got := testutil.ToFloat64(m.requests.WithLabelValues("GET", Unknown, "404")); got != 3 {
 		t.Fatalf("the unknown paths were counted %v times, want 3", got)
+	}
+}
+
+func TestAnUnknownPathUnderAGroupIsAlsoOneSeries(t *testing.T) {
+	app, m := newApp(t)
+
+	get(t, app, http.MethodGet, "/v1/nothing/here")
+
+	if got := testutil.ToFloat64(m.requests.WithLabelValues("GET", Unknown, "404")); got != 1 {
+		t.Fatalf("the unknown path under /v1 was counted %v times as unmatched, want 1", got)
+	}
+}
+
+func TestTheErrorGoesOnToTheLogSoItKeepsItsCode(t *testing.T) {
+	m := New()
+	app := fiber.New(fiber.Config{ErrorHandler: api.ErrorHandler})
+
+	var seen error
+
+	app.Use(func(c fiber.Ctx) error {
+		seen = c.Next()
+
+		return seen
+	}, m.Middleware())
+	app.Get("/v1/limited", func(fiber.Ctx) error { return api.NewError(http.StatusTooManyRequests, "resend_too_soon", "slow down") })
+	m.AllowRoutes(app.GetRoutes(true))
+
+	if code := get(t, app, http.MethodGet, "/v1/limited"); code != http.StatusTooManyRequests {
+		t.Fatalf("the answer was %d", code)
+	}
+
+	var apiErr *api.Error
+	if !errors.As(seen, &apiErr) || apiErr.Code != "resend_too_soon" {
+		t.Fatalf("the outer middleware saw %v, want the error with its code", seen)
+	}
+
+	// every 429 counts, whatever its code
+	if got := testutil.ToFloat64(m.limited.WithLabelValues("/v1/limited")); got != 1 {
+		t.Fatalf("the refusals are %v", got)
 	}
 }
 
