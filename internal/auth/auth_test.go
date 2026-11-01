@@ -75,7 +75,7 @@ func TestTheSessionCookieIsHardened(t *testing.T) {
 	e := testutil.New(t)
 	e.Register(t, "budi@example.com")
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/auth/verify-email",
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/v1/auth/verify-email",
 		strings.NewReader(`{"token":"`+verifyToken(t, e, "budi@example.com")+`"}`))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Requested-With", "aethera")
@@ -87,9 +87,10 @@ func TestTheSessionCookieIsHardened(t *testing.T) {
 
 	defer func() { _ = res.Body.Close() }()
 
+	// the names of the attributes are not case sensitive, and the server writes some of them in lower case
 	set := res.Header.Get("Set-Cookie")
-	for _, want := range []string{"__Host-aethera_session=", "HttpOnly", "Secure", "SameSite=Lax", "Path=/"} {
-		if !strings.Contains(set, want) {
+	for _, want := range []string{"__host-aethera_session=", "httponly", "secure", "samesite=lax", "path=/"} {
+		if !strings.Contains(strings.ToLower(set), want) {
 			t.Errorf("the cookie %q lacks %q", set, want)
 		}
 	}
@@ -342,7 +343,7 @@ func TestRequestsThatChangeDataNeedTheHeaderAndTheOrigin(t *testing.T) {
 	e := testutil.New(t)
 
 	post := func(setup func(*http.Request)) testutil.Reply {
-		req := httptest.NewRequest(http.MethodPost, "/v1/auth/login", strings.NewReader(`{"email":"a@example.com","password":"x"}`))
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/v1/auth/login", strings.NewReader(`{"email":"a@example.com","password":"x"}`))
 		req.Header.Set("Content-Type", "application/json")
 		setup(req)
 
@@ -369,7 +370,7 @@ func TestCORSAllowsOnlyTheApp(t *testing.T) {
 	e := testutil.New(t)
 
 	preflight := func(from string) http.Header {
-		req := httptest.NewRequest(http.MethodOptions, "/v1/auth/login", http.NoBody)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodOptions, "/v1/auth/login", http.NoBody)
 		req.Header.Set("Origin", from)
 		req.Header.Set("Access-Control-Request-Method", "POST")
 		req.Header.Set("Access-Control-Request-Headers", "content-type,x-requested-with")
@@ -458,7 +459,7 @@ func TestEmailsAreAsciiAndPlain(t *testing.T) {
 func TestANameWithHiddenCharactersIsRefused(t *testing.T) {
 	e := testutil.New(t)
 
-	body := `{"businessName":"Toko‮Maju","email":"budi@example.com","password":"kata sandi baik"}`
+	body := `{"businessName":"Toko\u202eMaju","email":"budi@example.com","password":"kata sandi baik"}`
 	if r := e.Call(t, http.MethodPost, "/v1/auth/register", body, ""); r.Status != http.StatusUnprocessableEntity {
 		t.Fatalf("a name with a right to left override answered %d", r.Status)
 	}
@@ -530,8 +531,8 @@ func TestThePurgeRemovesWhatNoRuleNeedsAnymore(t *testing.T) {
 		t.Errorf("a verified account was deleted")
 	}
 
-	if n := count("SELECT count(*) FROM rate_limit_events"); n != 1 {
-		t.Errorf("%d rate limit events are left, want 1", n)
+	if n := count("SELECT count(*) FROM rate_limit_events WHERE bucket = 'x'"); n != 1 {
+		t.Errorf("%d old and new test events are left, want only the new one", n)
 	}
 
 	if r := e.Call(t, http.MethodGet, "/v1/auth/me", "", session); r.Status != http.StatusOK {

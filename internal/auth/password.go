@@ -98,12 +98,12 @@ func (h *Hasher) Verify(ctx context.Context, password, encoded string) (bool, er
 
 	salt, err := base64.RawStdEncoding.DecodeString(saltB64)
 	if err != nil {
-		return false, nil //nolint:nilerr // a malformed hash is a mismatch and not a failure
+		return false, nil
 	}
 
 	want, err := base64.RawStdEncoding.DecodeString(keyB6)
 	if err != nil || len(want) == 0 {
-		return false, nil //nolint:nilerr // a malformed hash is a mismatch and not a failure
+		return false, nil
 	}
 
 	if err := h.acquire(ctx); err != nil {
@@ -120,10 +120,15 @@ func (h *Hasher) Verify(ctx context.Context, password, encoded string) (bool, er
 func (h *Hasher) VerifyDummy(ctx context.Context) error {
 	var err error
 
-	h.once.Do(func() { h.dummy, err = h.Hash(context.Background(), "not-a-real-password") })
+	// the context does not stop the first hash halfway, because every later call uses its result
+	h.once.Do(func() { h.dummy, err = h.Hash(context.WithoutCancel(ctx), "not-a-real-password") })
 
 	if err != nil {
 		return err
+	}
+
+	if h.dummy == "" {
+		return ErrBusy
 	}
 
 	_, err = h.Verify(ctx, "another-password", h.dummy)

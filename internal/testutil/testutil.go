@@ -118,7 +118,7 @@ type Reply struct {
 func (e *Env) Call(t *testing.T, method, path, body, cookie string) Reply {
 	t.Helper()
 
-	req := httptest.NewRequest(method, path, strings.NewReader(body))
+	req := httptest.NewRequestWithContext(t.Context(), method, path, strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Requested-With", "aethera")
 	req.Header.Set("Origin", Origin)
