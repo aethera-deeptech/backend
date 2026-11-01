@@ -9,6 +9,7 @@ import (
 	"github.com/aethera-deeptech/backend/internal/auth"
 	"github.com/aethera-deeptech/backend/internal/business"
 	"github.com/aethera-deeptech/backend/internal/config"
+	"github.com/aethera-deeptech/backend/internal/metrics"
 	"github.com/aethera-deeptech/backend/internal/production"
 	"github.com/aethera-deeptech/backend/internal/server"
 )
@@ -22,15 +23,23 @@ type Deps struct {
 	Config  config.Config
 	Pool    *pgxpool.Pool
 	Mailer  auth.Mailer
+	// Metrics counts the requests. It is optional, and the tests leave it out.
+	Metrics *metrics.Metrics
 }
 
 // New returns the application with every route
 func New(d Deps) *fiber.App {
 	cfg := d.Config
 
-	app := server.New(server.Options{
+	opts := server.Options{
 		Version: d.Version, DB: d.Pool, AppOrigin: cfg.AppOrigin, TrustProxy: cfg.TrustProxy, ProxyHeader: cfg.ProxyHeader, TrustedProxies: cfg.TrustProxyCIDRs,
-	})
+	}
+
+	if d.Metrics != nil {
+		opts.Observe = d.Metrics.Middleware()
+	}
+
+	app := server.New(opts)
 
 	accounts := auth.NewService(auth.NewStore(d.Pool), auth.NewLimiter(d.Pool), auth.NewHasher(passwordHashSlots), d.Mailer, cfg.AppOrigin)
 	accountRoutes := auth.NewHandlers(accounts, auth.CookieFor(cfg.AppEnv == config.EnvProduction))
@@ -40,6 +49,11 @@ func New(d Deps) *fiber.App {
 	accountRoutes.Register(v1)
 	business.NewHandlers(business.NewStore(d.Pool)).Register(v1, require)
 	production.NewHandlers(production.NewStore(d.Pool)).Register(v1, require)
+
+	// the labels of the metrics are the routes that exist now, so a path that a client made up is counted as one series
+	if d.Metrics != nil {
+		d.Metrics.AllowRoutes(app.GetRoutes())
+	}
 
 	return app
 }
