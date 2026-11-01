@@ -98,17 +98,27 @@ func parse(environ map[string]string) (Config, error) {
 		return Config{}, fmt.Errorf("APP_ORIGIN is %q and must use https in production", cfg.AppOrigin)
 	}
 
-	if origin.User != nil {
-		return Config{}, fmt.Errorf("APP_ORIGIN is %q and must not hold a user name", cfg.AppOrigin)
+	if origin.User != nil || strings.Contains(origin.Host, "*") {
+		return Config{}, fmt.Errorf("APP_ORIGIN is %q and must be one exact origin, with no user name and no wildcard", cfg.AppOrigin)
 	}
 
 	// a browser sends the origin in lower case and without the default port, so the setting is written the same way
 	cfg.AppOrigin = canonicalOrigin(origin)
 
-	for _, entry := range cfg.TrustProxyCIDRs {
-		if _, _, err := net.ParseCIDR(entry); err != nil && net.ParseIP(entry) == nil {
+	// every entry is written in its plain form, because the server compares it as text with the address of the connection
+	for i, entry := range cfg.TrustProxyCIDRs {
+		if _, network, err := net.ParseCIDR(entry); err == nil {
+			cfg.TrustProxyCIDRs[i] = network.String()
+
+			continue
+		}
+
+		ip := net.ParseIP(entry)
+		if ip == nil {
 			return Config{}, fmt.Errorf("TRUST_PROXY_CIDRS holds %q, which is not an IP address or a CIDR range", entry)
 		}
+
+		cfg.TrustProxyCIDRs[i] = ip.String()
 	}
 
 	if !slices.Contains([]string{"tls", "starttls", "none"}, cfg.SMTPSecurity) {

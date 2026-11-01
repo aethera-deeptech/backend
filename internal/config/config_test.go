@@ -104,6 +104,21 @@ func TestOriginIsWrittenLikeTheBrowserSendsIt(t *testing.T) {
 	}
 }
 
+func TestAnOriginWithAWildcardIsRefused(t *testing.T) {
+	for _, in := range []string{"https://*.example.com", "https://*.example.com:443", "https://app.*.com"} {
+		if _, err := parse(withDB(map[string]string{"APP_ORIGIN": in})); err == nil {
+			t.Fatalf("%s was accepted", in)
+		}
+	}
+}
+
+func TestTheProxyListIsWrittenInItsPlainForm(t *testing.T) {
+	got, err := parse(withDB(map[string]string{"TRUST_PROXY_CIDRS": "::ffff:172.18.0.1,10.1.2.3/8,2001:DB8::1"}))
+	if err != nil || !reflect.DeepEqual(got.TrustProxyCIDRs, []string{"172.18.0.1", "10.0.0.0/8", "2001:db8::1"}) {
+		t.Fatalf("the list is %v (%v)", got.TrustProxyCIDRs, err)
+	}
+}
+
 func TestTheProxyListHoldsAddressesAndRanges(t *testing.T) {
 	got, err := parse(withDB(map[string]string{"TRUST_PROXY_CIDRS": "172.18.0.1,10.0.0.0/8"}))
 	if err != nil || !reflect.DeepEqual(got.TrustProxyCIDRs, []string{"172.18.0.1", "10.0.0.0/8"}) {
