@@ -8,8 +8,9 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
-  # a run on main is never cancelled, so every commit of main keeps its coverage report as a base for the next pull request
+  # A pull request keeps one run and a newer push cancels the older one. A run on main gets a group of its own, because GitHub also
+  # replaces a run that is waiting in a group, so a shared group would drop the middle one of three quick merges and its coverage report.
+  group: ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions: {}
@@ -86,7 +87,7 @@ jobs:
             echo "Total statement coverage is $total" >> "$GITHUB_STEP_SUMMARY"
           fi
 
-      # A failed upload only fails the build on main, because a Codecov outage must not block a pull request. A pull request from
+      # A failed upload only fails the build on the main branch, a manual run on main included, because a Codecov outage must not block a pull request. A pull request from
       # a fork has no token, and its upload fails without failing the build.
       - name: Upload coverage to Codecov
         if: ${{ !cancelled() && hashFiles('coverage.out') != '' }}
@@ -94,7 +95,7 @@ jobs:
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: coverage.out
-          fail_ci_if_error: ${{ github.event_name == 'push' }}
+          fail_ci_if_error: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Upload coverage
         if: always()
