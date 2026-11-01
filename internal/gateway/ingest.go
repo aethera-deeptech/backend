@@ -151,10 +151,13 @@ func (s *Service) Ingest(ctx context.Context, p *Principal, b Batch, now time.Ti
 		return Ack{}, fmt.Errorf("lock the gateway %w", err)
 	}
 
+	// only the batch that was stored last is acknowledged again, which is a retry whose answer was lost. Any other number, below or above,
+	// answers with the number that the service waits for, so a gateway that lost its counter (a reset or a new key) learns where to
+	// continue and does not lose its readings behind a silent answer.
 	switch {
-	case b.Seq <= last:
+	case b.Seq == last:
 		return Ack{AckSeq: last, ServerTime: now}, nil
-	case b.Seq > last+1:
+	case b.Seq != last+1:
 		e := api.NewError(http.StatusConflict, "sequence_gap", "The batch skips a sequence number")
 		expected := last + 1
 		e.ExpectedSeq = &expected
@@ -279,7 +282,7 @@ func upsertNode(ctx context.Context, tx pgx.Tx, gatewayID string, n NodeBatch, n
 	return nil
 }
 
-// storeSamples writes the samples that pass the checks, in one statement, and moves the state of the node to the newest one
+// storeSamples writes the samples that pass the checks, in one statement, and counts the ones that it dropped
 func storeSamples(ctx context.Context, tx pgx.Tx, gatewayID string, n NodeBatch, shift time.Duration, now time.Time) (int, int, error) {
 	var (
 		ts                                     []time.Time

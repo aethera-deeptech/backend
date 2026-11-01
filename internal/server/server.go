@@ -50,8 +50,9 @@ type Options struct {
 	TrustedProxies []string
 }
 
-// bodyLimit is the largest request body, which is far above what any route of the dashboard sends
-const bodyLimit = 1 << 20
+// bodyLimit is the largest request body, which is a little above the 256 KiB of a batch of readings, the largest body of any route. The
+// server reads a body into memory before a route can check it, so this is the most that a stranger can make it hold.
+const bodyLimit = 288 << 10
 
 // New returns the application with its health routes and the middleware of the API. The routes under /v1 and /device/v1 are added
 // by the caller, and they run behind the middleware that is set here.

@@ -359,9 +359,14 @@ func TestAnotherBusinessCannotTakeTheGatewayOfThisOne(t *testing.T) {
 
 	newKey, _ := key("l")
 
-	// a claim again starts the counter of the gateway at zero, so the first batch of the new key is number 1
-	if r := g.e.CallWith(t, http.MethodPost, "/device/v1/readings", batch(1, "NODE-0001", "plug", sample(0, 5)), bearer(newKey)); r.Status != http.StatusOK {
+	if r := g.e.CallWith(t, http.MethodPost, "/device/v1/readings", batch(2, "NODE-0001", "plug", sample(0, 5)), bearer(newKey)); r.Status != http.StatusOK {
 		t.Fatalf("the new key answered %d %v", r.Status, r.Body)
+	}
+
+	// a gateway that lost its counter, for example after a reset, is told where to continue and nothing is stored behind a silent answer
+	r2 := g.e.CallWith(t, http.MethodPost, "/device/v1/readings", batch(1, "NODE-0001", "plug", sample(0, 5)), bearer(newKey))
+	if r2.Status != http.StatusConflict || r2.Body["expectedSeq"] != float64(3) {
+		t.Fatalf("an old number answered %d %v, want 409 with expectedSeq 3", r2.Status, r2.Body)
 	}
 }
 
