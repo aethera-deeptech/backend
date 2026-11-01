@@ -1019,9 +1019,9 @@ components:
           type: object
           required: [rpPerKwh, isDefault, defaultRpPerKwh]
           properties:
-            rpPerKwh: {type: integer}
+            rpPerKwh: {type: integer, minimum: 1}
             isDefault: {type: boolean}
-            defaultRpPerKwh: {type: integer, examples: [1444]}
+            defaultRpPerKwh: {type: integer, minimum: 1, examples: [1444]}
         anomalySensitivity: {type: string, enum: [rendah, sedang, tinggi]}
         timeZone: {type: string, examples: [Asia/Jakarta], description: An IANA zone name. This field is new and the frames have no screen for it.}
     SettingsPatch:
@@ -1073,14 +1073,14 @@ components:
           description: Null while there is no recent data. The points cover the 24 hours that end now, spread evenly.
           required: [points, yMaxW]
           properties:
-            points: {type: array, items: {type: number}}
+            points: {type: array, minItems: 1, items: {type: number, minimum: 0}}
             yMaxW: {type: number}
             expected:
               type: object
               required: [low, high]
               properties:
-                low: {type: array, items: {type: number}}
-                high: {type: array, items: {type: number}}
+                low: {type: array, minItems: 1, items: {type: number, minimum: 0}}
+                high: {type: array, minItems: 1, items: {type: number, minimum: 0}}
             anomaly:
               type: object
               required: [from, to]
@@ -1091,28 +1091,28 @@ components:
       type: object
       required: [rp, count]
       properties:
-        rp: {type: integer}
-        count: {type: integer}
+        rp: {type: integer, minimum: 0}
+        count: {type: integer, minimum: 0}
     EnergyPerPiece:
       oneOf:
         - type: object
-          required: [state, beforeKwh, afterKwh]
+          required: [status, beforeKwh, afterKwh]
           properties:
-            state: {type: string, enum: [verified, estimate]}
-            beforeKwh: {type: number}
-            afterKwh: {type: number}
+            status: {type: string, enum: [verified, estimate]}
+            beforeKwh: {type: number, minimum: 0}
+            afterKwh: {type: number, minimum: 0}
         - type: object
-          required: [state, collectedDays, neededDays]
+          required: [status, collectedDays, neededDays]
           properties:
-            state: {type: string, const: collecting}
-            collectedDays: {type: integer}
-            neededDays: {type: integer}
+            status: {type: string, const: collecting}
+            collectedDays: {type: integer, minimum: 0}
+            neededDays: {type: integer, minimum: 0}
     TopDevice:
       type: object
       required: [name, kwh]
       properties:
         name: {type: string}
-        kwh: {type: number}
+        kwh: {type: number, minimum: 0}
     Beranda:
       type: object
       required: [phase, businessName, asOf]
@@ -1120,19 +1120,19 @@ components:
         phase: {type: string, enum: [no-devices, collecting, ready]}
         businessName: {type: [string, "null"]}
         asOf: {type: string, format: date-time}
-        collectedDays: {type: integer, description: Only with collecting}
-        neededDays: {type: integer, description: Only with collecting}
-        savingPerMonthRp: {type: integer, description: "Only with ready. It is the sum of the tips that wait for a decision."}
+        collectedDays: {type: integer, minimum: 0, description: Only with collecting}
+        neededDays: {type: integer, minimum: 0, description: Only with collecting}
+        savingPerMonthRp: {type: integer, minimum: 0, description: "Only with ready. It is the sum of the tips that wait for a decision."}
         statusCounts:
           type: object
           description: Only with ready
           required: [anomali, offline, siaga, nyala, mati]
           properties:
-            anomali: {type: integer}
-            offline: {type: integer}
-            siaga: {type: integer}
-            nyala: {type: integer}
-            mati: {type: integer}
+            anomali: {type: integer, minimum: 0}
+            offline: {type: integer, minimum: 0}
+            siaga: {type: integer, minimum: 0}
+            nyala: {type: integer, minimum: 0}
+            mati: {type: integer, minimum: 0}
         recommendations:
           type: array
           description: Only with ready
@@ -1143,17 +1143,18 @@ components:
               id: {type: string, format: uuid}
               title: {type: string}
               deviceName: {type: string}
-              savingPerMonthRp: {type: integer}
+              savingPerMonthRp: {type: integer, minimum: 0}
         bill:
           type: object
           description: Only with ready
           required: [dailyTotalRp, projectedTotalRp, potentialTotalRp]
           properties:
-            dailyTotalRp: {type: array, items: {type: integer}}
-            projectedTotalRp: {type: integer}
-            potentialTotalRp: {type: integer}
+            dailyTotalRp: {type: array, minItems: 1, maxItems: 31, items: {type: integer, minimum: 0}}
+            projectedTotalRp: {type: integer, minimum: 0}
+            potentialTotalRp: {type: integer, minimum: 0}
         topDevices:
           type: array
+          maxItems: 4
           description: With collecting and ready
           items: {$ref: "#/components/schemas/TopDevice"}
         energyPerPiece: {$ref: "#/components/schemas/EnergyPerPiece"}
@@ -1166,15 +1167,15 @@ components:
       properties:
         id: {type: string, format: uuid}
         title: {type: string}
-        savingPerMonthRp: {type: integer}
+        savingPerMonthRp: {type: integer, minimum: 0}
         status: {$ref: "#/components/schemas/TipStatus"}
         progress:
           type: object
           description: Only with applied
           required: [collectedDays, neededDays]
           properties:
-            collectedDays: {type: integer}
-            neededDays: {type: integer}
+            collectedDays: {type: integer, minimum: 0}
+            neededDays: {type: integer, minimum: 0}
         resultPercent: {type: number, description: "Only with verified. The drop of the energy for each piece in percent."}
     RecommendationList:
       type: object
@@ -1182,7 +1183,7 @@ components:
       properties:
         phase: {type: string, enum: [no-devices, collecting, ready]}
         businessName: {type: [string, "null"]}
-        neededDays: {type: integer, description: Only with collecting}
+        neededDays: {type: integer, minimum: 0, description: Only with collecting}
         items: {type: array, description: Only with ready, items: {$ref: "#/components/schemas/RecommendationItem"}}
     Recommendation:
       type: object
@@ -1192,11 +1193,11 @@ components:
         title: {type: string}
         deviceName: {type: string}
         status: {$ref: "#/components/schemas/TipStatus"}
-        savingPerMonthRp: {type: integer, description: Rounded to the nearest 1000 rupiah. It becomes the measured value when the tip is verified.}
+        savingPerMonthRp: {type: integer, minimum: 0, description: Rounded to the nearest 1000 rupiah. It becomes the measured value when the tip is verified.}
         tariffIsDefault: {type: boolean}
         whatToDo: {type: string}
         why: {type: string}
-        howCalculated: {type: array, items: {type: string}}
+        howCalculated: {type: array, minItems: 1, items: {type: string}}
         appliedAt: {type: string, format: date-time}
         rejectedAt: {type: string, format: date-time}
         verification:
@@ -1204,17 +1205,17 @@ components:
           description: Only while applied
           required: [collectedDays, neededDays]
           properties:
-            collectedDays: {type: integer}
-            neededDays: {type: integer}
+            collectedDays: {type: integer, minimum: 0}
+            neededDays: {type: integer, minimum: 0}
         result:
           type: object
           description: Only after the verification
           required: [beforeKwh, afterKwh, beforeDays, afterDays]
           properties:
-            beforeKwh: {type: number}
-            afterKwh: {type: number}
-            beforeDays: {type: integer}
-            afterDays: {type: integer}
+            beforeKwh: {type: number, minimum: 0}
+            afterKwh: {type: number, minimum: 0}
+            beforeDays: {type: integer, minimum: 0}
+            afterDays: {type: integer, minimum: 0}
     ProductionRecord:
       type: object
       required: [date, quantity, unit]
@@ -1227,7 +1228,7 @@ components:
       required: [unit, units, today, recent]
       properties:
         unit: {type: string, examples: [potong]}
-        units: {type: array, items: {type: string}}
+        units: {type: array, minItems: 1, items: {type: string}}
         today: {type: string, format: date, description: The day of the business now, which is the last day the form lets the user pick}
         recent:
           type: array
@@ -1244,15 +1245,15 @@ components:
           type: array
           description: The months that have a report, newest first
           items: {type: string, pattern: "^[0-9]{4}-(0[1-9]|1[0-2])$"}
-        collectedDays: {type: integer, description: Only with collecting}
-        neededDays: {type: integer, description: Only with collecting}
+        collectedDays: {type: integer, minimum: 0, description: Only with collecting}
+        neededDays: {type: integer, minimum: 0, description: Only with collecting}
         through: {type: string, format: date-time, description: Only for the running month}
         tariff:
           type: object
           description: The tariff of the report, so the text can say that the default was used
           required: [rpPerKwh, isDefault]
           properties:
-            rpPerKwh: {type: integer}
+            rpPerKwh: {type: integer, minimum: 1}
             isDefault: {type: boolean}
         saving:
           type: object
@@ -1263,20 +1264,20 @@ components:
               type: object
               required: [rp, count, checkedDays]
               properties:
-                rp: {type: integer}
-                count: {type: integer}
-                checkedDays: {type: integer}
+                rp: {type: integer, minimum: 0}
+                count: {type: integer, minimum: 0}
+                checkedDays: {type: integer, minimum: 0}
             applied:
               type: object
               required: [rp, count, day, neededDays]
               properties:
-                rp: {type: integer}
-                count: {type: integer}
-                day: {type: integer}
-                neededDays: {type: integer}
+                rp: {type: integer, minimum: 0}
+                count: {type: integer, minimum: 0}
+                day: {type: integer, minimum: 0}
+                neededDays: {type: integer, minimum: 0}
             estimate: {$ref: "#/components/schemas/Savings"}
-        topDevices: {type: array, items: {$ref: "#/components/schemas/TopDevice"}}
-        billRp: {type: integer}
+        topDevices: {type: array, maxItems: 4, items: {$ref: "#/components/schemas/TopDevice"}}
+        billRp: {type: integer, minimum: 0}
         energyPerPiece: {$ref: "#/components/schemas/EnergyPerPiece"}
     Sample:
       type: object
@@ -1289,6 +1290,7 @@ components:
         e: {type: number, description: Total energy of the node in kWh since it was made, minimum: 0}
         f: {type: number, description: Hertz, minimum: 0, maximum: 100}
         pf: {type: number, description: Power factor, minimum: 0, maximum: 1}
+        a: {type: integer, minimum: 0, maximum: 3, description: "The condition that the gateway classified on its own. 0 is normal, 1 is standby, 2 is a degraded load (low power factor under high load) and 3 is an overload. The service keeps it and decides on its own too."}
     ReadingBatch:
       type: object
       required: [seq, sentAt, nodes]
@@ -1297,6 +1299,7 @@ components:
         sentAt: {type: integer, description: Unix seconds on the clock of the gateway}
         nodes:
           type: array
+          minItems: 1
           maxItems: 16
           items:
             type: object
