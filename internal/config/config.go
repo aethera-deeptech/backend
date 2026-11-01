@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/caarlos0/env/v11"
 )
@@ -40,6 +41,9 @@ type Config struct {
 	// address, which is the reverse proxy on the same host.
 	TrustProxy  bool   `env:"TRUST_PROXY" envDefault:"false"`
 	ProxyHeader string `env:"PROXY_HEADER" envDefault:"X-Real-IP"`
+	// TrustProxyCIDRs narrows the trusted addresses to a list of IPs or CIDR ranges. When it is empty every private and loopback
+	// address is trusted, which includes other containers on a shared Docker network.
+	TrustProxyCIDRs []string `env:"TRUST_PROXY_CIDRS" envSeparator:","`
 
 	SMTPHost        string `env:"SMTP_HOST"`
 	SMTPPort        uint   `env:"SMTP_PORT" envDefault:"465"`
@@ -94,6 +98,19 @@ func parse(environ map[string]string) (Config, error) {
 		return Config{}, fmt.Errorf("APP_ORIGIN is %q and must use https in production", cfg.AppOrigin)
 	}
 
+	if origin.User != nil {
+		return Config{}, fmt.Errorf("APP_ORIGIN is %q and must not hold a user name", cfg.AppOrigin)
+	}
+
+	// a browser sends the origin in lower case and without the default port, so the setting is written the same way
+	cfg.AppOrigin = canonicalOrigin(origin)
+
+	for _, entry := range cfg.TrustProxyCIDRs {
+		if _, _, err := net.ParseCIDR(entry); err != nil && net.ParseIP(entry) == nil {
+			return Config{}, fmt.Errorf("TRUST_PROXY_CIDRS holds %q, which is not an IP address or a CIDR range", entry)
+		}
+	}
+
 	if !slices.Contains([]string{"tls", "starttls", "none"}, cfg.SMTPSecurity) {
 		return Config{}, fmt.Errorf("SMTP_SECURITY is %q and must be tls, starttls or none", cfg.SMTPSecurity)
 	}
@@ -112,6 +129,25 @@ func parse(environ map[string]string) (Config, error) {
 	}
 
 	return cfg, nil
+}
+
+// canonicalOrigin writes an origin the way a browser serializes it
+func canonicalOrigin(u *url.URL) string {
+	host := strings.ToLower(u.Hostname())
+	if strings.Contains(host, ":") {
+		host = "[" + host + "]"
+	}
+
+	port := u.Port()
+	if (u.Scheme == "https" && port == "443") || (u.Scheme == "http" && port == "80") {
+		port = ""
+	}
+
+	if port != "" {
+		host += ":" + port
+	}
+
+	return u.Scheme + "://" + host
 }
 
 // DatabaseURL returns the connection URL of the database. The user and the password are escaped by the URL type.

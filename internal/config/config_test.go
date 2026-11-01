@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -52,6 +53,8 @@ func TestParse(t *testing.T) {
 		{name: "smtp port zero", environ: withDB(map[string]string{"SMTP_PORT": "0"}), wantErr: "SMTP_PORT"},
 		{name: "no database settings", environ: map[string]string{}, wantErr: "DB_HOST"},
 		{name: "empty password", environ: withDB(map[string]string{"DB_PASSWORD": ""}), wantErr: "DB_PASSWORD"},
+		{name: "a bad proxy list", environ: withDB(map[string]string{"TRUST_PROXY_CIDRS": "10.0.0.0/8,nope"}), wantErr: "TRUST_PROXY_CIDRS"},
+		{name: "origin with a user name", environ: withDB(map[string]string{"APP_ORIGIN": "https://user@app.example.com"}), wantErr: "APP_ORIGIN"},
 		{name: "database port zero", environ: withDB(map[string]string{"DB_PORT": "0"}), wantErr: "DB_PORT"},
 		{name: "unknown ssl mode", environ: withDB(map[string]string{"DB_SSL_MODE": "yes"}), wantErr: "DB_SSL_MODE"},
 		{name: "no connections", environ: withDB(map[string]string{"DB_MAX_CONNS": "0"}), wantErr: "DB_MAX_CONNS"},
@@ -74,10 +77,37 @@ func TestParse(t *testing.T) {
 				t.Fatalf("unexpected error %v", err)
 			}
 
-			if got != tt.want {
+			if !reflect.DeepEqual(got, tt.want) {
 				t.Fatalf("config is %+v, want %+v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestOriginIsWrittenLikeTheBrowserSendsIt(t *testing.T) {
+	for in, want := range map[string]string{
+		"https://app.example.com:443":  "https://app.example.com",
+		"https://APP.Example.com":      "https://app.example.com",
+		"http://localhost:80":          "http://localhost",
+		"http://localhost:5173":        "http://localhost:5173",
+		"https://app.example.com:8443": "https://app.example.com:8443",
+		"http://[::1]:5173":            "http://[::1]:5173",
+	} {
+		got, err := parse(withDB(map[string]string{"APP_ORIGIN": in}))
+		if err != nil {
+			t.Fatalf("%s was refused %v", in, err)
+		}
+
+		if got.AppOrigin != want {
+			t.Fatalf("%s became %s, want %s", in, got.AppOrigin, want)
+		}
+	}
+}
+
+func TestTheProxyListHoldsAddressesAndRanges(t *testing.T) {
+	got, err := parse(withDB(map[string]string{"TRUST_PROXY_CIDRS": "172.18.0.1,10.0.0.0/8"}))
+	if err != nil || !reflect.DeepEqual(got.TrustProxyCIDRs, []string{"172.18.0.1", "10.0.0.0/8"}) {
+		t.Fatalf("the list is %v (%v)", got.TrustProxyCIDRs, err)
 	}
 }
 

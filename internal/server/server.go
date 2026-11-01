@@ -44,6 +44,8 @@ type Options struct {
 	// TrustProxy and ProxyHeader tell where the address of the client is when a reverse proxy on the host sits in front
 	TrustProxy  bool
 	ProxyHeader string
+	// TrustedProxies limits the addresses that may set the header. Empty means every private and loopback address.
+	TrustedProxies []string
 }
 
 // bodyLimit is the largest request body, which is far above what any route of the dashboard sends
@@ -63,6 +65,10 @@ func New(opts Options) *fiber.App {
 	if opts.TrustProxy {
 		cfg.TrustProxy = true
 		cfg.TrustProxyConfig = fiber.TrustProxyConfig{Private: true, Loopback: true}
+		if len(opts.TrustedProxies) > 0 {
+			cfg.TrustProxyConfig = fiber.TrustProxyConfig{Proxies: opts.TrustedProxies}
+		}
+
 		cfg.ProxyHeader = opts.ProxyHeader
 		// a header that is not an IP address is ignored, so a client cannot put free text in the address that the log and the limits use
 		cfg.EnableIPValidation = true
