@@ -85,10 +85,16 @@ func (s *Store) CreateRoom(ctx context.Context, businessID, rawName string) (Roo
 
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	// the row of the business is locked, so two requests that add a room at the same time count one after the other
+	// the row of the business is locked first, so two requests that add a room at the same time count one after the other. The count is
+	// a statement of its own, because a statement takes its snapshot before it waits for a lock, and a count in the same statement
+	// would not see the room that the other request just added.
+	var locked int
+	if err := tx.QueryRow(ctx, "SELECT 1 FROM businesses WHERE id = $1 FOR UPDATE", businessID).Scan(&locked); err != nil {
+		return Room{}, fmt.Errorf("lock the business %w", err)
+	}
+
 	var count int
-	if err := tx.QueryRow(ctx,
-		"SELECT (SELECT count(*) FROM rooms WHERE business_id = b.id) FROM businesses b WHERE b.id = $1 FOR UPDATE OF b", businessID).Scan(&count); err != nil {
+	if err := tx.QueryRow(ctx, "SELECT count(*) FROM rooms WHERE business_id = $1", businessID).Scan(&count); err != nil {
 		return Room{}, fmt.Errorf("count the rooms %w", err)
 	}
 
