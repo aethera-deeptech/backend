@@ -44,7 +44,7 @@ More workflows arrive with the pull requests that need them. The jobs for the re
 
 The ruleset of `main` requires a pull request that is merged with a merge commit, resolved review threads, branches that are up to date with `main` (strict checks), and it refuses deletion and force pushes. A new push dismisses stale approvals. The ruleset has no bypass actors.
 
-Signed commits are not required yet. The rule is added after the release App has made its first verified commit, and this page changes in the same pull request that turns it on.
+The ruleset also requires signed commits, so every commit that reaches `main` must have a verified signature. The release App signs its own commits, which was checked on the release pull request of 0.1.0 before the rule was turned on. It also has a code scanning rule that blocks a merge while CodeQL reports an alert of any severity.
 
 Every check below is required and is reported by GitHub Actions.
 
@@ -65,6 +65,7 @@ Every check below is required and is reported by GitHub Actions.
 | Go vulnerability check | GitHub Actions | yes |
 | Go licenses | GitHub Actions | yes |
 | Dependency review | GitHub Actions | yes |
+| CodeQL | GitHub Actions | yes |
 | Secret scan (gitleaks) | GitHub Actions | yes |
 | Trivy filesystem scan | GitHub Actions | yes |
 | Build, scan and push image | GitHub Actions | yes |
@@ -150,7 +151,7 @@ The account name is the repository variable `DOCKERHUB_USERNAME` and the token i
 
 ## Releases
 
-Versions are decided by [release-please](https://github.com/googleapis/release-please) from the Conventional Commit messages that reach `main`. A `fix` raises the patch version and a `feat` raises the minor version. A `feat!` or a `BREAKING CHANGE` footer raises the major version, and while the version is below 1.0.0 a breaking change only raises the minor version. The version starts at 0.0.0 in `.release-please-manifest.json`, so a fix-only first release is 0.0.1, while a first release with a `feat` or a pre-major breaking change is 0.1.0. Its changelog lists the `feat` and `fix` entries of the commits on `main`.
+Versions are decided by [release-please](https://github.com/googleapis/release-please) from the Conventional Commit messages that reach `main`. A `fix` raises the patch version and a `feat` raises the minor version. A `feat!` or a `BREAKING CHANGE` footer raises the major version, and while the version is below 1.0.0 a breaking change only raises the minor version. The version started at 0.0.0 in `.release-please-manifest.json`, so the first release with a `feat` was 0.1.0. Its changelog lists the `feat` and `fix` entries of the commits on `main`.
 
 1. Merge pull requests into `main` with a Conventional Commit title.
 2. release-please opens or updates a pull request named like `chore(main): release 0.2.0` with the new version and the changelog.
