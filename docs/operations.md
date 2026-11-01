@@ -18,6 +18,8 @@ Both copies also join the Docker network of the shared PostgreSQL container, whi
 4. Put the loopback ports of the copies in the upstream of the reverse proxy, for example `server 127.0.0.1:8010;` and `server 127.0.0.1:8011;`.
 5. Run `./rolling-update.sh <version>` with the first version, for example `./rolling-update.sh 0.1.0`.
 
+The settings that a production host must set are `APP_ENV=production`, `APP_ORIGIN` (the origin of the web app with https and no path, which CORS allows and the links in the emails point to), the `DB_*` settings, and `SMTP_HOST` and `SMTP_FROM_ADDRESS` with the rest of the `SMTP_*` settings. The service refuses to start in production when `APP_ORIGIN` is not https or when no mail server is set, because without a mail server nobody can verify an email. Set `TRUST_PROXY=true` when the reverse proxy on the host sends the address of the client in `PROXY_HEADER` (`X-Real-IP` by default). The service then trusts that header only for a request that comes from a private or loopback address. Without it every client has the address of the proxy, and the limits on sign in and sign up count all clients together.
+
 The `.env` file of a host holds only the values of this service. Do not copy values from another project onto the host.
 
 ## Update the copies
