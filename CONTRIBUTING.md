@@ -12,7 +12,7 @@ The repository has no service code yet, so there is nothing to install or run. T
 
 1. Branch from `main`. Name the branch `type/short-description`, for example `fix/device-status`, using the same type as your commits.
 2. Keep one pull request to one concern. Unrelated changes go into separate branches and pull requests.
-3. Write commits in the [Conventional Commits](https://www.conventionalcommits.org/) style, as `type(scope): summary`. The summary is the whole message, so do not add a body. The types are `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore` and `revert`. A pull request cannot be merged while its title or one of its commit messages does not follow this, because the required check "Conventional commits" fails. The check skips merge commits and the messages that commitlint ignores by default, which start with `Revert`, `Reapply`, `amend!`, `fixup!` or `squash!`. Fix a message with `git commit --amend` for the last commit, or an interactive rebase for an older one, and force push your own branch.
+3. Write commits in the [Conventional Commits](https://www.conventionalcommits.org/) style, as `type(scope): summary`. The summary is the whole message, so do not add a body. The types are `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore` and `revert`. A pull request cannot be merged while its title or one of its commit messages does not follow this, because the required check "Conventional commits" fails. The check lints every commit message. It only skips the `Merge branch 'main' into <branch>` message that the Update branch button writes, so a `fixup!`, `squash!` or `Revert` message fails. Write a revert as `revert(scope): summary` and squash your fixups before you push. Fix a message with `git commit --amend` for the last commit, or an interactive rebase for an older one, and force push your own branch.
 4. Write code, comments, commit messages and documentation in English. Match the style of the code around your change.
 5. Add tests with every behavior change. A bug fix should come with a test that fails without the fix.
 
@@ -24,7 +24,7 @@ Every check runs in CI on your pull request, so you should not need to run heavy
 
 ## Pull requests
 
-- The title is a Conventional Commit, such as `fix(devices): keep the status after a restart`. The "Conventional commits" check blocks the merge when the title or a commit that it checks does not follow it.
+- The title is a Conventional Commit, such as `fix(devices): keep the status after a restart`. The "Conventional commits" check blocks the merge when the title or any commit other than an Update branch merge does not follow it.
 - The body is only the list of commits in the pull request, one hyphen bullet per commit. The check accepts lines that start with a hyphen and text, so other bullet marks and indented sub bullets fail.
 - Name the branch `type/short-description`, with the type of the commits, such as `fix/device-status`.
 - Add one label, `bug` for fixes, `enhancement` for features and `documentation` for documentation only, and assign the pull request to yourself.
