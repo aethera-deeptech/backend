@@ -21,10 +21,8 @@
 # Settings, all optional, given as environment variables
 #   COMPOSE_DIR   the folder with the compose file and the env file, default the folder of this script
 #   COMPOSE_FILE  the compose file, default compose.yml, as docker compose reads it
-#   ENV_FILE      the env file that holds IMAGE_TAG, default .env, and it is passed to every compose command
 #   COPIES        the services and the loopback port of each, in update order, default api-1 and api-2 on API_1_HOST_PORT and
 #                 API_2_HOST_PORT of the env file, which are 8010 and 8011 when unset
-#   IMAGE         the image that holds the version, default syafa/aethera-backend
 #   TIMEOUT       seconds to wait for one copy to become healthy, default 120
 #   ROLLBACK_OK   the version that you confirm to go back to
 #   DRY_RUN       1, true or yes prints the steps and changes nothing, but it still checks the services
@@ -39,8 +37,8 @@ version="${1:?usage rolling-update.sh <version>, for example 0.1.0}"
 version="${version#v}"
 script="$(realpath "${BASH_SOURCE[0]}")"
 compose_dir="${COMPOSE_DIR:-$(dirname "$script")}"
-env_file="${ENV_FILE:-.env}"
-image="${IMAGE:-syafa/aethera-backend}"
+# the services of the compose file load .env too, so the file name is not a setting, or the two could name different files
+env_file=".env"
 timeout="${TIMEOUT:-120}"
 
 case "${DRY_RUN:-0}" in
@@ -86,13 +84,14 @@ done
 [ "${#services[@]}" -gt 0 ] || die "COPIES lists no service"
 
 # only one update runs at a time, because two of them would fight over the env file and the same copy
-exec 9>"$compose_dir/.rolling-update.lock"
+exec 9>.rolling-update.lock
 flock -n 9 || die "Another update is running on this host"
 
 # IMAGE_TAG is set for every compose command, because a value that is exported in the shell of the operator would otherwise win
-# over the env file and the copies would start on another tag than the one that was pulled and checked
+# over the env file and the copies would start on another tag than the one that was pulled and checked. The two host ports are
+# cleared for the same reason, because the polling reads them from the env file and must see the ports that compose publishes
 compose() {
-  IMAGE_TAG="$version" docker compose --env-file "$env_file" "$@"
+  env -u API_1_HOST_PORT -u API_2_HOST_PORT IMAGE_TAG="$version" docker compose --env-file "$env_file" "$@"
 }
 
 run() {
@@ -187,7 +186,6 @@ fi
 go_back() {
   local target="${previous:-OLD}" prefix=""
   [ -z "${COMPOSE_DIR:-}" ] || prefix="${prefix}COMPOSE_DIR=${COMPOSE_DIR} "
-  [ -z "${ENV_FILE:-}" ] || prefix="${prefix}ENV_FILE=${ENV_FILE} "
   echo "${prefix}ROLLBACK_OK=${target} ${script} ${target}"
 }
 
@@ -245,4 +243,4 @@ for i in "${!services[@]}"; do
   updated+=("$service")
 done
 
-echo "Done. ${updated[*]} run $image:$version."
+echo "Done. ${updated[*]} run $version."

@@ -13,9 +13,9 @@ x-api: &api
   # the service waits up to 15 seconds for the requests that are running after a stop signal, and Docker stops a container after
   # 10 seconds when nothing is set, so the default here is longer than the wait of the service
   stop_grace_period: ${API_STOP_GRACE_PERIOD:-20s}
+  # a missing .env stops compose, because the file is required unless the entry says otherwise
   env_file:
-    - path: .env
-      required: true
+    - .env
   environment:
     GOMEMLIMIT: ${GOMEMLIMIT:-100MiB}
   networks:
