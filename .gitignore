@@ -1,14 +1,18 @@
-# Binaries
+# Binaries. go build writes into the folder it runs in, and the binary of the root module is named after the repository.
 /bin/
+/backend
 *.exe
 *.test
 *.out
+__debug_bin*
 
-# Test and coverage output
+# Test, coverage and profile output
 coverage.*
 !coverage.go
 *.coverprofile
 profile.cov
+*.prof
+*.pprof
 
 # Go workspace files
 go.work
@@ -18,6 +22,16 @@ go.work.sum
 .env
 .env.*
 !.env.example
+.envrc
+compose.override.y*ml
+docker-compose.override.y*ml
+
+# Keys and certificates
+*.pem
+*.key
+
+# Logs
+*.log
 
 # Tool downloads
 node_modules/
