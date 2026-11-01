@@ -5,10 +5,12 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"log/slog"
+	"os"
 	"os/signal"
 	"syscall"
 	"time"
-	// the time zone of a business is any IANA zone, and the image has no zone database of its own
+	// the time zone of a business is any IANA zone, and a container image can come without a zone database
 	_ "time/tzdata"
 
 	"github.com/gofiber/fiber/v3"
@@ -28,8 +30,10 @@ func main() {
 	// before the first line, so everything the process prints is JSON
 	logging.Setup()
 
+	// slog and not log.Fatalf, because log.Fatalf writes at the info level and an alert on the error level would miss it
 	if err := run(); err != nil {
-		log.Fatalf("stopped with an error %v", err)
+		slog.Error("stopped with an error", "error", err)
+		os.Exit(1)
 	}
 }
 
@@ -58,6 +62,9 @@ func run() error {
 	case <-ctx.Done():
 		log.Println("gracefully shutting down")
 	}
+
+	// from here a second signal gets its default action, so an operator can stop the process without waiting for the timeout
+	stop()
 
 	if err := app.ShutdownWithTimeout(shutdownTimeout); err != nil {
 		return fmt.Errorf("graceful shutdown failed %w", err)
