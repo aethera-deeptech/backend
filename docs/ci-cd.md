@@ -117,6 +117,7 @@ The mirror copies the signature first, checks it on Docker Hub and only then mov
 The File names job reads the names of the files and never opens one. The rules are in `.ls-lint.yml`.
 
 - A folder is lowercase words joined by hyphens, and a leading dot marks the folder of a tool.
+- `openapi.yaml` and `redocly.yaml` keep the `.yaml` ending, because the OpenAPI specification and Redocly name them so, and `.ls-lint.yml` lists them as the exception.
 - A file is lowercase words joined by hyphens, and a dot may mark a variant. ls-lint checks only the part before the first dot, so a variant part such as `BAD` in `deploy.BAD.yaml` is not checked.
 - A Go file is lowercase words with no separator, and only `_test` may follow them.
 - A Markdown file may also be written in capitals joined by underscores, such as `README.md` and `CODE_OF_CONDUCT.md`.
