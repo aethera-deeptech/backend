@@ -133,7 +133,7 @@ The account name is the repository variable `DOCKERHUB_USERNAME` and the token i
 
 ## Releases
 
-Versions are decided by [release-please](https://github.com/googleapis/release-please) from the Conventional Commit messages that reach `main`. A `fix` raises the patch version and a `feat` raises the minor version. A `feat!` or a `BREAKING CHANGE` footer raises the major version, and while the version is below 1.0.0 a breaking change only raises the minor version. The version starts at 0.0.0 in `.release-please-manifest.json`, so the first release is 0.1.0 and its changelog lists the `feat` and `fix` entries of the commits on `main`.
+Versions are decided by [release-please](https://github.com/googleapis/release-please) from the Conventional Commit messages that reach `main`. A `fix` raises the patch version and a `feat` raises the minor version. A `feat!` or a `BREAKING CHANGE` footer raises the major version, and while the version is below 1.0.0 a breaking change only raises the minor version. The version starts at 0.0.0 in `.release-please-manifest.json`, so a fix-only first release is 0.0.1, while a first release with a `feat` or a pre-major breaking change is 0.1.0. Its changelog lists the `feat` and `fix` entries of the commits on `main`.
 
 1. Merge pull requests into `main` with a Conventional Commit title.
 2. release-please opens or updates a pull request named like `chore(main): release 0.2.0` with the new version and the changelog.
