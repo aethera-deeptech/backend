@@ -16,8 +16,11 @@ ls:
   # the community files in capitals such as README.md and CODE_OF_CONDUCT.md are allowed next to kebab case
   .md: kebab-case | SCREAMING_SNAKE_CASE
 
-  # a YAML file in the root folder ends with .yml, because an exists rule only looks at the folder that holds it, and the workflows below end with .yaml
+  # a YAML file ends with .yml in every folder, and the workflows below are the exception. An exists rule only looks at the folder that
+  # holds it, so the ** key repeats the rule for every folder under the root
   .yaml: exists:0
+  "**":
+    .yaml: exists:0
 
   # a workflow ends with .yaml and not .yml, because the name of the workflow file is part of the identity that signs an image
   .github/workflows:
