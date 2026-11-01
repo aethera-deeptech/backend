@@ -6,7 +6,7 @@ Everyone who takes part in this project follows the [Code of Conduct](CODE_OF_CO
 
 ## Set up
 
-The repository has no service code yet, so there is nothing to install or run. The pull request that adds the Go service will also describe how to run it. Until then a change is a change of the workflows, the configuration or the documentation.
+The service is written in Go, and `go.mod` names the version. It reads its settings from environment variables, and `.env.example` lists their names and defaults. The service does not read a `.env` file, so set the variables in your shell. To start it, set the variables you want to change and run `go run ./cmd/api`. It answers `GET /healthz` on the port in `APP_PORT`. The pull request that adds the Go workflow will also build and test the code in CI, and until then the checks only cover the workflows and the documentation, so run `go vet ./...` and `go test ./...` yourself before you push a change to the Go code.
 
 ## Making a change
 
@@ -20,7 +20,7 @@ Sign your commits with a GPG key, with an SSH key that you added to your GitHub 
 
 ## Checks run in CI
 
-Every check runs in CI on your pull request, so you should not need to run heavy tasks such as full builds or test suites on your own machine. Push your branch, open the pull request and read the results of the checks. Run something locally only when the CI logs cannot explain a failure, and keep it small.
+Every check runs in CI on your pull request, so you should not need to run heavy tasks such as full builds or test suites on your own machine. Push your branch, open the pull request and read the results of the checks. Run something locally only when the CI logs cannot explain a failure, and keep it small. The one exception is the Go code, which CI does not build or test yet, so run `go vet ./...` and `go test ./...` for it until the Go workflow exists.
 
 ## Names
 
