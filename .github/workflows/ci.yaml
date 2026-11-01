@@ -9,7 +9,8 @@ on:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # a run on main is never cancelled, so every commit of main keeps its coverage report as a base for the next pull request
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions: {}
 
@@ -85,15 +86,15 @@ jobs:
             echo "Total statement coverage is $total" >> "$GITHUB_STEP_SUMMARY"
           fi
 
-      # The upload never fails the build for now, because the token is still a placeholder. Set fail_ci_if_error to
-      # ${{ github.event_name == 'push' }} once the real token is in place, so a Codecov outage fails main only and never a pull request.
+      # A failed upload only fails the build on main, because a Codecov outage must not block a pull request. A pull request from
+      # a fork has no token, and its upload fails without failing the build.
       - name: Upload coverage to Codecov
         if: ${{ !cancelled() && hashFiles('coverage.out') != '' }}
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: coverage.out
-          fail_ci_if_error: false
+          fail_ci_if_error: ${{ github.event_name == 'push' }}
 
       - name: Upload coverage
         if: always()

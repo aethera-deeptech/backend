@@ -21,7 +21,7 @@ linters:
     # a request or a command that is built without the context of its caller cannot be cancelled
     - noctx
     - contextcheck
-    # the program writes to its log and not to the standard output, and only main may end the process
+    # the program writes to its log and not to the standard output, and only the code in cmd may call log.Fatal
     - forbidigo
     - unconvert
     - usestdlibvars
