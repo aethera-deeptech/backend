@@ -1,33 +1,43 @@
-# If you prefer the allow list template instead of the deny list, see community template:
-# https://github.com/github/gitignore/blob/main/community/Golang/Go.AllowList.gitignore
-#
-# Binaries for programs and plugins
+# Binaries. go build writes into the folder it runs in, and the binary of the root module is named after the repository.
+/bin/
+/backend
 *.exe
-*.exe~
-*.dll
-*.so
-*.dylib
-
-# Test binary, built with `go test -c`
 *.test
-
-# Code coverage profiles and other test artifacts
 *.out
+__debug_bin*
+
+# Test, coverage and profile output
 coverage.*
 !coverage.go
 *.coverprofile
 profile.cov
+*.prof
+*.pprof
 
-# Dependency directories (remove the comment below to include it)
-# vendor/
-
-# Go workspace file
+# Go workspace files
 go.work
 go.work.sum
 
-# env file
+# Local configuration. The example file is committed, and the pattern matches in every folder.
 .env
+.env.*
+!.env.example
+.envrc
+compose.override.y*ml
+docker-compose.override.y*ml
 
-# Editor/IDE
-# .idea/
-# .vscode/
+# Keys and certificates
+*.pem
+*.key
+
+# Logs
+*.log
+
+# Tool downloads
+node_modules/
+dist/
+
+# Editors and OS
+.idea/
+.vscode/
+.DS_Store
