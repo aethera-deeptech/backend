@@ -196,19 +196,29 @@ func (s *SMTP) build(m Message) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// Queue sends messages in the background with a few workers and a few tries for each message
+// retryWaits are the waits before the second and the third try of a message
+var retryWaits = []time.Duration{10 * time.Second, time.Minute}
+
+// Queue sends messages in the background with a few workers. A message that fails is put back after a wait, so a worker never
+// sleeps while other messages wait.
 type Queue struct {
-	sender  Sender
-	jobs    chan Message
-	wg      sync.WaitGroup
-	waits   []time.Duration
-	closeMu sync.Mutex
-	closed  bool
+	sender Sender
+	jobs   chan job
+	wg     sync.WaitGroup
+	mu     sync.Mutex
+	timers map[*time.Timer]struct{}
+	closed bool
+	waits  []time.Duration
 }
 
-// NewQueue starts the workers. A full queue drops the message and logs it, because a person can ask for the email again.
+type job struct {
+	msg     Message
+	attempt int
+}
+
+// NewQueue starts the workers. A full queue drops the message and says so, because a person can ask for the email again.
 func NewQueue(sender Sender, workers, size int) *Queue {
-	q := &Queue{sender: sender, jobs: make(chan Message, size), waits: []time.Duration{2 * time.Second, 10 * time.Second}}
+	q := &Queue{sender: sender, jobs: make(chan job, size), timers: map[*time.Timer]struct{}{}, waits: retryWaits}
 
 	for range workers {
 		q.wg.Go(q.work)
@@ -219,15 +229,19 @@ func NewQueue(sender Sender, workers, size int) *Queue {
 
 // Enqueue adds a message without waiting. It reports false when the queue is full or closed.
 func (q *Queue) Enqueue(m Message) bool {
-	q.closeMu.Lock()
-	defer q.closeMu.Unlock()
+	return q.put(job{msg: m})
+}
+
+func (q *Queue) put(j job) bool {
+	q.mu.Lock()
+	defer q.mu.Unlock()
 
 	if q.closed {
 		return false
 	}
 
 	select {
-	case q.jobs <- m:
+	case q.jobs <- j:
 		return true
 	default:
 		slog.Warn("the mail queue is full, a message was dropped")
@@ -236,15 +250,24 @@ func (q *Queue) Enqueue(m Message) bool {
 	}
 }
 
-// Close stops taking messages and waits for the ones that are queued until the context ends
+// Close stops taking messages, drops the retries that wait for their time and waits for the messages that are queued until the
+// context ends
 func (q *Queue) Close(ctx context.Context) {
-	q.closeMu.Lock()
+	q.mu.Lock()
+
 	if !q.closed {
 		q.closed = true
 
+		for t := range q.timers {
+			if t.Stop() {
+				slog.Warn("an email that waited for a new try was dropped at the stop")
+			}
+		}
+
 		close(q.jobs)
 	}
-	q.closeMu.Unlock()
+
+	q.mu.Unlock()
 
 	done := make(chan struct{})
 
@@ -261,25 +284,61 @@ func (q *Queue) Close(ctx context.Context) {
 }
 
 func (q *Queue) work() {
-	for m := range q.jobs {
-		for attempt := 0; ; attempt++ {
-			ctx, cancel := context.WithTimeout(context.Background(), sendTimeout)
-			err := q.sender.Send(ctx, m)
+	for j := range q.jobs {
+		ctx, cancel := context.WithTimeout(context.Background(), sendTimeout)
+		err := q.sender.Send(ctx, j.msg)
 
-			cancel()
+		cancel()
 
-			if err == nil {
-				break
-			}
+		if err == nil {
+			continue
+		}
 
-			// the address of the person is not written to the log
-			slog.Warn("an email was not sent", "attempt", attempt+1, "error", err)
+		// the log says what kind of failure it was and not the text, because a mail server often repeats the address in its answer
+		slog.Warn("an email was not sent", "attempt", j.attempt+1, "reason", Reason(err))
 
-			if attempt >= len(q.waits) {
-				break
-			}
-
-			time.Sleep(q.waits[attempt])
+		if j.attempt < len(q.waits) {
+			q.retry(job{msg: j.msg, attempt: j.attempt + 1}, q.waits[j.attempt])
 		}
 	}
+}
+
+func (q *Queue) retry(j job, wait time.Duration) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	if q.closed {
+		return
+	}
+
+	var t *time.Timer
+
+	t = time.AfterFunc(wait, func() {
+		q.mu.Lock()
+		delete(q.timers, t)
+		q.mu.Unlock()
+
+		q.put(j)
+	})
+
+	q.timers[t] = struct{}{}
+}
+
+// Reason describes why a send failed without the text of the mail server. It gives the SMTP code when there is one.
+func Reason(err error) string {
+	var perr *textproto.Error
+	if errors.As(err, &perr) {
+		return "the mail server answered " + strconv.Itoa(perr.Code)
+	}
+
+	var nerr net.Error
+	if errors.As(err, &nerr) {
+		if nerr.Timeout() {
+			return "the connection timed out"
+		}
+
+		return "the connection failed"
+	}
+
+	return "the send failed before the server answered"
 }

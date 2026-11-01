@@ -47,7 +47,9 @@ func (o *Outbox) PasswordReset(to, link string) {
 }
 
 func (o *Outbox) send(m Message) {
-	o.queue.Enqueue(m)
+	if !o.queue.Enqueue(m) {
+		slog.Warn("an email was not queued")
+	}
 }
 
 func render(t *template.Template, link string) string {
