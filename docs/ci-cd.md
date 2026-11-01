@@ -6,7 +6,7 @@
 | :--- | :--- | :--- |
 | `commits.yaml` | pull requests | Lints the commits of the pull request with commitlint and its Conventional Commits rules, which are set in `commitlint.config.mjs`, and checks the pull request title against the same types. It never cancels a run, runs the whole job on every edit, including an edit of the body only, and reads the title from the pull request when it runs, so editing the body of a pull request cannot leave a cancelled required check behind and a rerun checks the current title. Only the `Merge branch 'main' into <branch>` message of the Update branch button is skipped, so a `fixup!`, `squash!` or `Revert` message fails like any other, and the line lengths of the body and footer are not limited because Renovate writes long ones |
 | `prformat.yaml` | pull requests | Checks that the branch is named `type/short-description` with a type of Conventional Commits, that the pull request has a label and an assignee, and that the body is only hyphen bullets with text. A pull request that a bot opened (Renovate, Dependabot or Release Please) from its own branch is skipped. It never cancels a run and reads the pull request when it runs, so a rerun checks what the pull request looks like now. Adding or removing a label or an assignee starts a new run, and the newest run of the check is the one that counts |
-| `config.yaml` | push to main, pull requests, manual | Lints the configuration of the repository with the five jobs below |
+| `config.yaml` | push to main, pull requests, manual | Lints the configuration of the repository with the six jobs below |
 | `ci.yaml` | push to main, pull requests, manual | Checks and tests the Go code with the two jobs below, and uploads the coverage to Codecov |
 
 ### Jobs
@@ -18,6 +18,7 @@
 | `config.yaml` | Actionlint | The syntax and the expressions of every workflow, with actionlint |
 | `config.yaml` | Zizmor | The workflows for security problems, such as unpinned actions, broad permissions and injection through expressions, with zizmor |
 | `config.yaml` | ShellCheck | Every tracked file that ends in `.sh`, with the settings of `.shellcheckrc` |
+| `config.yaml` | Hadolint | The `Dockerfile` against the rules of Hadolint, which also lints the shell commands in it |
 | `config.yaml` | File names | The names of the files and folders against `.ls-lint.yml`, with ls-lint |
 | `config.yaml` | Renovate config | `renovate.json` against the schema of Renovate, in strict mode, so a renamed or removed option fails |
 | `ci.yaml` | Lint | `gofmt`, that `go.mod` and `go.sum` are tidy, `go vet`, and golangci-lint with the linters of `.golangci.yml` |
@@ -40,6 +41,7 @@ Every check below is required and is reported by GitHub Actions.
 | Actionlint | GitHub Actions | yes |
 | Zizmor | GitHub Actions | yes |
 | ShellCheck | GitHub Actions | yes |
+| Hadolint | GitHub Actions | yes |
 | File names | GitHub Actions | yes |
 | Renovate config | GitHub Actions | yes |
 | Lint | GitHub Actions | yes |
@@ -54,6 +56,14 @@ The tags that start with `v` are protected by two more rulesets. `release-tags` 
 The Lint job formats, vets and lints the Go code. golangci-lint uses the linters in `.golangci.yml`. Among them, `forbidigo` keeps the program from printing to the standard output and from calling `log.Fatal` outside `cmd`, and `tagliatelle` checks that JSON names are camelCase. A comment that silences a linter has to name the linter and give a reason.
 
 The Tests job runs every test with the race detector, in a random order and without the test cache. It measures the statements of `internal/` and uploads the result to Codecov, which reads its rules from `codecov.yml`. A failed upload fails the build on the `main` branch, and that includes a manual run on `main`. It never fails a pull request, so an outage of Codecov does not block one. The Codecov checks are not required. Every run on `main` has a concurrency group of its own, so a newer run does not cancel or replace it and every commit on `main` keeps its coverage report.
+
+## Container image
+
+The `Dockerfile` has two stages. The first compiles the program on the machine that builds the image, and cross-compiles for the platform of the image, so an arm64 image needs no emulation. The second is a distroless image without a shell or a package manager. It holds the one binary and runs it as the user 65532, which is not root. The base images are pinned by digest, and Renovate keeps the digests current.
+
+The image has no `curl`, so its health check runs the program again with the argument `healthcheck`. That call asks `/healthz` on the loopback address and exits with 0 only when the answer is 200. The memory limit of the container and the `GOMEMLIMIT` setting belong to the compose file that runs the image, and `.dockerignore` keeps the env files, the documentation and the tool settings out of the build context.
+
+The Hadolint job lints the `Dockerfile`. Another pull request adds the workflow that builds, scans and publishes the image.
 
 ## File names
 
@@ -79,7 +89,7 @@ The Renovate config job runs `renovate-config-validator --strict` on every pull 
 
 A dependency update bot cannot read a tool that is named inside a `run` step, so the tools of the jobs are listed where it can.
 
-- `.github/tools/Dockerfile` has one stage for each image that a job starts with `docker run`, which are actionlint, zizmor and ShellCheck. Nothing builds it. The workflows get the image from `.github/tools/image.sh <stage>`, so the version of a bump is the version the jobs run.
+- `.github/tools/Dockerfile` has one stage for each image that a job starts with `docker run`, which are actionlint, zizmor, ShellCheck and Hadolint. Nothing builds it. The workflows get the image from `.github/tools/image.sh <stage>`, so the version of a bump is the version the jobs run.
 - The versions of ls-lint and of the Renovate validator sit in the `env` of their steps. A comment such as `# renovate: datasource=npm depName=@ls-lint/ls-lint` right above the line tells Renovate where to look, so keep the comment when you edit the line.
 
 All actions are pinned to commit SHAs with the version in a comment, and the setting "require actions to be pinned to a full-length commit SHA" is on for the repository.
