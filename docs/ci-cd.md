@@ -7,6 +7,7 @@
 | `commits.yaml` | pull requests | Lints the commits of the pull request with commitlint and its Conventional Commits rules, which are set in `commitlint.config.mjs`, and checks the pull request title against the same types. It never cancels a run, runs the whole job on every edit, including an edit of the body only, and reads the title from the pull request when it runs, so editing the body of a pull request cannot leave a cancelled required check behind and a rerun checks the current title. Only the `Merge branch 'main' into <branch>` message of the Update branch button is skipped, so a `fixup!`, `squash!` or `Revert` message fails like any other, and the line lengths of the body and footer are not limited because Renovate writes long ones |
 | `prformat.yaml` | pull requests | Checks that the branch is named `type/short-description` with a type of Conventional Commits, that the pull request has a label and an assignee, and that the body is only hyphen bullets with text. A pull request that a bot opened (Renovate, Dependabot or Release Please) from its own branch is skipped. It never cancels a run and reads the pull request when it runs, so a rerun checks what the pull request looks like now. Adding or removing a label or an assignee starts a new run, and the newest run of the check is the one that counts |
 | `config.yaml` | push to main, pull requests, manual | Lints the configuration of the repository with the five jobs below |
+| `ci.yaml` | push to main, pull requests, manual | Checks and tests the Go code with the two jobs below, and uploads the coverage to Codecov |
 
 ### Jobs
 
@@ -19,6 +20,8 @@
 | `config.yaml` | ShellCheck | Every tracked file that ends in `.sh`, with the settings of `.shellcheckrc` |
 | `config.yaml` | File names | The names of the files and folders against `.ls-lint.yml`, with ls-lint |
 | `config.yaml` | Renovate config | `renovate.json` against the schema of Renovate, in strict mode, so a renamed or removed option fails |
+| `ci.yaml` | Lint | `gofmt`, that `go.mod` and `go.sum` are tidy, `go vet`, and golangci-lint with the linters of `.golangci.yml` |
+| `ci.yaml` | Tests | `go build`, then every test with the race detector in a random order, and the coverage upload |
 
 More workflows arrive with the pull requests that need them. The jobs for the Go code, the Docker image, the security scans and the releases are added together with the code they check.
 
@@ -39,10 +42,18 @@ Every check below is required and is reported by GitHub Actions.
 | ShellCheck | GitHub Actions | yes |
 | File names | GitHub Actions | yes |
 | Renovate config | GitHub Actions | yes |
+| Lint | GitHub Actions | yes |
+| Tests | GitHub Actions | yes |
 
 Each required check is pinned to the app that reports it, so another app cannot post a check with the same name. When a pull request adds, renames or removes a job, the ruleset is updated before the pull request is merged.
 
 The tags that start with `v` are protected by two more rulesets. `release-tags` refuses deleting, moving and updating them. `release-tags-creation` lets only the release App create them.
+
+## Go checks
+
+The Lint job formats, vets and lints the Go code. golangci-lint uses the linters in `.golangci.yml`. Among them, `forbidigo` keeps the program from printing to the standard output and from calling `log.Fatal` outside `cmd`, and `tagliatelle` checks that JSON names are camelCase. A comment that silences a linter has to name the linter and give a reason.
+
+The Tests job runs every test with the race detector, in a random order and without the test cache. It measures the statements of `internal/` and uploads the result to Codecov, which reads its rules from `codecov.yml`. The upload never fails the build for now, because the Codecov token is still a placeholder. The Codecov checks are not required. When the real token is in place the upload will fail the build on `main` only, so an outage of Codecov never blocks a pull request.
 
 ## File names
 
@@ -58,7 +69,7 @@ The File names job reads the names of the files and never opens one. The rules a
 
 ## Dependency updates
 
-Renovate opens the update pull requests, and `renovate.json` holds its rules. It runs on Mondays before 07:00 in Asia/Jakarta and proposes a release only after it is 7 days old. The exception is an image from `ghcr.io`, such as zizmor, because that registry gives Renovate no release time to age, so its updates are not held by the wait. It groups minor and patch updates of Go modules (`go-minor-patch`) and of Actions (`actions`), and a major update gets its own pull request. After a Go update it runs `go mod tidy`. The commit type is `chore` for Go modules and for `.node-version`, `ci` for Actions and the tools of the workflows, and `build` for the Dockerfile of the app. A routine update therefore never starts a release. The bot keeps an issue called Dependency Dashboard with every update it knows about.
+Renovate opens the update pull requests, and `renovate.json` holds its rules. It runs on Mondays before 07:00 in Asia/Jakarta and proposes a release only after it is 7 days old. The exception is an image from `ghcr.io`, such as zizmor, because that registry gives Renovate no release time to age, so its updates are not held by the wait. It groups minor and patch updates of Go modules (`go-minor-patch`) and of Actions (`actions`), and a major update gets its own pull request. After a Go update it runs `go mod tidy`. The Go release in `go.mod` is raised by hand, because a new patch release of Go is a decision and not an update of a package. The commit type is `chore` for Go modules and for `.node-version`, `ci` for Actions and the tools of the workflows, and `build` for the Dockerfile of the app. A routine update therefore never starts a release. The bot keeps an issue called Dependency Dashboard with every update it knows about.
 
 Security fixes ignore the schedule and the 7 day wait. Renovate learns about them from the Dependabot alerts of the repository, so those alerts stay on. Dependabot security updates stay off, so that Renovate is the only bot that opens pull requests. A pull request that comes from such an alert gets the commit type `fix`, which does start a release.
 
