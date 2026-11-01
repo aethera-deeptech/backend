@@ -8,6 +8,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/aethera-deeptech/backend/internal/api"
@@ -77,8 +78,17 @@ func (s *Store) CreateRoom(ctx context.Context, businessID, rawName string) (Roo
 		return Room{}, api.Validation(map[string]string{"name": code})
 	}
 
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return Room{}, fmt.Errorf("start the room %w", err)
+	}
+
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	// the row of the business is locked, so two requests that add a room at the same time count one after the other
 	var count int
-	if err := s.pool.QueryRow(ctx, "SELECT count(*) FROM rooms WHERE business_id = $1", businessID).Scan(&count); err != nil {
+	if err := tx.QueryRow(ctx,
+		"SELECT (SELECT count(*) FROM rooms WHERE business_id = b.id) FROM businesses b WHERE b.id = $1 FOR UPDATE OF b", businessID).Scan(&count); err != nil {
 		return Room{}, fmt.Errorf("count the rooms %w", err)
 	}
 
@@ -88,7 +98,7 @@ func (s *Store) CreateRoom(ctx context.Context, businessID, rawName string) (Roo
 
 	var r Room
 
-	err := s.pool.QueryRow(ctx, "INSERT INTO rooms (business_id, name) VALUES ($1, $2) RETURNING id, name", businessID, name).Scan(&r.ID, &r.Name)
+	err = tx.QueryRow(ctx, "INSERT INTO rooms (business_id, name) VALUES ($1, $2) RETURNING id, name", businessID, name).Scan(&r.ID, &r.Name)
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == uniqueViolation {
@@ -98,9 +108,18 @@ func (s *Store) CreateRoom(ctx context.Context, businessID, rawName string) (Roo
 		return Room{}, fmt.Errorf("create the room %w", err)
 	}
 
+	if err := tx.Commit(ctx); err != nil {
+		return Room{}, fmt.Errorf("finish the room %w", err)
+	}
+
 	return r, nil
 }
 
 // isHidden reports a control character or a format character, such as a zero width space or a right to left override, which a name
 // has no use for and which can make a name look like another one
-func isHidden(r rune) bool { return unicode.IsControl(r) || unicode.Is(unicode.Cf, r) }
+func isHidden(r rune) bool {
+	return unicode.IsControl(r) || unicode.Is(unicode.Cf, r) || unicode.Is(unicode.Co, r) || unicode.Is(unicode.Cn, r) || blankLooking[r]
+}
+
+// blankLooking are letters and symbols that draw nothing, so a name made of them looks empty
+var blankLooking = map[rune]bool{'\u3164': true, '\u115f': true, '\u1160': true, '\uffa0': true, '\u2800': true}

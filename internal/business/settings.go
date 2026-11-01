@@ -13,6 +13,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/aethera-deeptech/backend/internal/api"
@@ -97,20 +98,30 @@ func NewStore(pool *pgxpool.Pool) *Store {
 	return &Store{pool: pool}
 }
 
-const settingsSQL = `SELECT COALESCE(name, 'Usaha saya'), work_days, to_char(work_start, 'HH24:MI'), to_char(work_end, 'HH24:MI'),
-	tariff_rp_per_kwh, anomaly_sensitivity, time_zone FROM businesses WHERE id = $1`
+const settingsColumns = `COALESCE(name, 'Usaha saya'), work_days, to_char(work_start, 'HH24:MI'), to_char(work_end, 'HH24:MI'),
+	tariff_rp_per_kwh, anomaly_sensitivity, time_zone`
+
+const settingsSQL = `SELECT ` + settingsColumns + ` FROM businesses WHERE id = $1`
 
 // Settings returns the settings of the business
 func (s *Store) Settings(ctx context.Context, businessID string) (Settings, error) {
+	out, err := scanSettings(s.pool.QueryRow(ctx, settingsSQL, businessID))
+	if err != nil {
+		return Settings{}, fmt.Errorf("read the settings %w", err)
+	}
+
+	return out, nil
+}
+
+func scanSettings(row pgx.Row) (Settings, error) {
 	var (
 		out    Settings
 		tariff *int
 	)
 
-	err := s.pool.QueryRow(ctx, settingsSQL, businessID).Scan(&out.BusinessName, &out.WorkHours.Days, &out.WorkHours.Start,
-		&out.WorkHours.End, &tariff, &out.AnomalySensitivity, &out.TimeZone)
+	err := row.Scan(&out.BusinessName, &out.WorkHours.Days, &out.WorkHours.Start, &out.WorkHours.End, &tariff, &out.AnomalySensitivity, &out.TimeZone)
 	if err != nil {
-		return Settings{}, fmt.Errorf("read the settings %w", err)
+		return Settings{}, err //nolint:wrapcheck // the callers add the context
 	}
 
 	out.Tariff = Tariff{RpPerKwh: DefaultTariffRpPerKwh, IsDefault: tariff == nil, DefaultRpPerKwh: DefaultTariffRpPerKwh}
@@ -214,11 +225,15 @@ func (s *Store) Update(ctx context.Context, businessID string, p Patch) (Setting
 	if p.TimeZone != nil {
 		zone := *p.TimeZone
 
-		// the UTC and Local names are valid for LoadLocation, and neither is a zone of a place
-		if _, err := time.LoadLocation(zone); err != nil || len(zone) > maxZoneLength || zone == "" || zone == "Local" || zone == "UTC" {
-			fields["timeZone"] = "invalid"
-		} else {
+		known, err := s.zoneKnown(ctx, zone)
+		if err != nil {
+			return Settings{}, err
+		}
+
+		if known {
 			add("time_zone", zone)
+		} else {
+			fields["timeZone"] = "invalid"
 		}
 	}
 
@@ -231,9 +246,11 @@ func (s *Store) Update(ctx context.Context, businessID string, p Patch) (Setting
 	}
 
 	// the work hours always come as a whole (days, start and end), so the pair is checked above and the database check is a last guard
-	query := "UPDATE businesses SET " + strings.Join(sets, ", ") + ", updated_at = now() WHERE id = $1"
+	query := "UPDATE businesses SET " + strings.Join(sets, ", ") + ", updated_at = now() WHERE id = $1 RETURNING " + settingsColumns
 
-	if _, err := s.pool.Exec(ctx, query, args...); err != nil {
+	// the answer is what this update wrote, so a second update at the same time cannot show up in it
+	out, err := scanSettings(s.pool.QueryRow(ctx, query, args...))
+	if err != nil {
 		if isCheckViolation(err) {
 			return Settings{}, api.Validation(map[string]string{"workHours.end": "end_before_start"})
 		}
@@ -241,5 +258,32 @@ func (s *Store) Update(ctx context.Context, businessID string, p Patch) (Setting
 		return Settings{}, fmt.Errorf("save the settings %w", err)
 	}
 
-	return s.Settings(ctx, businessID)
+	return out, nil
+}
+
+// zoneKnown reports whether a time zone name is one that the service can use. The name must be a zone of a place, such as
+// Asia/Jakarta, and both Go and the database must know it, because Go cuts the days and PostgreSQL groups the readings by the same name.
+// Names such as UTC, GMT, Etc/UTC, posix/... and right/... are refused, because they are not a place and the lists of Go and PostgreSQL
+// differ for them.
+func (s *Store) zoneKnown(ctx context.Context, zone string) (bool, error) {
+	if zone == "" || len(zone) > maxZoneLength || !strings.Contains(zone, "/") {
+		return false, nil
+	}
+
+	for _, prefix := range []string{"Etc/", "posix/", "right/", "SystemV/"} {
+		if strings.HasPrefix(zone, prefix) {
+			return false, nil
+		}
+	}
+
+	if _, err := time.LoadLocation(zone); err != nil {
+		return false, nil //nolint:nilerr // an unknown name is a validation answer
+	}
+
+	var known bool
+	if err := s.pool.QueryRow(ctx, "SELECT EXISTS (SELECT 1 FROM pg_timezone_names WHERE name = $1)", zone).Scan(&known); err != nil {
+		return false, fmt.Errorf("check the time zone %w", err)
+	}
+
+	return known, nil
 }

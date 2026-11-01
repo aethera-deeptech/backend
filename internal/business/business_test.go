@@ -1,8 +1,10 @@
 package business_test
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/aethera-deeptech/backend/internal/testutil"
@@ -93,6 +95,10 @@ func TestSettingsValidation(t *testing.T) {
 		{"bad sensitivity", `{"anomalySensitivity":"ekstrem"}`, "anomalySensitivity", "invalid", 422},
 		{"unknown zone", `{"timeZone":"Mars/Olympus"}`, "timeZone", "invalid", 422},
 		{"UTC is not a zone of a place", `{"timeZone":"UTC"}`, "timeZone", "invalid", 422},
+		{"Etc/UTC is not a place", `{"timeZone":"Etc/UTC"}`, "timeZone", "invalid", 422},
+		{"GMT is not a place", `{"timeZone":"GMT"}`, "timeZone", "invalid", 422},
+		{"posix copy of a zone", `{"timeZone":"posix/Asia/Jakarta"}`, "timeZone", "invalid", 422},
+		{"a very long name", `{"timeZone":"` + strings.Repeat("a/", 40) + `"}`, "timeZone", "invalid", 422},
 		{"empty body", `{}`, "body", "empty", 422},
 	}
 
@@ -201,5 +207,43 @@ func TestABusinessWithoutANameShowsAPlaceholder(t *testing.T) {
 
 	if r := e.Call(t, http.MethodGet, "/v1/settings", "", session); r.Body["businessName"] != "Usaha saya" {
 		t.Fatalf("the name is %v", r.Body["businessName"])
+	}
+}
+
+func TestRoomsAddedAtTheSameTimeStayUnderTheCap(t *testing.T) {
+	e := testutil.New(t)
+	session := e.SignUp(t, "budi@example.com")
+
+	e.Exec(t, "INSERT INTO rooms (business_id, name) SELECT id, 'Ruang ' || g FROM businesses, generate_series(1, 95) g")
+
+	var wg sync.WaitGroup
+
+	for i := range 12 {
+		wg.Add(1)
+
+		go func() {
+			defer wg.Done()
+
+			e.Call(t, http.MethodPost, "/v1/rooms", fmt.Sprintf(`{"name":"Baru %d"}`, i), session)
+		}()
+	}
+
+	wg.Wait()
+
+	var n int
+	if err := e.Pool.QueryRow(t.Context(), "SELECT count(*) FROM rooms").Scan(&n); err != nil || n != 100 {
+		t.Fatalf("the business has %d rooms (%v), want 100", n, err)
+	}
+}
+
+func TestANameThatDrawsNothingIsRefused(t *testing.T) {
+	e := testutil.New(t)
+	session := e.SignUp(t, "budi@example.com")
+
+	for _, name := range []string{"\u3164", "\u2800\u2800", "\uffa0", "a\ue000"} {
+		body := `{"name":"` + name + `"}`
+		if r := e.Call(t, http.MethodPost, "/v1/rooms", body, session); r.Status != http.StatusUnprocessableEntity {
+			t.Errorf("%q answered %d", name, r.Status)
+		}
 	}
 }
