@@ -47,7 +47,7 @@ The tags that start with `v` are protected by two more rulesets. `release-tags` 
 The File names job reads the names of the files and never opens one. The rules are in `.ls-lint.yml`.
 
 - A folder is lowercase words joined by hyphens, and a leading dot marks the folder of a tool.
-- A file is lowercase words joined by hyphens, and a dot may mark a variant.
+- A file is lowercase words joined by hyphens, and a dot may mark a variant. ls-lint checks only the part before the first dot, so a variant part such as `BAD` in `deploy.BAD.yaml` is not checked.
 - A Go file is lowercase words with no separator, and only `_test` may follow them.
 - A Markdown file may also be written in capitals joined by underscores, such as `README.md` and `CODE_OF_CONDUCT.md`.
 - A YAML file ends with `.yml` in every folder. A workflow ends with `.yaml` and not `.yml`, because the name of the workflow file is part of the identity that signs an image.
