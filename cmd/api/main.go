@@ -15,13 +15,13 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 
+	"github.com/aethera-deeptech/backend/internal/app"
 	"github.com/aethera-deeptech/backend/internal/auth"
 	"github.com/aethera-deeptech/backend/internal/config"
 	"github.com/aethera-deeptech/backend/internal/database"
 	"github.com/aethera-deeptech/backend/internal/healthcheck"
 	"github.com/aethera-deeptech/backend/internal/logging"
 	"github.com/aethera-deeptech/backend/internal/mail"
-	"github.com/aethera-deeptech/backend/internal/server"
 )
 
 // version is set at build time with -ldflags
@@ -29,9 +29,6 @@ var version = "dev"
 
 // shutdownTimeout is how long the server lets requests that are running finish after a stop signal
 const shutdownTimeout = 15 * time.Second
-
-// passwordHashSlots is how many passwords one copy hashes at the same time. One hash needs about 19 MiB.
-const passwordHashSlots = 2
 
 // mailWorkers and mailBacklog size the queue of outgoing emails
 const (
@@ -78,10 +75,6 @@ func run() error {
 		return fmt.Errorf("migrate the database %w", err)
 	}
 
-	app := server.New(server.Options{
-		Version: version, DB: pool, AppOrigin: cfg.AppOrigin, TrustProxy: cfg.TrustProxy, ProxyHeader: cfg.ProxyHeader,
-	})
-
 	mailQueue, mailer := newMailer(cfg)
 	defer func() {
 		ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
@@ -90,13 +83,12 @@ func run() error {
 		mailQueue.Close(ctx)
 	}()
 
-	accounts := auth.NewService(auth.NewStore(pool), auth.NewLimiter(pool), auth.NewHasher(passwordHashSlots), mailer, cfg.AppOrigin)
-	auth.NewHandlers(accounts, auth.CookieFor(cfg.AppEnv == config.EnvProduction)).Register(app.Group("/v1"))
+	srv := app.New(app.Deps{Version: version, Config: cfg, Pool: pool, Mailer: mailer})
 
 	serverErr := make(chan error, 1)
 
 	go func() {
-		serverErr <- app.Listen(fmt.Sprintf(":%d", cfg.AppPort), fiber.ListenConfig{DisableStartupMessage: true})
+		serverErr <- srv.Listen(fmt.Sprintf(":%d", cfg.AppPort), fiber.ListenConfig{DisableStartupMessage: true})
 	}()
 
 	select {
@@ -109,7 +101,7 @@ func run() error {
 	// from here a second signal gets its default action, so an operator can stop the process without waiting for the timeout
 	stop()
 
-	if err := app.ShutdownWithTimeout(shutdownTimeout); err != nil {
+	if err := srv.ShutdownWithTimeout(shutdownTimeout); err != nil {
 		return fmt.Errorf("graceful shutdown failed %w", err)
 	}
 
