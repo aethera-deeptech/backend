@@ -4,8 +4,11 @@ ls:
   # a folder is lowercase words joined by hyphens, and a leading dot marks the folder of a tool
   .dir: regex:\.?[a-z0-9]+(-[a-z0-9]+)*
 
-  # every other file is the same, with dots for a variant such as compose.production.example.yml
+  # every other file is the same, with dots for a variant such as compose.production.example.yml. ls-lint picks a rule by the number
+  # of parts after the first dot, so a name with two or three dots needs its own key to be checked at all
   .*: kebab-case
+  .*.*: kebab-case
+  .*.*.*: kebab-case
 
   # a Go file is lowercase words with no separator, and only _test may follow them
   .go: regex:[a-z0-9]+(_test)?
@@ -13,7 +16,7 @@ ls:
   # the community files in capitals such as README.md and CODE_OF_CONDUCT.md are allowed next to kebab case
   .md: kebab-case | SCREAMING_SNAKE_CASE
 
-  # a YAML file ends with .yml, except for the workflows below
+  # a YAML file in the root folder ends with .yml, because an exists rule only looks at the folder that holds it, and the workflows below end with .yaml
   .yaml: exists:0
 
   # a workflow ends with .yaml and not .yml, because the name of the workflow file is part of the identity that signs an image
