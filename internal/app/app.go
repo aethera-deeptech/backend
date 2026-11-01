@@ -7,6 +7,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/aethera-deeptech/backend/internal/auth"
+	"github.com/aethera-deeptech/backend/internal/business"
 	"github.com/aethera-deeptech/backend/internal/config"
 	"github.com/aethera-deeptech/backend/internal/server"
 )
@@ -32,8 +33,11 @@ func New(d Deps) *fiber.App {
 
 	accounts := auth.NewService(auth.NewStore(d.Pool), auth.NewLimiter(d.Pool), auth.NewHasher(passwordHashSlots), d.Mailer, cfg.AppOrigin)
 	accountRoutes := auth.NewHandlers(accounts, auth.CookieFor(cfg.AppEnv == config.EnvProduction))
+	require := accountRoutes.Require()
+
 	v1 := app.Group("/v1")
 	accountRoutes.Register(v1)
+	business.NewHandlers(business.NewStore(d.Pool)).Register(v1, require)
 
 	return app
 }
