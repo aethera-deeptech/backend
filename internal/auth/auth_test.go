@@ -1,7 +1,11 @@
 package auth_test
 
 import (
+	"time"
+
 	"context"
+	"github.com/aethera-deeptech/backend/internal/auth"
+	"github.com/aethera-deeptech/backend/internal/janitor"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -390,5 +394,147 @@ func TestMeNeedsASession(t *testing.T) {
 		if r := e.Call(t, http.MethodGet, "/v1/auth/me", "", cookie); r.Status != http.StatusUnauthorized {
 			t.Fatalf("cookie %q answered %d", cookie, r.Status)
 		}
+	}
+}
+
+func TestAResetLinkCannotVerifyAnAddressItWasNotSentTo(t *testing.T) {
+	e := testutil.New(t)
+	e.Register(t, "attacker@example.com")
+
+	// the attacker asks for a reset link to their own mailbox, then moves the account to the address of a victim
+	if r := e.Call(t, http.MethodPost, "/v1/auth/forgot-password", `{"email":"attacker@example.com"}`, ""); r.Status != http.StatusAccepted {
+		t.Fatalf("forgot answered %d", r.Status)
+	}
+
+	token := resetToken(t, e, "attacker@example.com")
+
+	body := `{"email":"attacker@example.com","password":"kata sandi baik","newEmail":"victim@example.com"}`
+	if r := e.Call(t, http.MethodPost, "/v1/auth/change-email", body, ""); r.Status != http.StatusAccepted {
+		t.Fatalf("change answered %d %v", r.Status, r.Body)
+	}
+
+	if r := e.Call(t, http.MethodPost, "/v1/auth/reset-password", `{"token":"`+token+`","password":"kata sandi baru"}`, ""); r.Status != http.StatusGone {
+		t.Fatalf("the old reset link answered %d, want 410", r.Status)
+	}
+
+	var verified bool
+	if err := e.Pool.QueryRow(context.Background(), "SELECT email_verified_at IS NOT NULL FROM users WHERE email = 'victim@example.com'").Scan(&verified); err != nil || verified {
+		t.Fatalf("the victim address is verified (%v, %v) without a mail that reached it", verified, err)
+	}
+
+	// the link that went to the new address is the only one that works
+	if r := e.Call(t, http.MethodPost, "/v1/auth/verify-email", `{"token":"`+verifyToken(t, e, "victim@example.com")+`"}`, ""); r.Status != http.StatusOK {
+		t.Fatalf("the link of the new address answered %d", r.Status)
+	}
+}
+
+func TestChangeEmailRemovesEveryUnusedToken(t *testing.T) {
+	e := testutil.New(t)
+	e.Register(t, "budi@example.com")
+	e.Call(t, http.MethodPost, "/v1/auth/forgot-password", `{"email":"budi@example.com"}`, "")
+
+	body := `{"email":"budi@example.com","password":"kata sandi baik","newEmail":"baru@example.com"}`
+	if r := e.Call(t, http.MethodPost, "/v1/auth/change-email", body, ""); r.Status != http.StatusAccepted {
+		t.Fatalf("change answered %d", r.Status)
+	}
+
+	var n int
+	if err := e.Pool.QueryRow(context.Background(), "SELECT count(*) FROM email_tokens WHERE used_at IS NULL AND email <> 'baru@example.com'").Scan(&n); err != nil || n != 0 {
+		t.Fatalf("%d tokens for the old address survived (%v)", n, err)
+	}
+}
+
+func TestEmailsAreAsciiAndPlain(t *testing.T) {
+	e := testutil.New(t)
+
+	for _, email := range []string{"budí@example.com", "budi@exämple.com", "budi@[1.2.3.4]", "budi@example.com ,x@y.zz", "bu di@example.com"} {
+		body := `{"businessName":"Toko","email":"` + email + `","password":"kata sandi baik"}`
+		if r := e.Call(t, http.MethodPost, "/v1/auth/register", body, ""); r.Status != http.StatusUnprocessableEntity {
+			t.Errorf("%q answered %d, want 422", email, r.Status)
+		}
+	}
+}
+
+func TestANameWithHiddenCharactersIsRefused(t *testing.T) {
+	e := testutil.New(t)
+
+	body := `{"businessName":"Toko‮Maju","email":"budi@example.com","password":"kata sandi baik"}`
+	if r := e.Call(t, http.MethodPost, "/v1/auth/register", body, ""); r.Status != http.StatusUnprocessableEntity {
+		t.Fatalf("a name with a right to left override answered %d", r.Status)
+	}
+}
+
+func TestARequestForATakenAddressDoesNotHash(t *testing.T) {
+	e := testutil.New(t)
+	e.Register(t, "budi@example.com")
+
+	start := time.Now()
+	r := e.Call(t, http.MethodPost, "/v1/auth/register", `{"businessName":"Lain","email":"budi@example.com","password":"kata sandi baik"}`, "")
+
+	if r.Status != http.StatusConflict {
+		t.Fatalf("answered %d", r.Status)
+	}
+
+	// a full argon2 hash takes tens of milliseconds, so a refusal that answers faster than a hash did not run one
+	if took := time.Since(start); took > 400*time.Millisecond {
+		t.Logf("the refusal took %v", took)
+	}
+}
+
+func TestAnUnknownResetTokenIsRefusedBeforeTheHash(t *testing.T) {
+	e := testutil.New(t)
+
+	r := e.Call(t, http.MethodPost, "/v1/auth/reset-password", `{"token":"`+strings.Repeat("a", 43)+`","password":"kata sandi baik"}`, "")
+	if r.Status != http.StatusGone || r.Code() != "token_invalid_or_expired" {
+		t.Fatalf("answered %d %v", r.Status, r.Body)
+	}
+}
+
+func TestAnAuthBodyHasALimit(t *testing.T) {
+	e := testutil.New(t)
+
+	big := `{"email":"budi@example.com","password":"` + strings.Repeat("a", 9000) + `"}`
+	if r := e.Call(t, http.MethodPost, "/v1/auth/login", big, ""); r.Status != http.StatusRequestEntityTooLarge {
+		t.Fatalf("a body of 9000 bytes answered %d, want 413", r.Status)
+	}
+}
+
+func TestThePurgeRemovesWhatNoRuleNeedsAnymore(t *testing.T) {
+	e := testutil.New(t)
+	session := e.SignUp(t, "budi@example.com")
+	e.Register(t, "never@example.com")
+
+	e.Exec(t, "UPDATE businesses SET created_at = now() - interval '8 days' WHERE id IN (SELECT business_id FROM users WHERE email = 'never@example.com')")
+	e.Exec(t, "INSERT INTO rate_limit_events (bucket, key, at) VALUES ('x', 'y', now() - interval '3 hours'), ('x', 'y', now())")
+	e.Exec(t, "INSERT INTO sessions (token_hash, user_id, last_used_at) SELECT sha256('old'), id, now() - interval '31 days' FROM users WHERE email = 'budi@example.com'")
+
+	j := janitor.New(e.Pool, time.Hour, auth.PurgeTasks()...)
+	if deleted := j.Round(context.Background()); deleted < 3 {
+		t.Fatalf("the round deleted %d rows, want at least 3", deleted)
+	}
+
+	count := func(sql string) int {
+		var n int
+		if err := e.Pool.QueryRow(context.Background(), sql).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+
+		return n
+	}
+
+	if n := count("SELECT count(*) FROM users WHERE email = 'never@example.com'"); n != 0 {
+		t.Errorf("the account that never verified its email was kept")
+	}
+
+	if n := count("SELECT count(*) FROM users WHERE email = 'budi@example.com'"); n != 1 {
+		t.Errorf("a verified account was deleted")
+	}
+
+	if n := count("SELECT count(*) FROM rate_limit_events"); n != 1 {
+		t.Errorf("%d rate limit events are left, want 1", n)
+	}
+
+	if r := e.Call(t, http.MethodGet, "/v1/auth/me", "", session); r.Status != http.StatusOK {
+		t.Errorf("a live session was removed, it answered %d", r.Status)
 	}
 }

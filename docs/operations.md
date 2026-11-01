@@ -20,6 +20,20 @@ Both copies also join the Docker network of the shared PostgreSQL container, whi
 
 The settings that a production host must set are `APP_ENV=production`, `APP_ORIGIN` (the origin of the web app with https and no path, which CORS allows and the links in the emails point to), the `DB_*` settings, and `SMTP_HOST` and `SMTP_FROM_ADDRESS` with the rest of the `SMTP_*` settings. The service refuses to start in production when `APP_ORIGIN` is not https or when no mail server is set, because without a mail server nobody can verify an email. Set `TRUST_PROXY=true` when the reverse proxy on the host sends the address of the client in `PROXY_HEADER` (`X-Real-IP` by default). The service then trusts that header only for a request that comes from a private or loopback address. Without it every client has the address of the proxy, and the limits on sign in and sign up count all clients together.
 
+## The reverse proxy
+
+The limits on sign in, sign up and the other account routes count clients by their address, so the address has to be right.
+
+- nginx must overwrite the header that the service reads, `proxy_set_header X-Real-IP $remote_addr;`, and must never pass the header of the client on. The service trusts the header only for a request that comes from a private or loopback address, which is nginx on the same host.
+- Behind Cloudflare, `$remote_addr` is the address of a Cloudflare server unless nginx uses the realip module with the ranges of Cloudflare (`set_real_ip_from` for each range, and `real_ip_header CF-Connecting-IP;`). Without it every client shares a few addresses, and the limits lock out real users together.
+- An IPv6 client is counted by its /64 prefix, because it can change the rest of its address at no cost.
+- Put an nginx `limit_req` zone on `/v1/auth/` as well, so a flood is stopped before it reaches the pool of the database. The limits of the service are a second line and cost a database query for each request.
+- The service accepts a body of 8 KiB on the account routes, and nginx can set `client_max_body_size` to 1m.
+
+## Clean up
+
+One copy at a time deletes what no rule needs any more, once an hour, and takes an advisory lock of PostgreSQL so the other copy skips the round. It removes sessions past their lifetime, used and expired email tokens, rate limit events older than two hours, and businesses whose email was not verified within 7 days together with their users. The table of the rate limits is UNLOGGED, so a count is not written to the log of the shared database, and a crash of the database empties it.
+
 The `.env` file of a host holds only the values of this service. Do not copy values from another project onto the host.
 
 ## Update the copies
