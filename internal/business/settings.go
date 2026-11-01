@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"strings"
 	"time"
-	"unicode"
 	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -166,7 +165,7 @@ func (s *Store) Update(ctx context.Context, businessID string, p Patch) (Setting
 			fields["businessName"] = "required"
 		case utf8.RuneCountInString(name) > maxNameRunes:
 			fields["businessName"] = "too_long"
-		case strings.ContainsFunc(name, unicode.IsControl):
+		case strings.ContainsFunc(name, isHidden):
 			fields["businessName"] = "invalid"
 		default:
 			add("name", name)

@@ -41,7 +41,7 @@ func CleanName(raw string, maxRunes int) (string, string) {
 		return "", "required"
 	case utf8.RuneCountInString(name) > maxRunes:
 		return "", "too_long"
-	case strings.ContainsFunc(name, unicode.IsControl):
+	case strings.ContainsFunc(name, isHidden):
 		return "", "invalid"
 	default:
 		return name, ""
@@ -100,3 +100,7 @@ func (s *Store) CreateRoom(ctx context.Context, businessID, rawName string) (Roo
 
 	return r, nil
 }
+
+// isHidden reports a control character or a format character, such as a zero width space or a right to left override, which a name
+// has no use for and which can make a name look like another one
+func isHidden(r rune) bool { return unicode.IsControl(r) || unicode.Is(unicode.Cf, r) }
