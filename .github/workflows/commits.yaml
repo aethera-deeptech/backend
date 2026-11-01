@@ -7,9 +7,10 @@ on:
 
 # A run is never cancelled. Editing the body of a pull request right after a push used to start a run in the same group, which
 # cancelled the run of the push, and GitHub keeps a cancelled run of a required check as unmet, so the pull request stayed
-# blocked even though the newer run passed. Every run has a group of its own, and an edit that changes neither the title
-# nor the base branch skips the job, because commitlint reads the commits and the commits did not change. The title is read from the pull request when the run starts and not from the event, so a run that was started by a
-# push before a title fix checks the fixed title as well, and so does a rerun.
+# blocked even though the newer run passed. Every run has a group of its own. Every edit runs the whole job, because GitHub
+# counts a skipped job as a success, so a skipped run after an edit of the body could replace a failed run of the same commit.
+# The title is read from the pull request when the run starts and not from the event, so a run that was started by a push
+# before a title fix checks the fixed title as well, and so does a rerun.
 concurrency:
   group: commits-${{ github.run_id }}
   cancel-in-progress: false
@@ -19,7 +20,6 @@ permissions: {}
 jobs:
   conventional-commits:
     name: Conventional commits
-    if: github.event.action != 'edited' || github.event.changes.title || github.event.changes.base
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
