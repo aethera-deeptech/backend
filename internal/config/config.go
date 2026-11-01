@@ -115,7 +115,12 @@ func parse(environ map[string]string) (Config, error) {
 
 	// every entry is written in its plain form, because the server compares it as text with the address of the connection
 	for i, entry := range cfg.TrustProxyCIDRs {
-		if _, network, err := net.ParseCIDR(entry); err == nil {
+		if ip, network, err := net.ParseCIDR(entry); err == nil {
+			// an IPv4-mapped range shorter than 96 bits is not an IPv4 range, and the server would never match it
+			if ones, bits := network.Mask.Size(); bits == 128 && ones < 96 && ip.To4() != nil {
+				return Config{}, fmt.Errorf("TRUST_PROXY_CIDRS holds %q, and a mapped IPv4 range needs a prefix of 96 bits or more", entry)
+			}
+
 			cfg.TrustProxyCIDRs[i] = network.String()
 
 			continue

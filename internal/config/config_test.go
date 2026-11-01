@@ -120,6 +120,21 @@ func TestTheProxyListIsWrittenInItsPlainForm(t *testing.T) {
 	}
 }
 
+func TestAMappedRangeShorterThan96BitsIsRefused(t *testing.T) {
+	for _, in := range []string{"::ffff:10.0.0.0/80", "::FFFF:10.0.0.0/95"} {
+		if _, err := parse(withDB(map[string]string{"TRUST_PROXY_CIDRS": in})); err == nil {
+			t.Fatalf("%s was accepted", in)
+		}
+	}
+
+	// a range that only looks like one is a plain IPv6 range and is kept
+	for _, in := range []string{"::ffff:10.0.0.0/104", "::ffff:0:0:0/80"} {
+		if _, err := parse(withDB(map[string]string{"TRUST_PROXY_CIDRS": in})); err != nil {
+			t.Fatalf("%s was refused %v", in, err)
+		}
+	}
+}
+
 func TestTheProxyListHoldsAddressesAndRanges(t *testing.T) {
 	got, err := parse(withDB(map[string]string{"TRUST_PROXY_CIDRS": "172.18.0.1,10.0.0.0/8"}))
 	if err != nil || !reflect.DeepEqual(got.TrustProxyCIDRs, []string{"172.18.0.1", "10.0.0.0/8"}) {
