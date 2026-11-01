@@ -16,6 +16,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 
 	"github.com/aethera-deeptech/backend/internal/config"
+	"github.com/aethera-deeptech/backend/internal/healthcheck"
 	"github.com/aethera-deeptech/backend/internal/logging"
 	"github.com/aethera-deeptech/backend/internal/server"
 )
@@ -27,6 +28,11 @@ var version = "dev"
 const shutdownTimeout = 15 * time.Second
 
 func main() {
+	// the container health check runs this binary again, because the image has no curl
+	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
+		os.Exit(healthcheck.Run(os.Getenv("APP_PORT")))
+	}
+
 	// before the first line, so everything the process prints is JSON
 	logging.Setup()
 
