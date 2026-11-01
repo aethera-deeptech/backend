@@ -1029,7 +1029,7 @@ components:
         monthKwh: {type: [number, "null"], description: "Stays set while the device is offline, because the month is still true"}
         onHoursToday: {type: [number, "null"]}
         standbyW: {type: [number, "null"]}
-        lastSeenAt: {type: string, format: date-time, description: The device exists only after its first reading, so this is always set}
+        lastSeenAt: {type: string, format: date-time, description: "The device exists only after its first reading, so this is always set"}
         signal: {type: string, enum: [baik, cukup, lemah, tidak-ada]}
         anomaly:
           type: object
