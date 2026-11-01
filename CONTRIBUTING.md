@@ -22,6 +22,10 @@ Sign your commits with a GPG key, with an SSH key that you added to your GitHub 
 
 Every check runs in CI on your pull request, so you should not need to run heavy tasks such as full builds or test suites on your own machine. Push your branch, open the pull request and read the results of the checks. Run something locally only when the CI logs cannot explain a failure, and keep it small.
 
+## Names
+
+Names are checked in the pull request, so it is quicker to follow them from the start. Folders are lowercase words joined by hyphens, and a leading dot marks the folder of a tool. Files are lowercase words joined by hyphens, and a dot may mark a variant. Go files are lowercase words with no separator, and only `_test` may follow them, such as `devices.go` and `devices_test.go`. A Markdown file may also be written in capitals joined by underscores, such as `README.md` and `CODE_OF_CONDUCT.md`. YAML files end with `.yml`, except the workflows, which end with `.yaml`. The rules and the few files that are allowed to break them are in [docs/ci-cd.md](docs/ci-cd.md#file-names).
+
 ## Pull requests
 
 - The title is a Conventional Commit, such as `fix(devices): keep the status after a restart`. Write the scope in lowercase, with letters, digits, dots, slashes, underscores or hyphens only, because the title check refuses other scopes. The "Conventional commits" check blocks the merge when the title or any commit other than an Update branch merge does not follow it.
