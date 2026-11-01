@@ -158,14 +158,17 @@ done
 if [ -n "$previous" ] && [[ "$previous" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] && [ "$previous" != "$version" ] &&
   [ "$(printf '%s\n%s\n' "$previous" "$version" | sort -V | head -1)" = "$version" ]; then
   echo "WARNING $version is older than $previous, which runs now. A newer version may have applied a database migration that $version cannot run on." >&2
-  [ "${ROLLBACK_OK:-}" = "$version" ] || die "Going back needs ROLLBACK_OK=$version, nothing was changed"
+  rollback_ok="${ROLLBACK_OK:-}"
+  [ "${rollback_ok#v}" = "$version" ] || die "Going back needs ROLLBACK_OK=$version, nothing was changed"
 fi
 
-echo "Pulling $image:$version, which also proves that the tag exists"
+# compose pulls the image that the services of the compose file really use, so a compose file that names another image than IMAGE
+# is caught here, before anything is changed. IMAGE_TAG is the version for this command, so the env file is not touched yet
+echo "Pulling the image of the version for ${services[*]}, which also proves that the tag exists"
 if [ "$dry_run" = "1" ]; then
-  echo "DRY RUN docker pull $image:$version"
+  echo "DRY RUN docker compose pull ${services[*]}"
 else
-  docker pull "$image:$version" || die "$image:$version could not be pulled, so nothing was changed. The tag may not exist or Docker Hub refused the pull"
+  compose pull "${services[@]}" || die "The image of $version could not be pulled, so nothing was changed. The tag may not exist or Docker Hub refused the pull"
 fi
 
 echo "Setting IMAGE_TAG to $version in $env_file"
@@ -173,12 +176,32 @@ if [ "$dry_run" = "1" ]; then
   echo "DRY RUN set IMAGE_TAG=$version in $env_file"
 else
   if grep -q '^IMAGE_TAG=' "$env_file"; then
-    sed -i "s/^IMAGE_TAG=.*/IMAGE_TAG=${version}/" "$env_file"
+    sed -i --follow-symlinks "s/^IMAGE_TAG=.*/IMAGE_TAG=${version}/" "$env_file"
   else
     printf '\nIMAGE_TAG=%s\n' "$version" >>"$env_file"
   fi
   changed=1
 fi
+
+# the command that goes back, with the folder and the env file when they are not the defaults
+go_back() {
+  local target="${previous:-OLD}" prefix=""
+  [ -z "${COMPOSE_DIR:-}" ] || prefix="${prefix}COMPOSE_DIR=${COMPOSE_DIR} "
+  [ -z "${ENV_FILE:-}" ] || prefix="${prefix}ENV_FILE=${ENV_FILE} "
+  echo "${prefix}ROLLBACK_OK=${target} ${script} ${target}"
+}
+
+# half_done tells the operator what runs where after a copy failed, and why a plain docker compose up -d is a mistake now
+half_done() {
+  local failed="$1" index="$2" rest=() later
+  for later in "${services[@]:$((index + 1))}"; do
+    rest+=("$later")
+  done
+  echo "$failed was recreated on $version and is not healthy." >&2
+  echo "Already healthy on $version ${updated[*]:-none}. Still on ${previous:-the old version} ${rest[*]:-none}." >&2
+  echo "IMAGE_TAG in $env_file names $version now, so do not run docker compose up -d before the copies are checked, because it would recreate every copy on $version." >&2
+  echo "Nothing was rolled back. To go back run $(go_back), and read the logs with docker compose logs $failed first." >&2
+}
 
 for i in "${!services[@]}"; do
   service="${services[$i]}"
@@ -186,7 +209,11 @@ for i in "${!services[@]}"; do
 
   echo "Updating $service on port $port"
   copy_started=1
-  run compose up -d --no-deps --force-recreate "$service" || die "$service could not be recreated. Updated so far ${updated[*]:-none}. Check docker compose ps and the logs of $service"
+  if ! run compose up -d --no-deps --force-recreate "$service"; then
+    echo "$service could not be recreated. Check docker compose ps and the logs of $service." >&2
+    half_done "$service" "$i"
+    exit 1
+  fi
 
   if [ "$dry_run" = "1" ]; then
     updated+=("$service")
@@ -194,8 +221,9 @@ for i in "${!services[@]}"; do
   fi
 
   ok=0
-  waited=0
-  while [ "$waited" -lt "$timeout" ]; do
+  answer=""
+  start="$SECONDS"
+  while [ $((SECONDS - start)) -lt "$timeout" ]; do
     if answer="$(healthy "$port")"; then
       ok=$((ok + 1))
       echo "$service healthy ($ok of 2) $answer"
@@ -204,20 +232,14 @@ for i in "${!services[@]}"; do
       fi
     else
       ok=0
-      echo "$service not healthy yet after ${waited}s, the last answer was ${answer:-none}"
+      echo "$service not healthy yet after $((SECONDS - start))s, the last answer was ${answer:-none}"
     fi
     sleep 2
-    waited=$((waited + 2))
   done
 
   if [ "$ok" -lt 2 ]; then
-    old=()
-    for later in "${services[@]:$i}"; do
-      old+=("$later")
-    done
     echo "$service did not become healthy within ${timeout} seconds." >&2
-    echo "Already on $version ${updated[*]:-none}. Still on ${previous:-the old version} ${old[*]}." >&2
-    echo "Nothing was rolled back. To go back run ROLLBACK_OK=${previous:-OLD} $script ${previous:-OLD}, and read the logs with docker compose logs $service first." >&2
+    half_done "$service" "$i"
     exit 1
   fi
   updated+=("$service")
