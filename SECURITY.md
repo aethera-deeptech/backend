@@ -8,7 +8,7 @@ The project has no release yet. Only the `main` branch receives security fixes.
 
 Please do not open a public issue for a security problem.
 
-Use GitHub private vulnerability reporting instead. Open the [Security tab](https://github.com/aethera-deeptech/backend/security) and choose **Report a vulnerability**, or go straight to the [advisory form](https://github.com/aethera-deeptech/backend/security/advisories/new). Only the maintainers can see the report.
+Use GitHub private vulnerability reporting instead. Open the [Security tab](https://github.com/aethera-deeptech/backend/security) and choose **Report a vulnerability**, or go straight to the [advisory form](https://github.com/aethera-deeptech/backend/security/advisories/new). Only the repository maintainers and admins can see the report.
 
 A good report includes the following.
 
@@ -17,7 +17,7 @@ A good report includes the following.
 - The commit or the address of the deployment you tested.
 - Relevant logs with any secrets removed.
 
-The report is triaged, fixed in private when it is valid, and released with a published advisory. Reporters who want credit are named once the fix has shipped. This project does not promise a reply time.
+The report is triaged, fixed in private when it is valid, and, where it makes sense, released with a published advisory. Reporters who want credit are named once the fix has shipped. This project does not promise a reply time.
 
 ## Scope
 
