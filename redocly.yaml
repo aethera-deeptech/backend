@@ -1,0 +1,5 @@
+extends:
+  - recommended
+rules:
+  # the server is the real production host
+  no-server-example.com: off

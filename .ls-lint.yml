@@ -67,3 +67,6 @@ ignore:
   - coverage
   # GitHub names the issue forms by what the person sees
   - .github/ISSUE_TEMPLATE
+  # kept as .yaml, openapi.yaml is the name that the OpenAPI specification recommends and redocly.yaml is the name that Redocly reads
+  - openapi.yaml
+  - redocly.yaml
