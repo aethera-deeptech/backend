@@ -4,12 +4,9 @@ info:
   version: 0.1.0
   summary: The API of the energy audit dashboard for small businesses
   description: |
-    The API serves two clients. The web app of a business reads and writes under `/v1`, and the gateway of a business sends its
-    readings under `/device/v1`. Every amount of money is a whole number of rupiah. Every moment is ISO 8601 with the offset of the
-    time zone of the business, and the service stores it in UTC.
+    The API serves two clients. The web app of a business reads and writes under `/v1`, and the gateway of a business sends its readings under `/device/v1`. Every amount of money is a whole number of rupiah. Every moment is ISO 8601 with the offset of the time zone of the business, and the service stores it in UTC.
 
-    The paths under `/v1` that the frontend already assumes keep the shapes of `docs/api-assumptions.md` of the frontend
-    repository. Where this file adds to them, the text says so.
+    The paths under `/v1` that the frontend already assumes keep the shapes of `docs/api-assumptions.md` of the frontend repository. Where this file adds to them, the text says so.
   license:
     name: GPL-3.0-only
     identifier: GPL-3.0-only
@@ -94,11 +91,7 @@ paths:
       tags: [Account]
       operationId: register
       summary: Create a business and its owner and send the verification email
-      description: |
-        The sign up counts as the consent to the terms and the privacy policy, and the service stores the time and the version of
-        the texts. The answer is the same wait time for every email, but a second sign up with a taken email answers 409, as the
-        frames of the app show "Email sudah terdaftar". That reveals which emails have an account, so the route has a limit for each
-        address of the client.
+      description: "The sign up counts as the consent to the terms and the privacy policy, and the service stores the time and the version of the texts. The answer is the same wait time for every email, but a second sign up with a taken email answers 409, as the frames of the app show \"Email sudah terdaftar\". That reveals which emails have an account, so the route has a limit for each address of the client."
       security: []
       requestBody:
         required: true
@@ -126,9 +119,7 @@ paths:
       tags: [Account]
       operationId: login
       summary: Sign in with an email and a password
-      description: |
-        A wrong password and an unknown email give the same answer in the same time. The code `email_not_verified` only comes after
-        the password was right, so it does not reveal which emails exist. The cookie is set on success.
+      description: "A wrong password and an unknown email give the same answer in the same time. The code `email_not_verified` only comes after the password was right, so it does not reveal which emails exist. The cookie is set on success."
       security: []
       requestBody:
         required: true
@@ -158,11 +149,7 @@ paths:
       tags: [Account]
       operationId: loginWithGoogle
       summary: Sign in or sign up with a Google ID token
-      description: |
-        The service checks the signature, the audience, the expiry and `email_verified` of the token. A new Google account gets a
-        business without a name, and `me.businessName` is then null until the owner sets it with `PATCH /v1/settings`. A Google
-        email that already has a password account is refused with `google_failed`, so a person who controls only the Google side
-        cannot take over the account. The route answers 503 `google_unavailable` while the service has no Google client id.
+      description: "The service checks the signature, the audience, the expiry and `email_verified` of the token. A new Google account gets a business with the placeholder name `Usaha saya`, until the owner sets a name with `PATCH /v1/settings`. A Google email that already has a password account is refused with `google_failed`, so a person who controls only the Google side cannot take over the account. The route answers 503 `google_unavailable` while the service has no Google client id."
       security: []
       requestBody:
         required: true
@@ -366,10 +353,7 @@ paths:
       tags: [Pengaturan]
       operationId: updateSettings
       summary: Change the settings of the business
-      description: |
-        The body has only the fields that change. The key of the tariff is `tariffRpPerKwh` here and `tariff.rpPerKwh` in the
-        answer of the GET, because the frontend was written against that shape. A `tariffRpPerKwh` of null goes back to the default.
-        The answer is the new settings.
+      description: "The body has only the fields that change. The key of the tariff is `tariffRpPerKwh` here and `tariff.rpPerKwh` in the answer of the GET, because the frontend was written against that shape. A `tariffRpPerKwh` of null goes back to the default. The answer is the new settings."
       requestBody:
         required: true
         content:
@@ -426,7 +410,7 @@ paths:
               schema: {$ref: "#/components/schemas/Room"}
         "401": {$ref: "#/components/responses/Unauthorized"}
         "409":
-          description: A room with this name exists
+          description: A room with this name exists (code `room_exists`), or the business has 100 rooms (code `too_many_rooms`)
           content:
             application/json:
               schema: {$ref: "#/components/schemas/Error"}
@@ -456,7 +440,7 @@ paths:
       tags: [Pasang alat]
       operationId: claimGateway
       summary: Claim a gateway with the code that it shows
-      description: A new gateway asks for a claim code at `/device/v1/enroll` and shows it on its display. The owner types the code here and the gateway belongs to the business. A code works once and for 10 minutes. A gateway that the same business claimed before keeps its readings and gets the new key. A gateway of another business answers 409 `gateway_claimed_elsewhere`.
+      description: A new gateway asks for a claim code at `/device/v1/enroll` and shows it on its display. The owner types the code here and the gateway belongs to the business. A code works once and for 10 minutes. A gateway that the same business claimed before keeps its readings and gets the new key. A gateway of another business answers 409 `gateway_claimed_elsewhere`. A business can have at most 10 gateways, and the next claim answers 409 `too_many_gateways`.
       requestBody:
         required: true
         content:
@@ -475,7 +459,7 @@ paths:
               schema: {$ref: "#/components/schemas/Gateway"}
         "401": {$ref: "#/components/responses/Unauthorized"}
         "404":
-          description: The code is unknown, used or expired
+          description: The code is unknown, used or expired (code `claim_code_unknown`)
           content:
             application/json:
               schema: {$ref: "#/components/schemas/Error"}
@@ -487,9 +471,7 @@ paths:
       tags: [Pasang alat]
       operationId: startPairing
       summary: Start the search for a new device
-      description: |
-        The business must have a gateway. The next node of this kind that the gateway reports as unclaimed becomes the device. The
-        pairing ends as `failed` after 3 minutes. A business can have one pairing at a time, and a second request answers 409.
+      description: "The business must have a gateway. The next node of this kind that the gateway reports as unclaimed becomes the device. The pairing ends as `failed` after 3 minutes. A business can have one pairing at a time, and a second request answers 409."
       requestBody:
         required: true
         content:
@@ -513,11 +495,12 @@ paths:
                   id: {type: string, format: uuid}
         "401": {$ref: "#/components/responses/Unauthorized"}
         "409":
-          description: A pairing is running, or the business has no gateway (code `no_gateway`)
+          description: A pairing is running (code `pairing_running`), or the business has no gateway (code `no_gateway`)
           content:
             application/json:
               schema: {$ref: "#/components/schemas/Error"}
         "422": {$ref: "#/components/responses/Validation"}
+        "429": {$ref: "#/components/responses/RateLimited"}
         "4XX": {$ref: "#/components/responses/Error"}
   /v1/pairings/{id}:
     parameters:
@@ -526,7 +509,7 @@ paths:
       tags: [Pasang alat]
       operationId: getPairing
       summary: Read the state of a pairing
-      description: The app asks again every 3 seconds while the status is `searching`. `connected` has the id of the new device. The device exists as soon as the first reading of the node has arrived, so there is no state between `searching` and `connected`.
+      description: The app asks again every 3 seconds while the status is `searching`. `failed` covers a search that timed out after 3 minutes and a search that the owner stopped. `connected` has the id of the new device. The device exists as soon as the first reading of the node has arrived, so there is no state between `searching` and `connected`.
       responses:
         "200":
           description: The pairing
@@ -536,7 +519,7 @@ paths:
                 type: object
                 required: [status]
                 properties:
-                  status: {type: string, enum: [searching, connected, failed, cancelled]}
+                  status: {type: string, enum: [searching, connected, failed]}
                   deviceId: {type: [string, "null"], format: uuid}
         "401": {$ref: "#/components/responses/Unauthorized"}
         "404": {$ref: "#/components/responses/NotFound"}
@@ -826,10 +809,7 @@ paths:
       tags: [Gateway]
       operationId: enrollGateway
       summary: Ask for a claim code
-      description: |
-        A gateway that has no key makes a random key of its own and calls this route with the SHA-256 of that key, written in lower case
-        hex. The service never sees the key itself. The answer holds the claim code that the gateway shows and a poll id. The route has
-        a limit for each address of the client and for each hardware id. The code and the poll id are random and work once.
+      description: "A gateway that has no key makes a random key of its own and calls this route with the SHA-256 of the 43 characters of the key text (not of the decoded bytes), written in lower case hex. The service never sees the key itself. The answer holds the claim code that the gateway shows and a poll id. The route has a limit for each address of the client and for each hardware id. The code and the poll id are random and work once."
       security: []
       requestBody:
         required: true
@@ -891,13 +871,7 @@ paths:
       tags: [Gateway]
       operationId: sendReadings
       summary: Send a batch of readings of the nodes of a gateway
-      description: |
-        The gateway sends its key as a bearer token, see the scheme `gatewayKey`. A batch has a sequence number that grows by one for
-        each batch. The service stores a batch once, so a retry of an older sequence number is answered with the last acknowledgement
-        and stores nothing twice. A batch can hold readings of up to 24 hours, so a gateway that lost its Wi-Fi can catch up. A sample
-        that is out of range or older than a day is dropped and counted in `rejected`, so one bad sample never blocks the gateway. The
-        time stamps move by the difference between the clock of the gateway (`sentAt`) and the clock of the service. A node that has
-        no device yet is kept as unclaimed and can be claimed by a pairing.
+      description: "The gateway sends its key as a bearer token, see the scheme `gatewayKey`. A batch has a sequence number that grows by one for each batch. The service stores a batch once, so a retry of an older sequence number is answered with the last acknowledgement and stores nothing twice. A batch can hold readings of up to 24 hours, so a gateway that lost its Wi-Fi can catch up. A sample that is out of range or older than a day is dropped and counted in `rejected`, so one bad sample never blocks the gateway. The time stamps move by the difference between the clock of the gateway (`sentAt`) and the clock of the service. A node that has no device yet is kept as unclaimed and can be claimed by a pairing."
       security:
         - gatewayKey: []
       requestBody:
@@ -918,7 +892,7 @@ paths:
                   serverTime: {type: string, format: date-time}
                   accepted: {type: integer, minimum: 0, description: The samples that were stored}
                   rejected: {type: integer, minimum: 0, description: The samples that were dropped}
-        "401": {$ref: "#/components/responses/BadSignature"}
+        "401": {$ref: "#/components/responses/InvalidGatewayKey"}
         "409":
           description: The sequence number is not the next one. `expectedSeq` says which one the service waits for.
           content:
@@ -939,18 +913,11 @@ components:
       type: apiKey
       in: cookie
       name: __Host-aethera_session
-      description: |
-        An opaque token in a cookie that is HttpOnly, Secure and SameSite=Lax, with no Domain, so only the API host reads it. The
-        service stores only a hash of the token. The app and the API are on the same site, so SameSite=Lax cookies work with
-        credentials. Every request that changes data must also carry the header `X-Requested-With: aethera`, and the service checks the
-        `Origin` header against the origin of the app. The session lasts 30 days from the last use and at most 90 days in total.
+      description: "An opaque token in a cookie that is HttpOnly, Secure and SameSite=Lax, with no Domain, so only the API host reads it. The service stores only a hash of the token. The app and the API are on the same site, so SameSite=Lax cookies work with credentials. Every request that changes data must also carry the header `X-Requested-With: aethera`, and the service checks the `Origin` header against the origin of the app. The session lasts 30 days from the last use and at most 90 days in total."
     gatewayKey:
       type: http
       scheme: bearer
-      description: |
-        The key that the gateway made when it enrolled, sent as `Authorization: Bearer <key>`. The key is 32 random bytes in base64url
-        (43 characters). The service stores only its SHA-256, so a copy of the database cannot act as a gateway. TLS protects the key in
-        transit, and the sequence number makes a retry safe.
+      description: "The key that the gateway made when it enrolled, sent as `Authorization: Bearer <key>`. The key is 32 random bytes in base64url (43 characters). The service stores only its SHA-256, so a copy of the database cannot act as a gateway. TLS protects the key in transit, and the sequence number makes a retry safe."
   headers:
     SessionCookie:
       description: The session cookie
@@ -985,7 +952,7 @@ components:
       properties:
         id: {type: string, format: uuid}
         name: {$ref: "#/components/schemas/Name40"}
-        lastSeenAt: {type: [string, "null"], format: date-time}
+        lastSeenAt: {type: string, format: date-time, description: The time of the last batch. A gateway that never sent a batch shows the time of its claim.}
     DeviceKind:
       type: string
       enum: [plug, clamp]
@@ -1004,7 +971,7 @@ components:
       properties:
         email: {$ref: "#/components/schemas/Email"}
         emailVerified: {type: boolean}
-        businessName: {type: [string, "null"], description: Null until a Google sign up names the business}
+        businessName: {type: string, description: "The name of the business. A Google sign up gets the placeholder `Usaha saya` until the owner sets a name."}
     WorkHours:
       type: object
       required: [days, start, end]
@@ -1016,7 +983,7 @@ components:
       type: object
       required: [businessName, workHours, tariff, anomalySensitivity, timeZone]
       properties:
-        businessName: {type: [string, "null"]}
+        businessName: {type: string}
         workHours: {$ref: "#/components/schemas/WorkHours"}
         tariff:
           type: object
@@ -1062,7 +1029,7 @@ components:
         monthKwh: {type: [number, "null"], description: "Stays set while the device is offline, because the month is still true"}
         onHoursToday: {type: [number, "null"]}
         standbyW: {type: [number, "null"]}
-        lastSeenAt: {type: [string, "null"], format: date-time}
+        lastSeenAt: {type: string, format: date-time, description: The device exists only after its first reading, so this is always set}
         signal: {type: string, enum: [baik, cukup, lemah, tidak-ada]}
         anomaly:
           type: object
@@ -1076,7 +1043,7 @@ components:
           description: Null while there is no recent data. The points cover the 24 hours that end now, spread evenly.
           required: [points, yMaxW]
           properties:
-            points: {type: array, minItems: 1, items: {type: number, minimum: 0}}
+            points: {type: array, minItems: 2, items: {type: number, minimum: 0}}
             yMaxW: {type: number}
             expected:
               type: object
@@ -1121,7 +1088,7 @@ components:
       required: [phase, businessName, asOf]
       properties:
         phase: {type: string, enum: [no-devices, collecting, ready]}
-        businessName: {type: [string, "null"]}
+        businessName: {type: string}
         asOf: {type: string, format: date-time}
         collectedDays: {type: integer, minimum: 0, description: Only with collecting}
         neededDays: {type: integer, minimum: 0, description: Only with collecting}
@@ -1185,7 +1152,7 @@ components:
       required: [phase, businessName]
       properties:
         phase: {type: string, enum: [no-devices, collecting, ready]}
-        businessName: {type: [string, "null"]}
+        businessName: {type: string}
         neededDays: {type: integer, minimum: 0, description: Only with collecting}
         items: {type: array, description: Only with ready, items: {$ref: "#/components/schemas/RecommendationItem"}}
     Recommendation:
@@ -1308,7 +1275,7 @@ components:
             type: object
             required: [nodeId, kind, samples]
             properties:
-              nodeId: {type: string, minLength: 6, maxLength: 32, pattern: "^[A-Za-z0-9:_-]+$"}
+              nodeId: {type: string, minLength: 6, maxLength: 32, pattern: "^[A-Za-z0-9:_-]+$", description: Unique inside one gateway. Two gateways may use the same id.}
               kind: {$ref: "#/components/schemas/DeviceKind"}
               hops: {type: integer, minimum: 0, maximum: 3, description: How many nodes relayed the packets}
               samples: {type: array, minItems: 1, maxItems: 1000, items: {$ref: "#/components/schemas/Sample"}}
@@ -1365,8 +1332,8 @@ components:
       content:
         application/json:
           schema: {$ref: "#/components/schemas/Error"}
-    BadSignature:
-      description: The signature, the time stamp or the nonce is not valid (code `bad_signature`)
+    InvalidGatewayKey:
+      description: The bearer key is missing or unknown (code `invalid_gateway_key`). One answer covers both.
       content:
         application/json:
           schema: {$ref: "#/components/schemas/Error"}

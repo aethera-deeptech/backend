@@ -5,7 +5,7 @@ The contract is `openapi.yaml` in the root of the repository. The job `OpenAPI l
 ## Clients
 
 - The web app of a business calls `/v1` with a session cookie. The shapes follow `docs/api-assumptions.md` of the frontend repository. This file adds routes and fields where the frames of the design need them, and it says so on each one.
-- The gateway of a business calls `/device/v1` with a signed request. A gateway is the only unit that talks to the service. The nodes (plugs and clamps) send their readings to it over ESP-NOW.
+- The gateway of a business calls `/device/v1` with a bearer key. A gateway is the only unit that talks to the service. The nodes (plugs and clamps) send their readings to it over ESP-NOW.
 
 ## Sessions and cookies
 
