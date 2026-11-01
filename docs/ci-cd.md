@@ -23,7 +23,7 @@
 | `ci.yaml` | Lint | `gofmt`, that `go.mod` and `go.sum` are tidy, `go vet`, and golangci-lint with the linters of `.golangci.yml` |
 | `ci.yaml` | Tests | `go build`, then every test with the race detector in a random order, and the coverage upload |
 
-More workflows arrive with the pull requests that need them. The jobs for the Go code, the Docker image, the security scans and the releases are added together with the code they check.
+More workflows arrive with the pull requests that need them. The jobs for the Docker image, the security scans and the releases are added together with the code they check.
 
 ## Required checks
 
@@ -53,7 +53,7 @@ The tags that start with `v` are protected by two more rulesets. `release-tags` 
 
 The Lint job formats, vets and lints the Go code. golangci-lint uses the linters in `.golangci.yml`. Among them, `forbidigo` keeps the program from printing to the standard output and from calling `log.Fatal` outside `cmd`, and `tagliatelle` checks that JSON names are camelCase. A comment that silences a linter has to name the linter and give a reason.
 
-The Tests job runs every test with the race detector, in a random order and without the test cache. It measures the statements of `internal/` and uploads the result to Codecov, which reads its rules from `codecov.yml`. The upload never fails the build for now, because the Codecov token is still a placeholder. The Codecov checks are not required. When the real token is in place the upload will fail the build on `main` only, so an outage of Codecov never blocks a pull request.
+The Tests job runs every test with the race detector, in a random order and without the test cache. It measures the statements of `internal/` and uploads the result to Codecov, which reads its rules from `codecov.yml`. A failed upload fails the build on `main` only, so an outage of Codecov never blocks a pull request. The Codecov checks are not required. A run on `main` is never cancelled by a newer one, so every commit on `main` keeps its coverage report.
 
 ## File names
 
