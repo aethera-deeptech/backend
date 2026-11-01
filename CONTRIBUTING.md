@@ -20,7 +20,7 @@ Sign your commits with a GPG key, with an SSH key that you added to your GitHub 
 
 ## Checks run in CI
 
-Every check runs in CI on your pull request, so you should not need to run heavy tasks such as full builds or test suites on your own machine. Push your branch, open the pull request and read the results of the checks. Run something locally only when the CI logs cannot explain a failure, and keep it small.
+Every check runs in CI on your pull request, so you should not need to run heavy tasks such as full builds or test suites on your own machine. Push your branch, open the pull request and read the results of the checks. Run something locally only when the CI logs cannot explain a failure, and keep it small. The one exception is the Go code, which CI does not build or test yet, so run `go vet ./...` and `go test ./...` for it until the Go workflow exists.
 
 ## Names
 
