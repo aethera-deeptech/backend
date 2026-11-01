@@ -8,6 +8,7 @@
 | `prformat.yaml` | pull requests | Checks that the branch is named `type/short-description` with a type of Conventional Commits, that the pull request has a label and an assignee, and that the body is only hyphen bullets with text. A pull request that a bot opened (Renovate, Dependabot or Release Please) from its own branch is skipped. It never cancels a run and reads the pull request when it runs, so a rerun checks what the pull request looks like now. Adding or removing a label or an assignee starts a new run, and the newest run of the check is the one that counts |
 | `config.yaml` | push to main, pull requests, manual | Lints the configuration of the repository with the six jobs below |
 | `ci.yaml` | push to main, pull requests, manual | Checks and tests the Go code with the two jobs below, and uploads the coverage to Codecov |
+| `security.yaml` | push to main, pull requests, daily at 20:00 UTC, manual | Runs CodeQL, the Go vulnerability check, the Go license check, dependency review, the secret scan, the Trivy filesystem scan and OSSF Scorecard. The daily run catches a CVE that is published for code that did not change. Scorecard never runs on pull requests |
 | `docker.yaml` | push to main, tags, pull requests, manual | Builds the image for `linux/amd64` and `linux/arm64`, pushes it to GitHub Container Registry only, scans both platforms with Trivy, attaches an SBOM, signs it with cosign and verifies the signature right away. Only `main` writes the build cache. A pull request and a tag read it and never write one. It never logs in to Docker Hub, because a pull request can change this workflow. A pull request from a fork, a run of Dependabot and a manual run from a ref other than `main` only build the image, and the job still reports success because it had nothing to publish. A pull request from a branch of this repository, such as one of Renovate, publishes the image as `pr-<number>`. This workflow never gets a `workflow_call` trigger, because a workflow that called it would get signatures with the identity of this file |
 
 ### Jobs
@@ -24,9 +25,16 @@
 | `config.yaml` | Renovate config | `renovate.json` against the schema of Renovate, in strict mode, so a renamed or removed option fails |
 | `ci.yaml` | Lint | `gofmt`, that `go.mod` and `go.sum` are tidy, `go vet`, and golangci-lint with the linters of `.golangci.yml` |
 | `ci.yaml` | Tests | `go build`, then every test with the race detector in a random order, and the coverage upload |
+| `security.yaml` | CodeQL | Static analysis of the Go code, reported to code scanning |
+| `security.yaml` | Go vulnerability check | `govulncheck` against the vulnerability database of Go, which fails only when the code calls the vulnerable function |
+| `security.yaml` | Go licenses | The license of every package that the service and its tests import, with go-licenses. It refuses unknown licenses and AGPL, SSPL and WTFPL. The GPL family passes because the repository is under GPL-3.0 |
+| `security.yaml` | Dependency review | The dependencies that a pull request adds or changes, which fails on a severity of high or above and on the license SSPL-1.0 |
+| `security.yaml` | Secret scan (gitleaks) | The whole history of the repository, with gitleaks. A fixture that must stay in history goes into `.gitleaksignore` with a comment |
+| `security.yaml` | Trivy filesystem scan | Vulnerabilities, secrets and misconfigurations in the files, for severity high and critical that have a fix. The settings are in `.trivyignore.yml` |
+| `security.yaml` | OSSF Scorecard | The security score of the repository, on `main` and on the daily run only |
 | `docker.yaml` | Build, scan and push image | The image build for both platforms, the Trivy scan of each platform, the SBOM, the signature and the check of that signature |
 
-More workflows arrive with the pull requests that need them. The jobs for the security scans and the releases are added together with the code they check.
+More workflows arrive with the pull requests that need them. The jobs for the releases are added together with the code they check.
 
 ## Required checks
 
@@ -48,6 +56,11 @@ Every check below is required and is reported by GitHub Actions.
 | Renovate config | GitHub Actions | yes |
 | Lint | GitHub Actions | yes |
 | Tests | GitHub Actions | yes |
+| Go vulnerability check | GitHub Actions | yes |
+| Go licenses | GitHub Actions | yes |
+| Dependency review | GitHub Actions | yes |
+| Secret scan (gitleaks) | GitHub Actions | yes |
+| Trivy filesystem scan | GitHub Actions | yes |
 | Build, scan and push image | GitHub Actions | yes |
 
 Each required check is pinned to the app that reports it, so another app cannot post a check with the same name. When a pull request adds, renames or removes a job, the ruleset is updated before the pull request is merged.
@@ -106,7 +119,7 @@ The Renovate config job runs `renovate-config-validator --strict` on every pull 
 
 A dependency update bot cannot read a tool that is named inside a `run` step, so the tools of the jobs are listed where it can.
 
-- `.github/tools/Dockerfile` has one stage for each image that a job starts with `docker run`, which are actionlint, zizmor, ShellCheck and Hadolint. Nothing builds it. The workflows get the image from `.github/tools/image.sh <stage>`, so the version of a bump is the version the jobs run.
+- `.github/tools/Dockerfile` has one stage for each image that a job starts with `docker run`, which are actionlint, zizmor, ShellCheck, Hadolint and gitleaks. Nothing builds it. The workflows get the image from `.github/tools/image.sh <stage>`, so the version of a bump is the version the jobs run.
 - The versions of ls-lint and of the Renovate validator sit in the `env` of their steps. A comment such as `# renovate: datasource=npm depName=@ls-lint/ls-lint` right above the line tells Renovate where to look, so keep the comment when you edit the line.
 
 All actions are pinned to commit SHAs with the version in a comment, and the setting "require actions to be pinned to a full-length commit SHA" is on for the repository.
