@@ -747,7 +747,7 @@ paths:
       tags: [Produksi]
       operationId: saveProductionRecord
       summary: Save the record of one day
-      description: A day has one record, so saving a day that has one replaces it. A future day, a quantity of 0 or less, and a quantity above 100000000 answer 422. The unit must be one of `units`.
+      description: A day has one record, so saving a day that has one replaces it. A future day, a day more than 400 days back (`too_old`), a missing field (`required`), a quantity of 0 or less, and a quantity above 100000000 answer 422. The unit must be one of `units`.
       requestBody:
         required: true
         content:
