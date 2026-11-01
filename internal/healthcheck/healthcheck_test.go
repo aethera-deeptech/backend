@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"testing"
+	"time"
 
 	"github.com/aethera-deeptech/backend/internal/healthcheck"
 )
@@ -63,10 +64,13 @@ func TestCheckPassesOn200(t *testing.T) {
 }
 
 func TestCheckFailsOnAnyOtherStatus(t *testing.T) {
+	// the client of Run does not follow redirects, and the redirect case below only means something with the same policy
+	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+
 	for _, status := range []int{http.StatusNoContent, http.StatusMovedPermanently, http.StatusTooManyRequests, http.StatusServiceUnavailable} {
 		server := serving(t, status)
 
-		if err := healthcheck.Check(t.Context(), server.Client(), server.URL+"/healthz"); err == nil {
+		if err := healthcheck.Check(t.Context(), client, server.URL+"/healthz"); err == nil {
 			t.Errorf("status %d passed the check", status)
 		}
 	}
@@ -109,5 +113,37 @@ func TestRunReturnsTheExitCode(t *testing.T) {
 
 	if code := healthcheck.Run(parsed.Port()); code != 1 {
 		t.Errorf("exit code is %d for an unhealthy server", code)
+	}
+}
+
+func TestCheckFailsWhenTheServerIsTooSlow(t *testing.T) {
+	release := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		<-release
+	}))
+	t.Cleanup(server.Close)
+	t.Cleanup(func() { close(release) })
+
+	client := &http.Client{Timeout: 50 * time.Millisecond}
+
+	if err := healthcheck.Check(t.Context(), client, server.URL+"/healthz"); err == nil {
+		t.Fatal("a server that never answers passed the check")
+	}
+}
+
+func TestRunDoesNotFollowARedirectToAHealthyPage(t *testing.T) {
+	healthy := serving(t, http.StatusOK)
+	redirecting := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, healthy.URL+"/healthz", http.StatusFound)
+	}))
+	t.Cleanup(redirecting.Close)
+
+	parsed, err := url.Parse(redirecting.URL)
+	if err != nil {
+		t.Fatalf("parse %v", err)
+	}
+
+	if code := healthcheck.Run(parsed.Port()); code != 1 {
+		t.Fatalf("exit code is %d, a redirect must not pass", code)
 	}
 }

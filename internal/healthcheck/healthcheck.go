@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
 	"strconv"
 	"time"
 )
@@ -44,11 +45,18 @@ func Check(ctx context.Context, client *http.Client, url string) error {
 	return nil
 }
 
-// Run is the healthcheck command and returns its exit code, 0 when the server is healthy and 1 otherwise
+// Run is the healthcheck command and returns its exit code, 0 when the server is healthy and 1 otherwise. The reason of a failure
+// goes to standard error, where Docker keeps it in the health log of the container.
 func Run(port string) int {
-	client := &http.Client{Timeout: timeout}
+	client := &http.Client{
+		Timeout: timeout,
+		// a redirect is an answer that is not 200, so it must not be followed to a page that is
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
 
 	if err := Check(context.Background(), client, URL(port)); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+
 		return 1
 	}
 
