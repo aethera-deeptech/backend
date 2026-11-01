@@ -6,10 +6,12 @@
 | :--- | :--- | :--- |
 | `commits.yaml` | pull requests | Lints the commits of the pull request with commitlint and its Conventional Commits rules, which are set in `commitlint.config.mjs`, and checks the pull request title against the same types. It never cancels a run, runs the whole job on every edit, including an edit of the body only, and reads the title from the pull request when it runs, so editing the body of a pull request cannot leave a cancelled required check behind and a rerun checks the current title. Only the `Merge branch 'main' into <branch>` message of the Update branch button is skipped, so a `fixup!`, `squash!` or `Revert` message fails like any other, and the line lengths of the body and footer are not limited because Renovate writes long ones |
 | `prformat.yaml` | pull requests | Checks that the branch is named `type/short-description` with a type of Conventional Commits, that the pull request has a label and an assignee, and that the body is only hyphen bullets with text. A pull request that a bot opened (Renovate, Dependabot or Release Please) from its own branch is skipped. It never cancels a run and reads the pull request when it runs, so a rerun checks what the pull request looks like now. Adding or removing a label or an assignee starts a new run, and the newest run of the check is the one that counts |
-| `config.yaml` | push to main, pull requests, manual | Lints the configuration of the repository with the six jobs below |
+| `release-please.yaml` | push to main, manual | Keeps one release pull request with the next version and `CHANGELOG.md`. Merging that pull request creates the tag and the GitHub release. It runs in the `release` environment, which only `main` can use, and it creates its token from the GitHub App `syafa-bot`. It is not a required check |
+| `config.yaml` | push to main, pull requests, manual | Lints the configuration of the repository with the eight jobs below |
 | `ci.yaml` | push to main, pull requests, manual | Checks and tests the Go code with the two jobs below, and uploads the coverage to Codecov |
 | `security.yaml` | push to main, pull requests, daily at 20:00 UTC, manual | Runs CodeQL, the Go vulnerability check, the Go license check, dependency review, the secret scan, the Trivy filesystem scan and OSSF Scorecard. The daily run catches a CVE that is published for code that did not change. Scorecard never runs on pull requests |
 | `docker.yaml` | push to main, tags, pull requests, manual | Builds the image for `linux/amd64` and `linux/arm64`, pushes it to GitHub Container Registry only, scans both platforms with Trivy, attaches an SBOM, signs it with cosign and verifies the signature right away. Only `main` writes the build cache. A pull request and a tag read it and never write one. It never logs in to Docker Hub, because a pull request can change this workflow. A pull request from a fork, a run of Dependabot and a manual run from a ref other than `main` only build the image, and the job still reports success because it had nothing to publish. A pull request from a branch of this repository, such as one of Renovate, publishes the image as `pr-<number>`. This workflow never gets a `workflow_call` trigger, because a workflow that called it would get signatures with the identity of this file |
+| `docker-hub-mirror.yaml` | after `docker.yaml` finishes | Copies the image that `docker.yaml` built from GitHub Container Registry to Docker Hub by digest, as `<DOCKERHUB_USERNAME>/aethera-backend`. It runs from `main` with the `docker-hub` environment and never checks out the repository. It copies an image only when the cosign signature on it was made by `docker.yaml` at the ref and with the trigger of the run that started the mirror, and it copies that signature and verifies it again on Docker Hub before `latest` or a floating version tag moves. It is not a required check |
 
 ### Jobs
 
@@ -21,6 +23,8 @@
 | `config.yaml` | Zizmor | The workflows for security problems, such as unpinned actions, broad permissions and injection through expressions, with zizmor |
 | `config.yaml` | ShellCheck | Every tracked file that ends in `.sh`, with the settings of `.shellcheckrc` |
 | `config.yaml` | Hadolint | The `Dockerfile` against the rules of Hadolint, which also lints the shell commands in it |
+| `config.yaml` | Dotenv lint | The names and the form of the settings in `.env.example`, with dotenv-linter. The order of the keys is not checked, because the file is grouped by topic |
+| `config.yaml` | Compose config | `docker compose config` on `compose.production.example.yml` with the settings of `.env.example`. It builds and starts nothing, so it keeps the example from drifting away from the settings |
 | `config.yaml` | File names | The names of the files and folders against `.ls-lint.yml`, with ls-lint |
 | `config.yaml` | Renovate config | `renovate.json` against the schema of Renovate, in strict mode, so a renamed or removed option fails |
 | `ci.yaml` | Lint | `gofmt`, that `go.mod` and `go.sum` are tidy, `go vet`, and golangci-lint with the linters of `.golangci.yml` |
@@ -52,6 +56,8 @@ Every check below is required and is reported by GitHub Actions.
 | Zizmor | GitHub Actions | yes |
 | ShellCheck | GitHub Actions | yes |
 | Hadolint | GitHub Actions | yes |
+| Dotenv lint | GitHub Actions | yes |
+| Compose config | GitHub Actions | yes |
 | File names | GitHub Actions | yes |
 | Renovate config | GitHub Actions | yes |
 | Lint | GitHub Actions | yes |
@@ -95,6 +101,14 @@ cosign verify \
 
 The pattern leaves out the identity of pull request builds on purpose, so an image tagged `pr-<number>` does not pass this check. The check inside `docker.yaml` accepts pull request identities because it only verifies the image that the same run just built. The base images come from Docker Hub, and the build does not use the Google mirror, so a pull limit of Docker Hub can fail a build. Run the build again when that happens.
 
+## Docker Hub mirror
+
+The Docker workflow also runs for pull requests, and a pull request can change that workflow, so the Docker Hub token does not belong in it. The token is the secret `DOCKERHUB_TOKEN` of the `docker-hub` environment, and the account name is the repository variable `DOCKERHUB_USERNAME`. The mirror workflow starts when the Docker workflow completes. GitHub runs the copy of the mirror file that is on `main`, so a pull request cannot change it. The mirror never checks out the repository and never runs anything from the pull request. It only moves an image by digest.
+
+A person with write access can change `docker.yaml` in a pull request and push any image under any tag of GitHub Container Registry. So the mirror trusts no tag. It copies an image only when the signature on it was made by `docker.yaml` at the ref of the run that started the mirror. That ref is `main` for a push to `main`, the tag for a release, and the merge of the pull request for a pull request. A push or a manual run must also name the same commit in the certificate. Tags are `pr-<number>` for a pull request, `sha-<commit>` and `latest` for `main`, and the version tags for a release, where `1.2` and `1` only move when the release is the highest of its line. A major version of 0 has no major tag, so a `v0.x` release only gets `0.x.y` and `0.x`. A prerelease tag such as `v1.2.3-rc.1` is not copied. For a pull request the mirror skips the copy when the pull request has a newer commit, and for `main` when `main` has one.
+
+The mirror copies the signature first, checks it on Docker Hub and only then moves `latest` or a floating version tag, so Docker Hub never holds a moved tag without a signature. The calls to Docker Hub that create or inspect a tag, and the copy of the signature, are tried up to three times, because Docker Hub now and then answers a call with a 500 that the next try does not get. The calls to GitHub Container Registry, the signature checks and the login are not retried. Two limits are accepted. The first tag of a copy, which is the `sha-` tag, the `pr-` tag or an exact version tag, is created on Docker Hub before the signature is copied and checked there. The image itself was already verified on GitHub Container Registry by its digest, and `latest` or a floating tag never moves before the check on Docker Hub. Two releases that finish within minutes of each other run in separate groups, so the run of the older release could write a floating tag such as `1.2` after the newer one. The digest check of the older run would not notice, so look at the floating tags on Docker Hub after two releases in a row. A `pr-<number>` image is only as trustworthy as its pull request, because the author can change `docker.yaml` there, so never run one as a release. The rule that only `main` and tags may use the environment does not limit this workflow, because a `workflow_run` always runs on the default branch. The signature check is what protects the tags. The release tags `v*` are also protected by the rulesets `release-tags` and `release-tags-creation`, which let only the release App create them, so a pull request cannot make a tag that the mirror would accept.
+
 ## File names
 
 The File names job reads the names of the files and never opens one. The rules are in `.ls-lint.yml`.
@@ -119,7 +133,7 @@ The Renovate config job runs `renovate-config-validator --strict` on every pull 
 
 A dependency update bot cannot read a tool that is named inside a `run` step, so the tools of the jobs are listed where it can.
 
-- `.github/tools/Dockerfile` has one stage for each image that a job starts with `docker run`, which are actionlint, zizmor, ShellCheck, Hadolint and gitleaks. Nothing builds it. The workflows get the image from `.github/tools/image.sh <stage>`, so the version of a bump is the version the jobs run.
+- `.github/tools/Dockerfile` has one stage for each image that a job starts with `docker run`, which are actionlint, zizmor, ShellCheck, Hadolint, dotenv-linter and gitleaks. Nothing builds it. The workflows get the image from `.github/tools/image.sh <stage>`, so the version of a bump is the version the jobs run.
 - The versions of ls-lint and of the Renovate validator sit in the `env` of their steps. A comment such as `# renovate: datasource=npm depName=@ls-lint/ls-lint` right above the line tells Renovate where to look, so keep the comment when you edit the line.
 
 All actions are pinned to commit SHAs with the version in a comment, and the setting "require actions to be pinned to a full-length commit SHA" is on for the repository.
@@ -133,3 +147,14 @@ Docker Hub limits anonymous pulls per IP address, and every GitHub runner shares
 - `.github/actions/pull-images/pull.sh` pulls an image through the mirror first and falls back to Docker Hub.
 
 The account name is the repository variable `DOCKERHUB_USERNAME` and the token is the secret `DOCKERHUB_PULL_TOKEN`. Without them everything still works through the mirror alone. Pull requests from forks never get the secret, so they pull through the mirror and fall back to anonymous Docker Hub pulls, which the limit can refuse.
+
+## Releases
+
+Versions are decided by [release-please](https://github.com/googleapis/release-please) from the Conventional Commit messages that reach `main`. A `fix` raises the patch version and a `feat` raises the minor version. A `feat!` or a `BREAKING CHANGE` footer raises the major version, and while the version is below 1.0.0 a breaking change only raises the minor version. The version starts at 0.0.0 in `.release-please-manifest.json`, so a fix-only first release is 0.0.1, while a first release with a `feat` or a pre-major breaking change is 0.1.0. Its changelog lists the `feat` and `fix` entries of the commits on `main`.
+
+1. Merge pull requests into `main` with a Conventional Commit title.
+2. release-please opens or updates a pull request named like `chore(main): release 0.2.0` with the new version and the changelog.
+3. Read the changelog and the new settings, compose files and migrations of the release. Merge the release pull request only when you want to release. Nobody and nothing merges it by itself.
+4. The merge creates the tag `v0.2.0` and a GitHub release. The tag starts `docker.yaml`, which pushes the image tags `0.2.0` and `0.2`, and then the mirror copies them to Docker Hub. A major version of 0 has no major tag.
+
+A tag or a pull request that is created with the default token of a workflow does not start other workflows. So the workflow gets its token from the GitHub App `syafa-bot` with write access to contents, pull requests and issues. With that token the release pull request runs the checks and the new tag runs the Docker workflow. The App also makes the release commits, so they carry no personal account. The client ID of the App is the repository variable `RELEASE_APP_CLIENT_ID`, and its private key is the secret `RELEASE_APP_PRIVATE_KEY` of the `release` environment. The App is the only bypass actor of the ruleset `release-tags-creation`, so nothing else can create a tag that starts with `v`. Keep the default tag format. A `component` in the configuration would make tags such as `backend-v0.2.0`, which do not match `v*.*.*`, and no image would be built.

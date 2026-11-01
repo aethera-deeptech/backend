@@ -1,0 +1,51 @@
+# Production example for the API of the energy audit dashboard, two copies on one host behind a reverse proxy. Copy it to the server
+# as compose.yml next to the .env file, and update the copies with scripts/rolling-update.sh. The copies only listen on the loopback
+# address of the host, so nothing reaches them except the reverse proxy.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "${LOG_MAX_SIZE:-10m}"
+    max-file: "${LOG_MAX_FILES:-5}"
+
+x-api: &api
+  image: syafa/aethera-backend:${IMAGE_TAG:?set IMAGE_TAG in the env file}
+  restart: always
+  # the service waits up to 15 seconds for the requests that are running after a stop signal, and Docker stops a container after
+  # 10 seconds when nothing is set, so the default here is longer than the wait of the service
+  stop_grace_period: ${API_STOP_GRACE_PERIOD:-20s}
+  # a missing .env stops compose, because the file is required unless the entry says otherwise
+  env_file:
+    - .env
+  environment:
+    GOMEMLIMIT: ${GOMEMLIMIT:-100MiB}
+  networks:
+    - internal
+  labels:
+    aethera.role: api
+  read_only: true
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+  logging: *default-logging
+  deploy:
+    resources:
+      limits:
+        cpus: "${API_CPUS:-0.50}"
+        memory: ${API_MEMORY_LIMIT:-128m}
+
+services:
+  api-1:
+    <<: *api
+    container_name: aethera-api-1
+    ports:
+      - "127.0.0.1:${API_1_HOST_PORT:-8010}:${APP_PORT:-8080}"
+
+  api-2:
+    <<: *api
+    container_name: aethera-api-2
+    ports:
+      - "127.0.0.1:${API_2_HOST_PORT:-8011}:${APP_PORT:-8080}"
+
+networks:
+  internal:
