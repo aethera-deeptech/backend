@@ -184,10 +184,9 @@ func (s *Store) Save(ctx context.Context, businessID string, day time.Time, rawQ
 		return Record{}, fmt.Errorf("save the record %w", err)
 	}
 
-	// the unit of the last save becomes the unit of the business, so the form offers it first the next time. The comparison is part of
-	// the statement, so two saves at the same time cannot decide from a unit that the other one just changed.
-	if _, err := tx.Exec(ctx,
-		"UPDATE businesses SET production_unit = $2, updated_at = now() WHERE id = $1 AND production_unit IS DISTINCT FROM $2", businessID, unit); err != nil {
+	// the unit of the last save becomes the unit of the business, so the form offers it first the next time. Every save updates the row,
+	// even when the unit is the same, so two saves at the same time wait for each other and the one that commits last decides.
+	if _, err := tx.Exec(ctx, "UPDATE businesses SET production_unit = $2, updated_at = now() WHERE id = $1", businessID, unit); err != nil {
 		return Record{}, fmt.Errorf("remember the unit %w", err)
 	}
 
