@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/netip"
 	"strings"
 	"time"
 
@@ -112,5 +113,39 @@ func AccessLog() fiber.Handler {
 		slog.Log(c.Context(), level, "request", attrs...)
 
 		return err
+	}
+}
+
+// ClientKey returns the address that the limits count a client by. An IPv6 client usually owns a whole /64 and can change the
+// rest of its address at no cost, so the key of an IPv6 address is its /64 prefix.
+func ClientKey(c fiber.Ctx) string {
+	return keyOf(c.IP())
+}
+
+func keyOf(raw string) string {
+	ip, err := netip.ParseAddr(raw)
+	if err != nil {
+		return raw
+	}
+
+	ip = ip.Unmap()
+
+	if ip.Is6() {
+		if prefix, err := ip.Prefix(64); err == nil {
+			return prefix.String()
+		}
+	}
+
+	return ip.String()
+}
+
+// BodyLimit refuses a body that is larger than max bytes. The routes of the account take a few hundred bytes, so they need no more than a few KiB.
+func BodyLimit(max int) fiber.Handler {
+	return func(c fiber.Ctx) error {
+		if len(c.Body()) > max {
+			return NewError(http.StatusRequestEntityTooLarge, "payload_too_large", "The request is too large")
+		}
+
+		return c.Next()
 	}
 }

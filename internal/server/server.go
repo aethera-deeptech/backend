@@ -64,12 +64,15 @@ func New(opts Options) *fiber.App {
 		cfg.TrustProxy = true
 		cfg.TrustProxyConfig = fiber.TrustProxyConfig{Private: true, Loopback: true}
 		cfg.ProxyHeader = opts.ProxyHeader
+		// a header that is not an IP address is ignored, so a client cannot put free text in the address that the log and the limits use
+		cfg.EnableIPValidation = true
 	}
 
 	app := fiber.New(cfg)
 	version, db := opts.Version, opts.DB
 
-	app.Use(api.Recover(), api.AccessLog(), api.SecurityHeaders())
+	// the log is outside the recovery, so a request that panicked still gets its line with the status 500
+	app.Use(api.AccessLog(), api.Recover(), api.SecurityHeaders())
 
 	// the browser app calls from its own origin with its cookie. A request from any other origin gets no CORS headers.
 	app.Use("/v1", cors.New(cors.Config{

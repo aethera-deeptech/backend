@@ -33,6 +33,9 @@ type Handlers struct {
 	cookie CookieConfig
 }
 
+// maxAuthBody is the largest body of an account route, which is far above what a form of the app sends
+const maxAuthBody = 8 << 10
+
 // principalKey is the key of the signed in user in the locals of a request
 type principalKey struct{}
 
@@ -43,7 +46,7 @@ func NewHandlers(svc *Service, cookie CookieConfig) *Handlers {
 
 // Register adds the routes under /auth of the router
 func (h *Handlers) Register(r fiber.Router) {
-	g := r.Group("/auth")
+	g := r.Group("/auth", api.BodyLimit(maxAuthBody))
 	g.Post("/register", h.register)
 	g.Post("/login", h.login)
 	g.Post("/logout", h.logout, h.Require())
@@ -113,7 +116,7 @@ func (h *Handlers) register(c fiber.Ctx) error {
 		return err
 	}
 
-	if err := h.svc.Register(c.Context(), c.IP(), in.BusinessName, in.Email, in.Password); err != nil {
+	if err := h.svc.Register(c.Context(), api.ClientKey(c), in.BusinessName, in.Email, in.Password); err != nil {
 		return err
 	}
 
@@ -130,7 +133,7 @@ func (h *Handlers) login(c fiber.Ctx) error {
 		return err
 	}
 
-	token, me, err := h.svc.Login(c.Context(), c.IP(), in.Email, in.Password)
+	token, me, err := h.svc.Login(c.Context(), api.ClientKey(c), in.Email, in.Password)
 	if err != nil {
 		return err
 	}
@@ -163,7 +166,7 @@ func (h *Handlers) verifyEmail(c fiber.Ctx) error {
 		return err
 	}
 
-	token, me, err := h.svc.VerifyEmail(c.Context(), c.IP(), in.Token)
+	token, me, err := h.svc.VerifyEmail(c.Context(), api.ClientKey(c), in.Token)
 	if err != nil {
 		return err
 	}
@@ -182,7 +185,7 @@ func (h *Handlers) resend(c fiber.Ctx) error {
 		return err
 	}
 
-	if err := h.svc.ResendVerification(c.Context(), c.IP(), in.Email); err != nil {
+	if err := h.svc.ResendVerification(c.Context(), api.ClientKey(c), in.Email); err != nil {
 		return err
 	}
 
@@ -200,7 +203,7 @@ func (h *Handlers) changeEmail(c fiber.Ctx) error {
 		return err
 	}
 
-	if err := h.svc.ChangeEmail(c.Context(), c.IP(), in.Email, in.Password, in.NewEmail); err != nil {
+	if err := h.svc.ChangeEmail(c.Context(), api.ClientKey(c), in.Email, in.Password, in.NewEmail); err != nil {
 		return err
 	}
 
@@ -216,7 +219,7 @@ func (h *Handlers) forgot(c fiber.Ctx) error {
 		return err
 	}
 
-	if err := h.svc.ForgotPassword(c.Context(), c.IP(), in.Email); err != nil {
+	if err := h.svc.ForgotPassword(c.Context(), api.ClientKey(c), in.Email); err != nil {
 		return err
 	}
 
@@ -233,7 +236,7 @@ func (h *Handlers) reset(c fiber.Ctx) error {
 		return err
 	}
 
-	if err := h.svc.ResetPassword(c.Context(), c.IP(), in.Token, in.Password); err != nil {
+	if err := h.svc.ResetPassword(c.Context(), api.ClientKey(c), in.Token, in.Password); err != nil {
 		return err
 	}
 
