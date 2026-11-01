@@ -106,19 +106,29 @@ func detectAnomaly(ctx context.Context, tx pgx.Tx, gatewayID, nodeID string, sam
 		return fmt.Errorf("read the sensitivity %w", err)
 	}
 
-	kind, at, watts := "surge", time.Time{}, 0.0
+	// the two kinds are checked on their own, so a batch that holds both reports both
 	if overload != nil {
-		kind, at, watts = "overload", overload.t, overload.watts
-	} else {
-		at, watts = peak.t, peak.watts
+		if err := raise(ctx, tx, gatewayID, nodeID, "overload", overload, level); err != nil {
+			return err
+		}
 	}
 
+	if peak != nil && peak.watts > surgeMinExcessW {
+		return raise(ctx, tx, gatewayID, nodeID, "surge", peak, level)
+	}
+
+	return nil
+}
+
+// raise writes an anomaly of one kind for a sample, unless the node raised one of that kind in the last hours, or for a surge unless
+// the power is within what is usual for that hour
+func raise(ctx context.Context, tx pgx.Tx, gatewayID, nodeID, kind string, s *stored, level string) error {
 	// the debounce is for each kind, so a surge does not hide the overload that the node reports a little later. It is checked before the
 	// usual power, so a node inside the window costs one query.
 	var recent bool
 	if err := tx.QueryRow(ctx,
 		"SELECT EXISTS (SELECT 1 FROM anomalies WHERE gateway_id = $1 AND node_id = $2 AND kind = $3 AND at > $4)",
-		gatewayID, nodeID, kind, at.Add(-anomalyDebounce)).Scan(&recent); err != nil {
+		gatewayID, nodeID, kind, s.t.Add(-anomalyDebounce)).Scan(&recent); err != nil {
 		return fmt.Errorf("read the anomalies %w", err)
 	}
 
@@ -129,12 +139,12 @@ func detectAnomaly(ctx context.Context, tx pgx.Tx, gatewayID, nodeID string, sam
 	var expected *float64
 
 	if kind == "surge" {
-		high, ok, err := usualHigh(ctx, tx, gatewayID, nodeID, peak.t, level)
+		high, ok, err := usualHigh(ctx, tx, gatewayID, nodeID, s.t, level)
 		if err != nil {
 			return err
 		}
 
-		if !ok || peak.watts <= high.limit {
+		if !ok || s.watts <= high.limit {
 			return nil
 		}
 
@@ -143,7 +153,7 @@ func detectAnomaly(ctx context.Context, tx pgx.Tx, gatewayID, nodeID string, sam
 
 	if _, err := tx.Exec(ctx,
 		"INSERT INTO anomalies (gateway_id, node_id, at, peak_watts, expected_high_watts, kind) VALUES ($1, $2, $3, $4, $5, $6)",
-		gatewayID, nodeID, at, watts, expected, kind); err != nil {
+		gatewayID, nodeID, s.t, s.watts, expected, kind); err != nil {
 		return fmt.Errorf("store the anomaly %w", err)
 	}
 

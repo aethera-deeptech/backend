@@ -46,9 +46,13 @@ func (g *rig) anomalies(t *testing.T) int {
 func (g *rig) usual(t *testing.T, days int, high float64) {
 	t.Helper()
 
+	// the samples of a test go back a few seconds, so the hour that was 15 seconds ago is seeded as well, and a test that runs across the
+	// turn of an hour still finds its history
 	g.e.Exec(t, "INSERT INTO readings_hourly (gateway_id, node_id, hour, samples, sum_watts, max_watts, min_watts) "+
-		"SELECT n.gateway_id, n.node_id, date_trunc('hour', now()) - make_interval(days => d), 10, $2::float8 * 10, $2, 1 "+
-		"FROM nodes n, generate_series(1, $1) d ON CONFLICT DO NOTHING", days, high)
+		"SELECT n.gateway_id, n.node_id, h - make_interval(days => d), 10, $2::float8 * 10, $2, 1 "+
+		"FROM nodes n, generate_series(1, $1) d, "+
+		"(SELECT date_trunc('hour', now()) AS h UNION SELECT date_trunc('hour', now() - interval '15 seconds')) hours "+
+		"ON CONFLICT DO NOTHING", days, high)
 }
 
 func TestASurgeFarAboveTheUsualPowerRaisesOneAnomaly(t *testing.T) {
@@ -139,6 +143,27 @@ func TestAnOverloadIsNotHiddenByASurgeThatCameBeforeIt(t *testing.T) {
 
 	three := 3
 	g.send(t, "PLUG-0001", 50, 0, &three)
+
+	var kinds int
+	if err := g.e.Pool.QueryRow(t.Context(), "SELECT count(DISTINCT kind) FROM anomalies").Scan(&kinds); err != nil || kinds != 2 {
+		t.Fatalf("the anomalies hold %d kinds (%v)", kinds, err)
+	}
+}
+
+func TestABatchWithAnOverloadAndASurgeRaisesBoth(t *testing.T) {
+	g := business(t, testutil.New(t), "budi@example.com", "ESP32-AABBCC", "a")
+	g.pair(t, "PLUG-0001", "Mesin jahit 1")
+	g.usual(t, 8, 100)
+
+	three := 3
+	at := time.Now().Add(-5 * time.Second).Unix()
+	body := fmt.Sprintf(`{"seq":%d,"sentAt":%d,"nodes":[{"nodeId":"PLUG-0001","kind":"plug","samples":[{"t":%d,"p":50,"a":%d},{"t":%d,"p":500}]}]}`,
+		g.seq+1, time.Now().Unix(), at, three, at+1)
+	g.seq++
+
+	if r := g.e.CallWith(t, http.MethodPost, "/device/v1/readings", body, map[string]string{"Authorization": "Bearer " + g.key}); r.Status != http.StatusOK {
+		t.Fatalf("readings answered %d %v", r.Status, r.Body)
+	}
 
 	var kinds int
 	if err := g.e.Pool.QueryRow(t.Context(), "SELECT count(DISTINCT kind) FROM anomalies").Scan(&kinds); err != nil || kinds != 2 {
