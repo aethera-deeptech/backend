@@ -45,3 +45,11 @@ func TestUnknownRouteIs404(t *testing.T) {
 		t.Fatalf("status is %d, want 404", res.StatusCode)
 	}
 }
+
+func TestConnectionLimits(t *testing.T) {
+	srv := New("dev").Server()
+
+	if srv.ReadTimeout != readTimeout || srv.WriteTimeout != writeTimeout || srv.IdleTimeout != idleTimeout {
+		t.Fatalf("limits are %v, %v and %v", srv.ReadTimeout, srv.WriteTimeout, srv.IdleTimeout)
+	}
+}
