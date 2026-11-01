@@ -161,6 +161,11 @@ func (p *Pairings) Get(ctx context.Context, businessID, id string) (Pairing, err
 	}
 
 	if out.Status != "searching" {
+		// the app has three states, so a search that the owner stopped reads as failed
+		if out.Status == "cancelled" {
+			out.Status = "failed"
+		}
+
 		return out, nil
 	}
 

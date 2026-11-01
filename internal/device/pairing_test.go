@@ -142,7 +142,7 @@ func TestOneSearchAtATimeAndItCanBeCancelled(t *testing.T) {
 		t.Fatalf("cancel answered %d", r.Status)
 	}
 
-	if s := g.status(t, id); s.Body["status"] != "cancelled" {
+	if s := g.status(t, id); s.Body["status"] != "failed" {
 		t.Fatalf("after the cancel it answered %v", s.Body)
 	}
 
@@ -154,7 +154,7 @@ func TestOneSearchAtATimeAndItCanBeCancelled(t *testing.T) {
 	// a cancelled search does not take a node, and the owner can start another one
 	g.hear(t, "PLUG-0001", "plug")
 
-	if s := g.status(t, id); s.Body["status"] != "cancelled" {
+	if s := g.status(t, id); s.Body["status"] != "failed" {
 		t.Fatalf("a cancelled search changed to %v", s.Body)
 	}
 

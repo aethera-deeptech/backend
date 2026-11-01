@@ -52,14 +52,14 @@ type Principal struct {
 func (s *Service) Authenticate(ctx context.Context, header string) (*Principal, error) {
 	token, ok := strings.CutPrefix(header, "Bearer ")
 	if !ok || len(token) < 32 || len(token) > 128 {
-		return nil, badSignature()
+		return nil, invalidKey()
 	}
 
 	var p Principal
 
 	err := s.pool.QueryRow(ctx, "SELECT id, business_id FROM gateways WHERE key_hash = $1", hashOf(token)).Scan(&p.GatewayID, &p.BusinessID)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, badSignature()
+		return nil, invalidKey()
 	}
 
 	if err != nil {
@@ -69,8 +69,8 @@ func (s *Service) Authenticate(ctx context.Context, header string) (*Principal, 
 	return &p, nil
 }
 
-func badSignature() error {
-	return api.NewError(http.StatusUnauthorized, "bad_signature", "The key of the gateway is not valid")
+func invalidKey() error {
+	return api.NewError(http.StatusUnauthorized, "invalid_gateway_key", "The key of the gateway is not valid")
 }
 
 // Sample is one reading of a node. The power is the only field that must be there.

@@ -199,7 +199,7 @@ func TestOnlyTheKeyOfAClaimedGatewayWorks(t *testing.T) {
 
 	for name, headers := range tests {
 		r := g.e.CallWith(t, http.MethodPost, "/device/v1/readings", batch(1, "NODE-0001", "plug", sample(0, 5)), headers)
-		if r.Status != http.StatusUnauthorized || r.Code() != "bad_signature" {
+		if r.Status != http.StatusUnauthorized || r.Code() != "invalid_gateway_key" {
 			t.Errorf("%s answered %d %v", name, r.Status, r.Body)
 		}
 	}

@@ -50,9 +50,10 @@ var (
 
 // Gateway is a gateway of a business as the app reads it
 type Gateway struct {
-	ID         string     `json:"id"`
-	Name       string     `json:"name"`
-	LastSeenAt *time.Time `json:"lastSeenAt"`
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	// LastSeenAt is the time of the last batch, and the time of the claim for a gateway that never sent one
+	LastSeenAt time.Time `json:"lastSeenAt"`
 }
 
 // Service holds the rules of the gateways
@@ -280,6 +281,12 @@ func (s *Service) Claim(ctx context.Context, businessID, rawCode, rawName string
 		return Gateway{}, fmt.Errorf("read the code %w", err)
 	}
 
+	// the business is locked first and the count is a statement of its own, so two claims at the same time count one after the other
+	var locked int
+	if err := tx.QueryRow(ctx, "SELECT 1 FROM businesses WHERE id = $1 FOR UPDATE", businessID).Scan(&locked); err != nil {
+		return Gateway{}, fmt.Errorf("lock the business %w", err)
+	}
+
 	var count int
 	if err := tx.QueryRow(ctx, "SELECT count(*) FROM gateways WHERE business_id = $1", businessID).Scan(&count); err != nil {
 		return Gateway{}, fmt.Errorf("count the gateways %w", err)
@@ -300,7 +307,7 @@ func (s *Service) Claim(ctx context.Context, businessID, rawCode, rawName string
 		}
 
 		err = tx.QueryRow(ctx,
-			"INSERT INTO gateways (business_id, name, hardware_id, key_hash) VALUES ($1, $2, $3, $4) RETURNING id, name, last_seen_at",
+			"INSERT INTO gateways (business_id, name, hardware_id, key_hash) VALUES ($1, $2, $3, $4) RETURNING id, name, COALESCE(last_seen_at, created_at)",
 			businessID, name, hardwareID, keyHash).Scan(&gw.ID, &gw.Name, &gw.LastSeenAt)
 	case err != nil:
 		return Gateway{}, fmt.Errorf("read the gateway %w", err)
@@ -308,7 +315,7 @@ func (s *Service) Claim(ctx context.Context, businessID, rawCode, rawName string
 		return Gateway{}, api.NewError(http.StatusConflict, "gateway_claimed_elsewhere", "This gateway belongs to another business")
 	default:
 		err = tx.QueryRow(ctx,
-			"UPDATE gateways SET name = $3, key_hash = $2 WHERE hardware_id = $1 RETURNING id, name, last_seen_at",
+			"UPDATE gateways SET name = $3, key_hash = $2 WHERE hardware_id = $1 RETURNING id, name, COALESCE(last_seen_at, created_at)",
 			hardwareID, keyHash, name).Scan(&gw.ID, &gw.Name, &gw.LastSeenAt)
 	}
 
@@ -334,7 +341,7 @@ func (s *Service) Claim(ctx context.Context, businessID, rawCode, rawName string
 
 // List returns the gateways of a business by name
 func (s *Service) List(ctx context.Context, businessID string) ([]Gateway, error) {
-	rows, err := s.pool.Query(ctx, "SELECT id, name, last_seen_at FROM gateways WHERE business_id = $1 ORDER BY lower(name), id", businessID)
+	rows, err := s.pool.Query(ctx, "SELECT id, name, COALESCE(last_seen_at, created_at) FROM gateways WHERE business_id = $1 ORDER BY lower(name), id", businessID)
 	if err != nil {
 		return nil, fmt.Errorf("list the gateways %w", err)
 	}
