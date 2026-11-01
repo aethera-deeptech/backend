@@ -8,6 +8,9 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/middleware/cors"
+
+	"github.com/aethera-deeptech/backend/internal/api"
 )
 
 // The limits on a connection. Without them a client that sends its request one byte at a time, or that keeps an idle connection
@@ -30,13 +33,52 @@ type Pinger interface {
 	Ping(ctx context.Context) error
 }
 
-// New returns the application with its routes. The version is the one that the binary was built with.
-func New(version string, db Pinger) *fiber.App {
-	app := fiber.New(fiber.Config{
+// Options are what the application needs from the rest of the service
+type Options struct {
+	// Version is the one that the binary was built with
+	Version string
+	// DB answers the readiness route
+	DB Pinger
+	// AppOrigin is the only origin that CORS allows, for example https://aethera.example.com
+	AppOrigin string
+	// TrustProxy and ProxyHeader tell where the address of the client is when a reverse proxy on the host sits in front
+	TrustProxy  bool
+	ProxyHeader string
+}
+
+// bodyLimit is the largest request body, which is far above what any route of the dashboard sends
+const bodyLimit = 1 << 20
+
+// New returns the application with its health routes and the middleware of the API. The routes under /v1 and /device/v1 are added
+// by the caller, and they run behind the middleware that is set here.
+func New(opts Options) *fiber.App {
+	cfg := fiber.Config{
 		ReadTimeout:  readTimeout,
 		WriteTimeout: writeTimeout,
 		IdleTimeout:  idleTimeout,
-	})
+		BodyLimit:    bodyLimit,
+		ErrorHandler: api.ErrorHandler,
+	}
+
+	if opts.TrustProxy {
+		cfg.TrustProxy = true
+		cfg.TrustProxyConfig = fiber.TrustProxyConfig{Private: true, Loopback: true}
+		cfg.ProxyHeader = opts.ProxyHeader
+	}
+
+	app := fiber.New(cfg)
+	version, db := opts.Version, opts.DB
+
+	app.Use(api.Recover(), api.AccessLog(), api.SecurityHeaders())
+
+	// the browser app calls from its own origin with its cookie. A request from any other origin gets no CORS headers.
+	app.Use("/v1", cors.New(cors.Config{
+		AllowOrigins:     []string{opts.AppOrigin},
+		AllowMethods:     []string{fiber.MethodGet, fiber.MethodPost, fiber.MethodPut, fiber.MethodPatch, fiber.MethodDelete},
+		AllowHeaders:     []string{"Content-Type", "X-Requested-With"},
+		AllowCredentials: true,
+		MaxAge:           600,
+	}), api.NoStore(), api.CSRF(opts.AppOrigin))
 
 	// the health route stays outside /v1 because it belongs to the container and not to the API that the dashboard reads
 	app.Get("/healthz", func(c fiber.Ctx) error {

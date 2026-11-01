@@ -15,10 +15,12 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 
+	"github.com/aethera-deeptech/backend/internal/auth"
 	"github.com/aethera-deeptech/backend/internal/config"
 	"github.com/aethera-deeptech/backend/internal/database"
 	"github.com/aethera-deeptech/backend/internal/healthcheck"
 	"github.com/aethera-deeptech/backend/internal/logging"
+	"github.com/aethera-deeptech/backend/internal/mail"
 	"github.com/aethera-deeptech/backend/internal/server"
 )
 
@@ -27,6 +29,15 @@ var version = "dev"
 
 // shutdownTimeout is how long the server lets requests that are running finish after a stop signal
 const shutdownTimeout = 15 * time.Second
+
+// passwordHashSlots is how many passwords one copy hashes at the same time. One hash needs about 19 MiB.
+const passwordHashSlots = 2
+
+// mailWorkers and mailBacklog size the queue of outgoing emails
+const (
+	mailWorkers = 2
+	mailBacklog = 100
+)
 
 func main() {
 	// the container health check runs this binary again, because the image has no curl
@@ -67,7 +78,20 @@ func run() error {
 		return fmt.Errorf("migrate the database %w", err)
 	}
 
-	app := server.New(version, pool)
+	app := server.New(server.Options{
+		Version: version, DB: pool, AppOrigin: cfg.AppOrigin, TrustProxy: cfg.TrustProxy, ProxyHeader: cfg.ProxyHeader,
+	})
+
+	mailQueue, mailer := newMailer(cfg)
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+		defer cancel()
+
+		mailQueue.Close(ctx)
+	}()
+
+	accounts := auth.NewService(auth.NewStore(pool), auth.NewLimiter(pool), auth.NewHasher(passwordHashSlots), mailer, cfg.AppOrigin)
+	auth.NewHandlers(accounts, auth.CookieFor(cfg.AppEnv == config.EnvProduction)).Register(app.Group("/v1"))
 
 	serverErr := make(chan error, 1)
 
@@ -92,4 +116,20 @@ func run() error {
 	log.Println("shutdown complete")
 
 	return nil
+}
+
+// newMailer returns the mailer of the account routes. Without a mail server (a development setup) it logs the links instead.
+func newMailer(cfg config.Config) (*mail.Queue, auth.Mailer) {
+	if cfg.SMTPHost == "" {
+		slog.Warn("SMTP_HOST is not set, so the emails are written to the log")
+
+		return mail.NewQueue(nil, 0, 1), mail.Log{}
+	}
+
+	queue := mail.NewQueue(&mail.SMTP{
+		Host: cfg.SMTPHost, Port: cfg.SMTPPort, Username: cfg.SMTPUsername, Password: cfg.SMTPPassword,
+		Security: cfg.SMTPSecurity, FromName: cfg.SMTPFromName, FromAddress: cfg.SMTPFromAddress,
+	}, mailWorkers, mailBacklog)
+
+	return queue, mail.NewOutbox(queue)
 }
