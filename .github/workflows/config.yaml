@@ -107,3 +107,28 @@ jobs:
           # renovate: datasource=npm depName=@ls-lint/ls-lint
           version: 2.3.2
         run: npx --yes "@ls-lint/ls-lint@${version}"
+
+  renovate:
+    name: Renovate config
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+
+      # A broken renovate.json does not fail anything by itself, the bot just stops opening dependency pull requests. The strict
+      # mode also fails on an option that was renamed or removed, which the bot would only migrate with a warning
+      - name: Validate renovate.json
+        env:
+          # renovate: datasource=npm depName=renovate
+          version: 44.174.0
+        run: npx --yes --package "renovate@${version}" renovate-config-validator --strict

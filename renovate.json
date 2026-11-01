@@ -1,0 +1,72 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", "helpers:pinGitHubActionDigestsToSemver"],
+  "timezone": "Asia/Jakarta",
+  "schedule": ["before 7am on monday"],
+  "minimumReleaseAge": "7 days",
+  "internalChecksFilter": "strict",
+  "rebaseWhen": "conflicted",
+  "platformCommit": "enabled",
+  "postUpdateOptions": ["gomodTidy"],
+  "semanticCommits": "enabled",
+  "semanticCommitType": "chore",
+  "semanticCommitScope": "deps",
+  "labels": ["dependencies"],
+  "assignees": ["SyafaHadyan"],
+  "dependencyDashboard": true,
+  "vulnerabilityAlerts": {
+    "semanticCommitType": "fix"
+  },
+  "packageRules": [
+    {
+      "matchManagers": ["gomod"],
+      "semanticCommitType": "chore",
+      "addLabels": ["go"]
+    },
+    {
+      "matchManagers": ["gomod"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "go-minor-patch"
+    },
+    {
+      "matchManagers": ["github-actions"],
+      "semanticCommitType": "ci",
+      "addLabels": ["github_actions"]
+    },
+    {
+      "matchManagers": ["github-actions"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "actions"
+    },
+    {
+      "description": "the images of .github/tools/Dockerfile are the tools that CI starts from a workflow, so they take the commit type of the workflows",
+      "matchManagers": ["dockerfile"],
+      "matchFileNames": [".github/tools/Dockerfile"],
+      "semanticCommitType": "ci",
+      "addLabels": ["github_actions"]
+    },
+    {
+      "description": "the base images of the Dockerfile in the root are part of the app image, so they take the commit type of the packages",
+      "matchManagers": ["dockerfile"],
+      "matchFileNames": ["Dockerfile"],
+      "semanticCommitType": "build",
+      "addLabels": ["docker"]
+    },
+    {
+      "description": "the tools that CI starts from a workflow, such as ls-lint and Renovate itself, take the commit type of the workflows",
+      "matchManagers": ["custom.regex"],
+      "semanticCommitType": "ci",
+      "addLabels": ["github_actions"]
+    }
+  ],
+  "customManagers": [
+    {
+      "description": "A version in a workflow that the line above names with a renovate comment, which the bot cannot find in a run step or an action input otherwise",
+      "customType": "regex",
+      "managerFilePatterns": ["/^\\.github/workflows/[^/]+\\.ya?ml$/"],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)\\n\\s*(?:version|[A-Z][A-Z0-9_]*_VERSION): [\"']?(?<currentValue>[^\"'\\s]+)[\"']?"
+      ]
+    }
+  ]
+}
