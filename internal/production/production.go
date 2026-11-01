@@ -199,9 +199,9 @@ func NewHandlers(store *Store) *Handlers {
 
 // Register adds the routes to the router behind the middleware that needs a signed in user
 func (h *Handlers) Register(r fiber.Router, require fiber.Handler) {
-	r.Get("/production", h.overview, require)
-	r.Get("/production/:date", h.get, require)
-	r.Put("/production/:date", h.save, require)
+	r.Get("/production", require, h.overview)
+	r.Get("/production/:date", require, h.get)
+	r.Put("/production/:date", require, h.save)
 }
 
 // parseDay reads a date written YYYY-MM-DD and refuses any other form
