@@ -97,3 +97,14 @@ func TestTheFirstSampleOfANodeHasNoEnergy(t *testing.T) {
 }
 
 func ptr(t time.Time) *time.Time { return &t }
+
+func TestAGapOverAnHourIsNotCreditedFromTheCounter(t *testing.T) {
+	prevAt := time.Date(2026, 11, 2, 10, 0, 0, 0, time.UTC)
+
+	// the node counted 40 kWh in 3 days while the gateway was off, which fits the limit of 25 kW but is not one hour of energy
+	got := energyBetween(prevAt, f(5), stored{t: prevAt.Add(72 * time.Hour), watts: 600, energy: f(45)})
+	near(t, "long gap", got, 600.0/1000*maxEnergyGap.Hours())
+
+	// the same counter over a normal gap is trusted
+	near(t, "short gap", energyBetween(prevAt, f(5), stored{t: prevAt.Add(time.Minute), watts: 600, energy: f(5.01)}), 0.01)
+}

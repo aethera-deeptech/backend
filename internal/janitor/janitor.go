@@ -109,9 +109,13 @@ func runTask(ctx context.Context, conn *pgx.Conn, t Task) (int64, error) {
 		total += tag.RowsAffected()
 
 		if tag.RowsAffected() < batchSize {
-			break
+			return total, nil
 		}
 	}
+
+	// the round stopped at its cap, so there is more to delete than one round can do. If this repeats, the rows come in faster than they
+	// are removed and the keeping time is not held.
+	slog.Warn("a clean up task stopped at the cap of a round", "task", t.Name, "rows", total)
 
 	return total, nil
 }

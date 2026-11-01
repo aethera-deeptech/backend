@@ -18,6 +18,8 @@ const (
 	maxEnergyGap = 5 * time.Minute
 	// maxPlausibleKW stops a counter that jumped, because no node of this product measures more than this
 	maxPlausibleKW = 25.0
+	// maxCounterGap is the longest gap over which the counter of a node is trusted
+	maxCounterGap = time.Hour
 )
 
 // stored is a sample that was written to the table, which is the only kind that a rollup counts, so a retry never counts twice
@@ -51,7 +53,9 @@ func energyBetween(prevAt time.Time, prevEnergy *float64, s stored) float64 {
 		return 0
 	}
 
-	if prevEnergy != nil && s.energy != nil {
+	// a counter that spans more than an hour could put days of energy into one hour of the table, for example after a gateway was off for
+	// 3 days, so a long gap falls back to the power and counts only up to maxEnergyGap
+	if prevEnergy != nil && s.energy != nil && dt <= maxCounterGap {
 		delta := *s.energy - *prevEnergy
 		if delta >= 0 && delta <= maxPlausibleKW*dt.Hours() {
 			return delta

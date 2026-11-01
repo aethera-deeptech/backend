@@ -998,7 +998,7 @@ components:
             isDefault: {type: boolean}
             defaultRpPerKwh: {type: integer, minimum: 1, examples: [1444]}
         anomalySensitivity: {type: string, enum: [rendah, sedang, tinggi]}
-        timeZone: {type: string, examples: [Asia/Jakarta], description: An IANA zone name. This field is new and the frames have no screen for it.}
+        timeZone: {type: string, examples: [Asia/Jakarta], description: "An IANA zone name of a place, whose offset from UTC is a whole number of hours in every season, for example Asia/Jakarta. A zone such as Asia/Kolkata is refused, because the readings are summed in whole hours of UTC. This field is new and the frames have no screen for it."}
     SettingsPatch:
       type: object
       minProperties: 1

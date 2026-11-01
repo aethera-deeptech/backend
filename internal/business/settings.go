@@ -276,8 +276,17 @@ func (s *Store) zoneKnown(ctx context.Context, zone string) (bool, error) {
 		}
 	}
 
-	if _, err := time.LoadLocation(zone); err != nil {
+	loc, err := time.LoadLocation(zone)
+	if err != nil {
 		return false, nil //nolint:nilerr // an unknown name is a validation answer
+	}
+
+	// the readings are summed in whole hours of UTC, so a zone whose offset is not a whole hour (Asia/Kolkata is 5 hours 30 minutes) would
+	// cut the days and the months in the middle of an hour. Both ends of the year are checked, because the offset can change with the season.
+	for _, month := range []time.Month{time.January, time.July} {
+		if _, offset := time.Date(time.Now().Year(), month, 1, 12, 0, 0, 0, loc).Zone(); offset%3600 != 0 {
+			return false, nil
+		}
 	}
 
 	var known bool
