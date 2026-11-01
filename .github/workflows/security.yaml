@@ -148,10 +148,11 @@ jobs:
           username: ${{ vars.DOCKERHUB_USERNAME }}
           token: ${{ secrets.DOCKERHUB_PULL_TOKEN }}
 
+      # --redact hides the secret in the log and in the SARIF snippet that is uploaded, so a finding does not make one more copy of it
       - name: Gitleaks
         run: |
           docker run --rm -v "$PWD:/repo" "$(bash ./.github/actions/pull-images/pull.sh "$(bash ./.github/tools/image.sh gitleaks)")" \
-            detect --source /repo --no-banner --report-format sarif --report-path /repo/gitleaks-results.sarif -v
+            detect --source /repo --no-banner --redact --report-format sarif --report-path /repo/gitleaks-results.sarif -v
 
       - name: Upload gitleaks results to code scanning
         if: ${{ !cancelled() && github.actor != 'dependabot[bot]' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
