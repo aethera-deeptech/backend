@@ -31,6 +31,10 @@ The limits on sign in, sign up and the other account routes count clients by the
 - Put an nginx `limit_req` zone on `/v1/auth/` as well, so a flood is stopped before it reaches the pool of the database. The limits of the service are a second line and cost a database query for each request.
 - The service accepts a body of 8 KiB on the account routes, and nginx can set `client_max_body_size` to 1m.
 
+## Error reports
+
+Set `SENTRY_DSN` to send a 5xx and a panic to Sentry. An empty value switches the reports off, and then no client is made. An event holds the error text, the stack, the release, the environment, the pattern of the route (such as `/v1/devices/:id`) and the status. It never holds the path that was called, the query, a header, a cookie or a body. Every text is scrubbed of emails, bearer tokens, long keys and long numbers first, and `SENTRY_EVENTS_PER_MINUTE` (30 by default) caps how many events leave in a minute, so a crash loop does not use up the quota. A DSN that cannot be read is logged without its value and leaves the reports off, because the reports must never keep the API from starting. A 4xx is an answer that the API chose, so it is not sent. Keep the DSN in the `.env` file only.
+
 ## Clean up
 
 One copy at a time deletes what no rule needs any more, once an hour, and takes an advisory lock of PostgreSQL so the other copy skips the round. It removes sessions past their lifetime, used and expired email tokens, rate limit events older than two hours, and businesses whose email was not verified within 7 days together with their users. The table of the rate limits is UNLOGGED, so a count is not written to the log of the shared database, and a crash of the database empties it.
