@@ -153,3 +153,9 @@ func (f facts) how() []string {
 func (f facts) all() text {
 	return text{Title: f.title(), WhatToDo: f.whatToDo(), Why: f.why(), How: f.how()}
 }
+
+// Num writes a number the Indonesian way, for the texts of other packages
+func Num(v float64, decimals int) string { return num(v, decimals) }
+
+// Rp writes an amount in rupiah, for example Rp118.000
+func Rp(n int) string { return rp(n) }
