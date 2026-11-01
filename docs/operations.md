@@ -8,7 +8,7 @@ Two copies of the API run in Docker on one host, `api-1` and `api-2`. Each copy 
 
 `compose.production.example.yml` defines the two copies. Every container runs with a read-only file system, no Linux capabilities and a limit on memory and CPU. The image is `syafa/aethera-backend` on Docker Hub, which a workflow copies from GitHub Container Registry after it checks the signature, see [CI/CD](ci-cd.md#docker-hub-mirror).
 
-The service has no database code yet. When it has, the copies join the Docker network of the shared PostgreSQL container, and this page changes in the same pull request.
+Both copies also join the Docker network of the shared PostgreSQL container, which compose declares as external and never creates or removes. Its name is `DB_NETWORK`, `postgres_postgres` unless it is set. The service connects with the `DB_*` settings of the `.env` file, so the database host is the name of the container on that network.
 
 ## Set up a host
 
@@ -47,4 +47,12 @@ To go back to an older version, run `ROLLBACK_OK=<version> ./rolling-update.sh <
 
 ## Backups
 
-A database that holds data needs a backup before a migration runs on it. The service has no database code yet, so nothing needs one. Make a backup of the database before the pull request that adds the first migration is deployed.
+The service applies its migrations when a copy starts, before the copy listens. The migration library holds a lock in PostgreSQL while it runs, so two copies that start together do not race. A migration that fails stops the copy and the rolling update stops with it. The service never drops a table or deletes rows in a migration without a note in the changelog. A database that holds data needs a backup that you control. Nothing in this repository makes one.
+
+The migration connection has no `lock_timeout` on purpose, because PostgreSQL applies that setting to every lock wait, the advisory lock that makes a second copy wait included. A migration that changes a table that already exists starts with `SET LOCAL lock_timeout = '10s';`, so it gives up when a long query holds the table and does not block every other query behind it. Write every migration so that the version before it still works with the new schema (add first, remove in a later release). During a rolling update one copy runs the new version and applies the migration while the other still runs the old one. A copy that starts on a clean database that is ahead of it skips the migration step and runs, which is also what a rollback to an older version relies on. A dirty database that is ahead still stops the start, see the next paragraph. A migration that cannot work with the old code needs a stop and the written confirmation in the changelog.
+
+The library marks the schema version as dirty before it runs a migration and clears the mark after it, in two separate steps. A copy that is killed halfway (an out of memory kill, or a stop that waits longer than the grace period) leaves the mark, and every later start stops with "Dirty database version". The kill can come before the migration ran, during it, or after it ran and before the mark was cleared, so the schema may or may not hold the changes of that migration. Do not guess. Look at the tables and columns of that migration file first. Take a backup first if the database holds data you cannot lose. Then fix the table `schema_migrations` of the database of the service by hand. When the changes are all there, set `dirty` to false and keep `version`. When none of them are there, set `version` to the migration before it and `dirty` to false. When the interrupted migration is the first one, there is no version before it, so delete the one row of `schema_migrations`, which is the state of a database that was never migrated. A migration that left only some of its changes needs those removed by hand first.
+
+The compose services are called `api-1` and `api-2`, and Docker adds those names as network aliases on the shared database network. An app on that network that has a service with the same name would share the alias. Check the aliases on that network before the first deploy.
+
+The readiness route `/readyz` answers 200 while the database answers and 503 when it does not. The container health check uses `/healthz`, which ignores the database on purpose, because a restart does not fix a database that is down. The answer of `/readyz` is reused for 2 seconds, and it should stay off the public reverse proxy, which only needs `/healthz`.

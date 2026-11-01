@@ -56,6 +56,10 @@ ls:
     .*.yaml: kebab-case
     .*.*.yaml: kebab-case
 
+  # golang-migrate reads the version and the title of a migration with an underscore between them, so these names are the exception
+  internal/database/migrations:
+    .*.*: regex:[0-9]{4}_[a-z0-9]+(_[a-z0-9]+)*
+
 ignore:
   - .git
   - node_modules

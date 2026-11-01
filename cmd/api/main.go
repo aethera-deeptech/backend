@@ -16,6 +16,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 
 	"github.com/aethera-deeptech/backend/internal/config"
+	"github.com/aethera-deeptech/backend/internal/database"
 	"github.com/aethera-deeptech/backend/internal/healthcheck"
 	"github.com/aethera-deeptech/backend/internal/logging"
 	"github.com/aethera-deeptech/backend/internal/server"
@@ -54,7 +55,19 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	app := server.New(version)
+	// the pool opens first because it waits for a database that is still starting. The migrations run before the service listens, so a
+	// copy that cannot migrate never reports healthy and the rolling update stops.
+	pool, err := database.Open(ctx, cfg.DatabaseURL(), cfg.DBMaxConns)
+	if err != nil {
+		return fmt.Errorf("open the database %w", err)
+	}
+	defer pool.Close()
+
+	if err := database.Migrate(cfg.DatabaseURL()); err != nil {
+		return fmt.Errorf("migrate the database %w", err)
+	}
+
+	app := server.New(version, pool)
 
 	serverErr := make(chan error, 1)
 

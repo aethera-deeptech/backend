@@ -20,6 +20,7 @@ x-api: &api
     GOMEMLIMIT: ${GOMEMLIMIT:-100MiB}
   networks:
     - internal
+    - database
   labels:
     aethera.role: api
   read_only: true
@@ -49,3 +50,7 @@ services:
 
 networks:
   internal:
+  # the network of the shared database container, which already exists on the host. Compose never creates or removes it.
+  database:
+    external: true
+    name: ${DB_NETWORK:-postgres_postgres}
