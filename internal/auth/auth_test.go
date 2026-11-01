@@ -539,3 +539,39 @@ func TestThePurgeRemovesWhatNoRuleNeedsAnymore(t *testing.T) {
 		t.Errorf("a live session was removed, it answered %d", r.Status)
 	}
 }
+
+func TestALateSaveForAnOldAddressKeepsTheNewLink(t *testing.T) {
+	e := testutil.New(t)
+	e.Register(t, "budi@example.com")
+
+	body := `{"email":"budi@example.com","password":"kata sandi baik","newEmail":"baru@example.com"}`
+	if r := e.Call(t, http.MethodPost, "/v1/auth/change-email", body, ""); r.Status != http.StatusAccepted {
+		t.Fatalf("change answered %d %v", r.Status, r.Body)
+	}
+
+	var id string
+	if err := e.Pool.QueryRow(t.Context(), "SELECT id FROM users WHERE email = 'baru@example.com'").Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+
+	// a resend that read the old address before the change saves its token now, and it must not touch the new link
+	if err := auth.NewStore(e.Pool).SaveToken(t.Context(), id, "budi@example.com", "verify", make([]byte, 32), time.Hour); err != nil {
+		t.Fatalf("the late save failed %v", err)
+	}
+
+	var forNew, forOld int
+	if err := e.Pool.QueryRow(t.Context(),
+		"SELECT count(*) FILTER (WHERE email = 'baru@example.com'), count(*) FILTER (WHERE email = 'budi@example.com') FROM email_tokens WHERE user_id = $1 AND purpose = 'verify' AND used_at IS NULL",
+		id).Scan(&forNew, &forOld); err != nil {
+		t.Fatal(err)
+	}
+
+	if forNew != 1 || forOld != 0 {
+		t.Fatalf("the unused tokens are %d for the new address and %d for the old one", forNew, forOld)
+	}
+
+	link, ok := e.Mail.VerifyLink("baru@example.com")
+	if r := e.Call(t, http.MethodPost, "/v1/auth/verify-email", `{"token":"`+testutil.Token(t, link, ok)+`"}`, ""); r.Status != http.StatusOK {
+		t.Fatalf("the new link answered %d %v", r.Status, r.Body)
+	}
+}

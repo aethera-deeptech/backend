@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/caarlos0/env/v11"
 )
@@ -40,6 +41,9 @@ type Config struct {
 	// address, which is the reverse proxy on the same host.
 	TrustProxy  bool   `env:"TRUST_PROXY" envDefault:"false"`
 	ProxyHeader string `env:"PROXY_HEADER" envDefault:"X-Real-IP"`
+	// TrustProxyCIDRs narrows the trusted addresses to a list of IPs or CIDR ranges. When it is empty every private and loopback
+	// address is trusted, which includes other containers on a shared Docker network.
+	TrustProxyCIDRs []string `env:"TRUST_PROXY_CIDRS" envSeparator:","`
 
 	SMTPHost        string `env:"SMTP_HOST"`
 	SMTPPort        uint   `env:"SMTP_PORT" envDefault:"465"`
@@ -94,6 +98,34 @@ func parse(environ map[string]string) (Config, error) {
 		return Config{}, fmt.Errorf("APP_ORIGIN is %q and must use https in production", cfg.AppOrigin)
 	}
 
+	if origin.User != nil || strings.Contains(origin.Host, "*") {
+		return Config{}, fmt.Errorf("APP_ORIGIN is %q and must be one exact origin, with no user name and no wildcard", cfg.AppOrigin)
+	}
+
+	// a browser sends the origin in lower case and without the default port, so the setting is written the same way
+	cfg.AppOrigin = canonicalOrigin(origin)
+
+	// every entry is written in its plain form, because the server compares it as text with the address of the connection
+	for i, entry := range cfg.TrustProxyCIDRs {
+		if ip, network, err := net.ParseCIDR(entry); err == nil {
+			// an IPv4-mapped range shorter than 96 bits is not an IPv4 range, and the server would never match it
+			if ones, bits := network.Mask.Size(); bits == 128 && ones < 96 && ip.To4() != nil {
+				return Config{}, fmt.Errorf("TRUST_PROXY_CIDRS holds %q, and a mapped IPv4 range needs a prefix of 96 bits or more", entry)
+			}
+
+			cfg.TrustProxyCIDRs[i] = network.String()
+
+			continue
+		}
+
+		ip := net.ParseIP(entry)
+		if ip == nil {
+			return Config{}, fmt.Errorf("TRUST_PROXY_CIDRS holds %q, which is not an IP address or a CIDR range", entry)
+		}
+
+		cfg.TrustProxyCIDRs[i] = ip.String()
+	}
+
 	if !slices.Contains([]string{"tls", "starttls", "none"}, cfg.SMTPSecurity) {
 		return Config{}, fmt.Errorf("SMTP_SECURITY is %q and must be tls, starttls or none", cfg.SMTPSecurity)
 	}
@@ -112,6 +144,25 @@ func parse(environ map[string]string) (Config, error) {
 	}
 
 	return cfg, nil
+}
+
+// canonicalOrigin writes an origin the way a browser serializes it
+func canonicalOrigin(u *url.URL) string {
+	host := strings.ToLower(u.Hostname())
+	if strings.Contains(host, ":") {
+		host = "[" + host + "]"
+	}
+
+	port := u.Port()
+	if (u.Scheme == "https" && port == "443") || (u.Scheme == "http" && port == "80") {
+		port = ""
+	}
+
+	if port != "" {
+		host += ":" + port
+	}
+
+	return u.Scheme + "://" + host
 }
 
 // DatabaseURL returns the connection URL of the database. The user and the password are escaped by the URL type.

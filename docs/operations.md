@@ -24,6 +24,7 @@ The settings that a production host must set are `APP_ENV=production`, `APP_ORIG
 
 The limits on sign in, sign up and the other account routes count clients by their address, so the address has to be right.
 
+- The service trusts every private and loopback address to set that header, which includes other containers on a shared Docker network. Set `TRUST_PROXY_CIDRS` to the address of the proxy as the container sees it, for example the gateway of the compose network, when other apps share a network with the API.
 - nginx must overwrite the header that the service reads, `proxy_set_header X-Real-IP $remote_addr;`, and must never pass the header of the client on. The service trusts the header only for a request that comes from a private or loopback address, which is nginx on the same host.
 - Behind Cloudflare, `$remote_addr` is the address of a Cloudflare server unless nginx uses the realip module with the ranges of Cloudflare (`set_real_ip_from` for each range, and `real_ip_header CF-Connecting-IP;`). Without it every client shares a few addresses, and the limits lock out real users together.
 - An IPv6 client is counted by its /64 prefix, because it can change the rest of its address at no cost.

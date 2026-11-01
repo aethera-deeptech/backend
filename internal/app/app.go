@@ -28,7 +28,7 @@ func New(d Deps) *fiber.App {
 	cfg := d.Config
 
 	app := server.New(server.Options{
-		Version: d.Version, DB: d.Pool, AppOrigin: cfg.AppOrigin, TrustProxy: cfg.TrustProxy, ProxyHeader: cfg.ProxyHeader,
+		Version: d.Version, DB: d.Pool, AppOrigin: cfg.AppOrigin, TrustProxy: cfg.TrustProxy, ProxyHeader: cfg.ProxyHeader, TrustedProxies: cfg.TrustProxyCIDRs,
 	})
 
 	accounts := auth.NewService(auth.NewStore(d.Pool), auth.NewLimiter(d.Pool), auth.NewHasher(passwordHashSlots), d.Mailer, cfg.AppOrigin)

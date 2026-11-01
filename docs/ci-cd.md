@@ -7,7 +7,7 @@
 | `commits.yaml` | pull requests | Lints the commits of the pull request with commitlint and its Conventional Commits rules, which are set in `commitlint.config.mjs`, and checks the pull request title against the same types. It never cancels a run, runs the whole job on every edit, including an edit of the body only, and reads the title from the pull request when it runs, so editing the body of a pull request cannot leave a cancelled required check behind and a rerun checks the current title. Only the `Merge branch 'main' into <branch>` message of the Update branch button is skipped, so a `fixup!`, `squash!` or `Revert` message fails like any other, and the line lengths of the body and footer are not limited because Renovate writes long ones |
 | `prformat.yaml` | pull requests | Checks that the branch is named `type/short-description` with a type of Conventional Commits, that the pull request has a label and an assignee, and that the body is only hyphen bullets with text. A pull request that a bot opened (Renovate, Dependabot or Release Please) from its own branch is skipped. It never cancels a run and reads the pull request when it runs, so a rerun checks what the pull request looks like now. Adding or removing a label or an assignee starts a new run, and the newest run of the check is the one that counts |
 | `release-please.yaml` | push to main, manual | Keeps one release pull request with the next version and `CHANGELOG.md`. Merging that pull request creates the tag and the GitHub release. It runs in the `release` environment, which only `main` can use, and it creates its token from the GitHub App `syafa-bot`. It is not a required check |
-| `config.yaml` | push to main, pull requests, manual | Lints the configuration of the repository with the eight jobs below |
+| `config.yaml` | push to main, pull requests, manual | Lints the configuration of the repository with the nine jobs below |
 | `ci.yaml` | push to main, pull requests, manual | Checks and tests the Go code with the two jobs below, and uploads the coverage to Codecov |
 | `security.yaml` | push to main, pull requests, daily at 20:00 UTC, manual | Runs CodeQL, the Go vulnerability check, the Go license check, dependency review, the secret scan, the Trivy filesystem scan and OSSF Scorecard. The daily run catches a CVE that is published for code that did not change. Scorecard never runs on pull requests |
 | `docker.yaml` | push to main, tags, pull requests, manual | Builds the image for `linux/amd64` and `linux/arm64`, pushes it to GitHub Container Registry only, scans both platforms with Trivy, attaches an SBOM, signs it with cosign and verifies the signature right away. Only `main` writes the build cache. A pull request and a tag read it and never write one. It never logs in to Docker Hub, because a pull request can change this workflow. A pull request from a fork, a run of Dependabot and a manual run from a ref other than `main` only build the image, and the job still reports success because it had nothing to publish. A pull request from a branch of this repository, such as one of Renovate, publishes the image as `pr-<number>`. This workflow never gets a `workflow_call` trigger, because a workflow that called it would get signatures with the identity of this file |
@@ -22,6 +22,7 @@
 | `config.yaml` | Actionlint | The syntax and the expressions of every workflow, with actionlint |
 | `config.yaml` | Zizmor | The workflows for security problems, such as unpinned actions, broad permissions and injection through expressions, with zizmor |
 | `config.yaml` | ShellCheck | Every tracked file that ends in `.sh`, with the settings of `.shellcheckrc` |
+| `config.yaml` | OpenAPI lint | `openapi.yaml` against the recommended rules of Redocly, which `redocly.yaml` sets. The contract between the service and its clients is that file, so a break in it fails here |
 | `config.yaml` | Hadolint | The `Dockerfile` against the rules of Hadolint, which also lints the shell commands in it |
 | `config.yaml` | Dotenv lint | The names and the form of the settings in `.env.example`, with dotenv-linter. The order of the keys is not checked, because the file is grouped by topic |
 | `config.yaml` | Compose config | `docker compose config` on `compose.production.example.yml` with the settings of `.env.example`. It builds and starts nothing, so it keeps the example from drifting away from the settings |
@@ -56,6 +57,7 @@ Every check below is required and is reported by GitHub Actions.
 | Zizmor | GitHub Actions | yes |
 | ShellCheck | GitHub Actions | yes |
 | Hadolint | GitHub Actions | yes |
+| OpenAPI lint | GitHub Actions | yes |
 | Dotenv lint | GitHub Actions | yes |
 | Compose config | GitHub Actions | yes |
 | File names | GitHub Actions | yes |
@@ -115,6 +117,7 @@ The mirror copies the signature first, checks it on Docker Hub and only then mov
 The File names job reads the names of the files and never opens one. The rules are in `.ls-lint.yml`.
 
 - A folder is lowercase words joined by hyphens, and a leading dot marks the folder of a tool.
+- `openapi.yaml` and `redocly.yaml` keep the `.yaml` ending, because the OpenAPI specification and Redocly name them so, and `.ls-lint.yml` lists them as the exception.
 - A file is lowercase words joined by hyphens, and a dot may mark a variant. ls-lint checks only the part before the first dot, so a variant part such as `BAD` in `deploy.BAD.yaml` is not checked.
 - A Go file is lowercase words with no separator, and only `_test` may follow them.
 - A Markdown file may also be written in capitals joined by underscores, such as `README.md` and `CODE_OF_CONDUCT.md`.
@@ -134,7 +137,7 @@ The Renovate config job runs `renovate-config-validator --strict` on every pull 
 
 A dependency update bot cannot read a tool that is named inside a `run` step, so the tools of the jobs are listed where it can.
 
-- `.github/tools/Dockerfile` has one stage for each image that a job starts with `docker run`, which are actionlint, zizmor, ShellCheck, Hadolint, dotenv-linter and gitleaks. Nothing builds it. The workflows get the image from `.github/tools/image.sh <stage>`, so the version of a bump is the version the jobs run.
+- `.github/tools/Dockerfile` has one stage for each image that a job starts with `docker run`, which are actionlint, zizmor, ShellCheck, Hadolint, dotenv-linter, Redocly and gitleaks. Nothing builds it. The workflows get the image from `.github/tools/image.sh <stage>`, so the version of a bump is the version the jobs run.
 - The versions of ls-lint and of the Renovate validator sit in the `env` of their steps. A comment such as `# renovate: datasource=npm depName=@ls-lint/ls-lint` right above the line tells Renovate where to look, so keep the comment when you edit the line.
 
 All actions are pinned to commit SHAs with the version in a comment, and the setting "require actions to be pinned to a full-length commit SHA" is on for the repository.

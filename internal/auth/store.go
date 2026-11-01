@@ -148,6 +148,17 @@ func (s *Store) SaveToken(ctx context.Context, userID, email, purpose string, ha
 }
 
 func saveToken(ctx context.Context, tx pgx.Tx, userID, email, purpose string, hash []byte, ttl time.Duration) error {
+	// the row lock orders this save after a change of the address, and a save for an address that is gone does nothing, so a late
+	// resend cannot delete the link that went to the new address
+	var current string
+	if err := tx.QueryRow(ctx, "SELECT email FROM users WHERE id = $1 FOR UPDATE", userID).Scan(&current); err != nil {
+		return fmt.Errorf("lock the user %w", err)
+	}
+
+	if current != email {
+		return nil
+	}
+
 	if _, err := tx.Exec(ctx, "DELETE FROM email_tokens WHERE user_id = $1 AND purpose = $2 AND used_at IS NULL", userID, purpose); err != nil {
 		return fmt.Errorf("remove the older tokens %w", err)
 	}
@@ -180,9 +191,21 @@ func (s *Store) TokenValid(ctx context.Context, purpose string, hash []byte) (bo
 func consumeToken(ctx context.Context, tx pgx.Tx, purpose string, hash []byte) (string, error) {
 	var userID string
 
+	// the user row is locked before the token row, the same order as a save of a token, so the two never wait for each other
+	err := tx.QueryRow(ctx,
+		"SELECT u.id FROM users u WHERE u.id = (SELECT user_id FROM email_tokens WHERE token_hash = $1 AND purpose = $2) FOR UPDATE",
+		hash, purpose).Scan(&userID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", ErrTokenInvalid
+	}
+
+	if err != nil {
+		return "", fmt.Errorf("lock the user %w", err)
+	}
+
 	// the address of the token must still be the address of the account, so a link that went to one mailbox never acts on an account that
 	// moved to another address
-	err := tx.QueryRow(ctx,
+	err = tx.QueryRow(ctx,
 		`UPDATE email_tokens t SET used_at = now() FROM users u
 		 WHERE t.token_hash = $1 AND t.purpose = $2 AND t.used_at IS NULL AND t.expires_at > now() AND u.id = t.user_id AND u.email = t.email
 		 RETURNING t.user_id`, hash, purpose).Scan(&userID)
