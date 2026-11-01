@@ -57,7 +57,7 @@ func main() {
 	}
 }
 
-func run() error {
+func run() (err error) {
 	cfg, err := config.Load()
 	if err != nil {
 		return fmt.Errorf("load the settings %w", err)
@@ -71,6 +71,14 @@ func run() error {
 		EventsPerMinute: cfg.SentryEventsPerMinute,
 	})
 	defer stopReports()
+
+	// a failure that stops the service, such as a migration that fails or a database that does not answer, is sent before the reports
+	// stop, because a crash loop after a bad deploy is the case in which the report matters most
+	defer func() {
+		if err != nil {
+			errorreport.Report(err, errorreport.Info{})
+		}
+	}()
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

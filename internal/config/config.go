@@ -56,7 +56,7 @@ type Config struct {
 	// SentryDSN is where the error reports go, and empty switches them off. SentryEventsPerMinute is the most events that leave in a
 	// minute, so a crash loop cannot use up the quota.
 	SentryDSN             string `env:"SENTRY_DSN"`
-	SentryEnvironment     string `env:"SENTRY_ENVIRONMENT" envDefault:"production"`
+	SentryEnvironment     string `env:"SENTRY_ENVIRONMENT"`
 	SentryServerName      string `env:"SENTRY_SERVER_NAME"`
 	SentryEventsPerMinute int    `env:"SENTRY_EVENTS_PER_MINUTE" envDefault:"30"`
 	SMTPFromAddress       string `env:"SMTP_FROM_ADDRESS"`
@@ -140,6 +140,11 @@ func parse(environ map[string]string) (Config, error) {
 	// without a mail server nobody can verify an email, so a production service that cannot send refuses to start
 	if cfg.AppEnv == EnvProduction && (cfg.SMTPHost == "" || cfg.SMTPFromAddress == "") {
 		return Config{}, errors.New("SMTP_HOST and SMTP_FROM_ADDRESS are required in production")
+	}
+
+	// a copy that runs in development must not send its events to the production environment of the project
+	if cfg.SentryEnvironment == "" {
+		cfg.SentryEnvironment = cfg.AppEnv
 	}
 
 	if cfg.SentryEventsPerMinute < 1 || cfg.SentryEventsPerMinute > maxSentryEvents {

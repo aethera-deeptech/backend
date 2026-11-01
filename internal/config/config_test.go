@@ -27,7 +27,7 @@ func TestParse(t *testing.T) {
 		{name: "defaults", environ: withDB(nil), want: Config{
 			AppEnv: EnvDevelopment, AppPort: 8080, DBHost: "db", DBPort: 5432, DBName: "app", DBUsername: "user", DBPassword: "pass",
 			DBSSLMode: "require", DBMaxConns: 8, AppOrigin: "http://localhost:5173", ProxyHeader: "X-Real-IP", SMTPPort: 465,
-			SMTPSecurity: "tls", SMTPFromName: "Aethera", SentryEnvironment: "production", SentryEventsPerMinute: 30,
+			SMTPSecurity: "tls", SMTPFromName: "Aethera", SentryEnvironment: "development", SentryEventsPerMinute: 30,
 		}},
 		{
 			name: "values from the environment",

@@ -18,6 +18,10 @@ var scrubbers = []struct {
 	{regexp.MustCompile(`eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*`), "[token]"},
 	{regexp.MustCompile(`(?i)bearer\s+[A-Za-z0-9._~+/=-]+`), "Bearer [token]"},
 	{regexp.MustCompile(`[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}`), "[email]"},
+	// an IPv4 address with an optional port, which a net error can hold for a client or for the database
+	{regexp.MustCompile(`\b[0-9]{1,3}(?:\.[0-9]{1,3}){3}(?::[0-9]{1,5})?\b`), "[ip]"},
+	// an IPv6 address
+	{regexp.MustCompile(`(?i)\b(?:[0-9a-f]{1,4}:){3,7}[0-9a-f]{1,4}\b`), "[ip]"},
 	// a hash, a refresh token or a key, a run of 32 or more letters and digits (the groups of a UUID are shorter)
 	{regexp.MustCompile(`[A-Za-z0-9_]{32,}`), "[secret]"},
 	// a phone number or any other long number

@@ -41,6 +41,7 @@ const flushTimeout = 2 * time.Second
 
 type reporter struct {
 	client *sentry.Client
+	limit  *minuteCap
 }
 
 var active atomic.Pointer[reporter]
@@ -66,7 +67,7 @@ func Start(cfg Config) func() {
 		Environment: cfg.Environment,
 		ServerName:  cfg.ServerName,
 		Transport:   cfg.Transport,
-		// the cap below is the limit, and an event that passes it is always sent
+		// the cap of Report and Panic is the limit, and an event that passes it is always sent
 		SampleRate: 1,
 		// nothing of a request is collected, and no breadcrumbs, which can hold log lines. The code never hands a request to the
 		// SDK, so this is the second lock after the scrub of BeforeSend, and only the user that the code sets stays.
@@ -87,10 +88,6 @@ func Start(cfg Config) func() {
 		BeforeSend: func(event *sentry.Event, _ *sentry.EventHint) *sentry.Event {
 			scrubEvent(event)
 
-			if !limit.allow() {
-				return nil
-			}
-
 			return event
 		},
 	})
@@ -100,7 +97,7 @@ func Start(cfg Config) func() {
 		return func() {}
 	}
 
-	active.Store(&reporter{client: client})
+	active.Store(&reporter{client: client, limit: limit})
 	slog.Info("error reports go to Sentry", slog.String("environment", cfg.Environment))
 
 	return func() {
@@ -113,9 +110,11 @@ func Start(cfg Config) func() {
 // Report sends an error that became a failure of the server. It does nothing when the reports are off.
 func Report(err error, info Info) {
 	current := active.Load()
-	if current == nil || err == nil {
+	if current == nil || err == nil || !current.limit.allow() {
 		return
 	}
+
+	defer guard()
 
 	current.client.CaptureException(err, nil, scopeOf(info))
 }
@@ -123,14 +122,24 @@ func Report(err error, info Info) {
 // Panic sends a panic that a handler raised. It does nothing when the reports are off.
 func Panic(recovered any, info Info) {
 	current := active.Load()
-	if current == nil {
+	if current == nil || !current.limit.allow() {
 		return
 	}
+
+	defer guard()
 
 	scope := scopeOf(info)
 	scope.SetTag("panic", "true")
 
 	current.client.Recover(recovered, nil, scope)
+}
+
+// guard keeps a failure inside the reporter from leaving it. The reports run on the goroutine of a request and in the recovery of a
+// panic, and a panic there would end the process, which is the opposite of what a reporter is for. The log line holds no value.
+func guard() {
+	if recover() != nil {
+		slog.Error("the error report failed")
+	}
 }
 
 func scopeOf(info Info) *sentry.Scope {
