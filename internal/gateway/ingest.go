@@ -317,16 +317,41 @@ func storeSamples(ctx context.Context, tx pgx.Tx, gatewayID string, n NodeBatch,
 		return 0, rejected, nil
 	}
 
-	tag, err := tx.Exec(ctx,
+	rows, err := tx.Query(ctx,
 		`INSERT INTO readings (gateway_id, node_id, t, volts, amps, watts, energy_kwh, hertz, power_factor, node_state)
 		 SELECT $1, $2, x.t, x.v, x.i, x.p, x.e, x.f, x.pf, x.a
 		 FROM unnest($3::timestamptz[], $4::float8[], $5::float8[], $6::float8[], $7::float8[], $8::float8[], $9::float8[], $10::int4[])
 		   AS x(t, v, i, p, e, f, pf, a)
-		 ON CONFLICT DO NOTHING`,
+		 ON CONFLICT DO NOTHING
+		 RETURNING t, watts, energy_kwh`,
 		gatewayID, n.NodeID, ts, volts, amps, watts, energy, hertz, pfs, states)
 	if err != nil {
 		return 0, 0, fmt.Errorf("store the samples %w", err)
 	}
 
-	return int(tag.RowsAffected()), rejected, nil
+	inserted := []stored{}
+
+	for rows.Next() {
+		var s stored
+		if err := rows.Scan(&s.t, &s.watts, &s.energy); err != nil {
+			rows.Close()
+
+			return 0, 0, fmt.Errorf("read a stored sample %w", err)
+		}
+
+		inserted = append(inserted, s)
+	}
+
+	rows.Close()
+
+	if err := rows.Err(); err != nil {
+		return 0, 0, fmt.Errorf("store the samples %w", err)
+	}
+
+	// only the samples that were new are counted, so a retry of a batch never counts the same energy twice
+	if err := apply(ctx, tx, gatewayID, n.NodeID, inserted); err != nil {
+		return 0, 0, err
+	}
+
+	return len(inserted), rejected, nil
 }

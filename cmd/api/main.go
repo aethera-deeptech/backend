@@ -20,6 +20,7 @@ import (
 	"github.com/aethera-deeptech/backend/internal/config"
 	"github.com/aethera-deeptech/backend/internal/database"
 	"github.com/aethera-deeptech/backend/internal/errorreport"
+	"github.com/aethera-deeptech/backend/internal/gateway"
 	"github.com/aethera-deeptech/backend/internal/healthcheck"
 	"github.com/aethera-deeptech/backend/internal/janitor"
 	"github.com/aethera-deeptech/backend/internal/logging"
@@ -97,7 +98,7 @@ func run() (err error) {
 	}
 
 	// the clean up stops with the signal, and a round that is running ends with its context
-	go janitor.New(pool, janitorEvery, auth.PurgeTasks()...).Run(ctx)
+	go janitor.New(pool, janitorEvery, append(auth.PurgeTasks(), gateway.PurgeTasks()...)...).Run(ctx)
 
 	mailQueue, mailer := newMailer(cfg)
 	defer func() {
