@@ -49,8 +49,8 @@ The File names job reads the names of the files and never opens one. The rules a
 - A folder is lowercase words joined by hyphens, and a leading dot marks the folder of a tool.
 - A file is lowercase words joined by hyphens, and a dot may mark a variant.
 - A Go file is lowercase words with no separator, and only `_test` may follow them.
-- A Markdown file may also use capitals, such as `README.md` and `CODE_OF_CONDUCT.md`.
-- A YAML file ends with `.yml`. A workflow ends with `.yaml` and not `.yml`, because the name of the workflow file is part of the identity that signs an image.
+- A Markdown file may also be written in capitals joined by underscores, such as `README.md` and `CODE_OF_CONDUCT.md`.
+- A YAML file in the root folder ends with `.yml`. The check does not look at `.yaml` files in other folders, because the `exists` rule of ls-lint only counts the files of the folder that holds it. A workflow ends with `.yaml` and not `.yml`, because the name of the workflow file is part of the identity that signs an image.
 - The issue forms in `.github/ISSUE_TEMPLATE` are skipped, because GitHub names them by what a person sees.
 - A file with no extension, such as `LICENSE`, has no extension rule.
 
