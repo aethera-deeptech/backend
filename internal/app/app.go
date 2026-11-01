@@ -9,6 +9,7 @@ import (
 	"github.com/aethera-deeptech/backend/internal/auth"
 	"github.com/aethera-deeptech/backend/internal/business"
 	"github.com/aethera-deeptech/backend/internal/config"
+	"github.com/aethera-deeptech/backend/internal/production"
 	"github.com/aethera-deeptech/backend/internal/server"
 )
 
@@ -38,6 +39,7 @@ func New(d Deps) *fiber.App {
 	v1 := app.Group("/v1")
 	accountRoutes.Register(v1)
 	business.NewHandlers(business.NewStore(d.Pool)).Register(v1, require)
+	production.NewHandlers(production.NewStore(d.Pool)).Register(v1, require)
 
 	return app
 }
