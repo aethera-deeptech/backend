@@ -129,7 +129,7 @@ func (c *poolCollector) Collect(ch chan<- prometheus.Metric) {
 	counter(c.acquires, float64(s.AcquireCount()))
 	counter(c.waited, float64(s.EmptyAcquireCount()))
 	counter(c.canceled, float64(s.CanceledAcquireCount()))
-	counter(c.waitSeconds, s.AcquireDuration().Seconds())
+	counter(c.waitSeconds, s.EmptyAcquireWaitTime().Seconds())
 }
 
 // AllowRoutes names the paths that may appear as a label, the routes and the groups whose middleware can refuse a request before it
