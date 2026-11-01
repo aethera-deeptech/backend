@@ -8,6 +8,7 @@
 | `prformat.yaml` | pull requests | Checks that the branch is named `type/short-description` with a type of Conventional Commits, that the pull request has a label and an assignee, and that the body is only hyphen bullets with text. A pull request that a bot opened (Renovate, Dependabot or Release Please) from its own branch is skipped. It never cancels a run and reads the pull request when it runs, so a rerun checks what the pull request looks like now. Adding or removing a label or an assignee starts a new run, and the newest run of the check is the one that counts |
 | `config.yaml` | push to main, pull requests, manual | Lints the configuration of the repository with the six jobs below |
 | `ci.yaml` | push to main, pull requests, manual | Checks and tests the Go code with the two jobs below, and uploads the coverage to Codecov |
+| `docker.yaml` | push to main, tags, pull requests, manual | Builds the image for `linux/amd64` and `linux/arm64`, pushes it to GitHub Container Registry only, scans both platforms with Trivy, attaches an SBOM, signs it with cosign and verifies the signature right away. Only `main` writes the build cache. A pull request and a tag read it and never write one. It never logs in to Docker Hub, because a pull request can change this workflow. A pull request from a fork, a run of Dependabot and a manual run from a ref other than `main` only build the image, and the job still reports success because it had nothing to publish. A pull request from a branch of this repository, such as one of Renovate, publishes the image as `pr-<number>`. This workflow never gets a `workflow_call` trigger, because a workflow that called it would get signatures with the identity of this file |
 
 ### Jobs
 
@@ -23,8 +24,9 @@
 | `config.yaml` | Renovate config | `renovate.json` against the schema of Renovate, in strict mode, so a renamed or removed option fails |
 | `ci.yaml` | Lint | `gofmt`, that `go.mod` and `go.sum` are tidy, `go vet`, and golangci-lint with the linters of `.golangci.yml` |
 | `ci.yaml` | Tests | `go build`, then every test with the race detector in a random order, and the coverage upload |
+| `docker.yaml` | Build, scan and push image | The image build for both platforms, the Trivy scan of each platform, the SBOM, the signature and the check of that signature |
 
-More workflows arrive with the pull requests that need them. The jobs for the Docker image, the security scans and the releases are added together with the code they check.
+More workflows arrive with the pull requests that need them. The jobs for the security scans and the releases are added together with the code they check.
 
 ## Required checks
 
@@ -46,6 +48,7 @@ Every check below is required and is reported by GitHub Actions.
 | Renovate config | GitHub Actions | yes |
 | Lint | GitHub Actions | yes |
 | Tests | GitHub Actions | yes |
+| Build, scan and push image | GitHub Actions | yes |
 
 Each required check is pinned to the app that reports it, so another app cannot post a check with the same name. When a pull request adds, renames or removes a job, the ruleset is updated before the pull request is merged.
 
@@ -63,7 +66,21 @@ The `Dockerfile` has two stages. The first compiles the program on the machine t
 
 The image has no `curl`, so its health check runs the program again with the argument `healthcheck`. That call asks `/healthz` on the loopback address and exits with 0 only when the answer is 200. The memory limit of the container and the `GOMEMLIMIT` setting belong to the compose file that runs the image, and `.dockerignore` keeps the env files, the documentation and the tool settings out of the build context.
 
-The Hadolint job lints the `Dockerfile`. Another pull request adds the workflow that builds, scans and publishes the image.
+The Hadolint job lints the `Dockerfile`, and `docker.yaml` builds, scans and publishes the image.
+
+Image tags are `latest` for `main`, `sha-<commit>` for builds of `main` and of pull requests, `pr-<number>` for pull requests, and `1.2.3`, `1.2` and `1` for version tags, where `1` is only set from a major version of 1 or higher. A release commit is built twice, once for `main` and once for its tag, so only the build of `main` sets `latest` and the `sha-` tag, and the build of the tag only adds the version tags. The image is published as `ghcr.io/aethera-deeptech/backend` with the built-in token. GitHub creates the package as private on the first push, so the owner sets it to public in the package settings before anyone can pull it or run `cosign verify` without a login. Every tag is one image for both platforms, and the signature covers the index of both. Trivy scans each platform and reports it in its own code scanning category. The SBOM is made for the amd64 image only.
+
+Verify an image with cosign by checking the identity of the workflow that signed it.
+
+```sh
+cosign verify \
+  --new-bundle-format=false \
+  --certificate-identity-regexp '^https://github\.com/aethera-deeptech/backend/\.github/workflows/docker\.yaml@refs/(heads/main|tags/v[0-9]+\.[0-9]+\.[0-9]+)$' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  ghcr.io/aethera-deeptech/backend:latest
+```
+
+The pattern leaves out the identity of pull request builds on purpose, so an image tagged `pr-<number>` does not pass this check. The check inside `docker.yaml` accepts pull request identities because it only verifies the image that the same run just built. The base images come from Docker Hub, and the build does not use the Google mirror, so a pull limit of Docker Hub can fail a build. Run the build again when that happens.
 
 ## File names
 
