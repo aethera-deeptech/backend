@@ -6,6 +6,7 @@
 
 # Test and coverage output
 coverage.*
+!coverage.go
 *.coverprofile
 profile.cov
 
