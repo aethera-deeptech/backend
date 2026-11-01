@@ -95,7 +95,8 @@ jobs:
       # that the service and its tests import, and fails on a license that go-licenses counts as forbidden or unknown, such as AGPL,
       # WTFPL or SSPL, and on a package without a license file that it recognizes. The GPL family is not forbidden here because the
       # repository is under GPL-3.0 itself. The defaults also forbid AGPL, which GPL-3.0 could take in, so to let an AGPL dependency
-      # through on purpose, narrow --disallowed_types to unknown.       - name: Check the licenses of the dependencies
+      # through on purpose, narrow --disallowed_types to unknown.
+      - name: Check the licenses of the dependencies
         env:
           # renovate: datasource=go depName=github.com/google/go-licenses/v2
           GO_LICENSES_VERSION: v2.0.1
@@ -122,7 +123,7 @@ jobs:
           fail-on-severity: high
           # The repository is public and under GPL-3.0, so GPL dependencies fit. SSPL does not, because it asks for the
           # source of the whole service stack, so a dependency that is added or changed under it is refused. The Go licenses job reads
-          # the whole tree and refuses AGPL as well
+          # the whole tree and refuses AGPL as well.
           deny-licenses: SSPL-1.0
           comment-summary-in-pr: never
 
