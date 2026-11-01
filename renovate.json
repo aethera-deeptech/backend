@@ -53,6 +53,12 @@
       "addLabels": ["docker"]
     },
     {
+      "description": "ghcr.io gives Renovate no release time, so with the 7 day wait and the strict filter an update of a GHCR image would be held forever, these images skip the age check",
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["ghcr.io/**"],
+      "minimumReleaseAgeBehaviour": "timestamp-optional"
+    },
+    {
       "description": "the tools that CI starts from a workflow, such as ls-lint and Renovate itself, take the commit type of the workflows",
       "matchManagers": ["custom.regex"],
       "semanticCommitType": "ci",
