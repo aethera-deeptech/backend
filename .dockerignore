@@ -1,0 +1,16 @@
+.git
+.github
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/*.env.example
+*.md
+docs
+codecov.yml
+renovate.json
+.golangci.yml
+.ls-lint.yml
+.node-version
+.shellcheckrc
