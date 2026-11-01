@@ -107,6 +107,49 @@ jobs:
         run: |
           docker run --rm -i "$(bash ./.github/actions/pull-images/pull.sh "$(bash ./.github/tools/image.sh hadolint)")" < Dockerfile
 
+  dotenv:
+    name: Dotenv lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Pull images through the Google mirror
+        uses: ./.github/actions/pull-images
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          token: ${{ secrets.DOCKERHUB_PULL_TOKEN }}
+
+      # The example file is grouped by topic and not sorted, so the check for the order of the keys is off
+      - name: Lint the example env file
+        run: |
+          docker run --rm -v "$PWD:/app:ro" -w /app "$(bash ./.github/actions/pull-images/pull.sh "$(bash ./.github/tools/image.sh dotenv-linter)")" \
+            check --skip-updates --plain --ignore-checks UnorderedKey .env.example
+
+  compose:
+    name: Compose config
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # docker compose config reads the file and builds nothing and starts nothing. Nothing else uses the example file, so this is what
+      # keeps it from drifting away from the settings in .env.example
+      - name: Check the compose file
+        run: |
+          cp .env.example .env
+          docker compose -f compose.production.example.yml config --quiet
+
   names:
     name: File names
     runs-on: ubuntu-latest
