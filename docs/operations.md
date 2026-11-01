@@ -14,7 +14,7 @@ The service has no database code yet. When it has, the copies join the Docker ne
 
 1. Make a folder for the project, for example `/home/<user>/docker/aethera-backend`.
 2. Copy `compose.production.example.yml` into it as `compose.yml`, copy `scripts/rolling-update.sh` next to it, and make the script executable.
-3. Copy `.env.example` to `.env` and set the values of the host. The settings that start with `API_`, `GOMEMLIMIT`, `LOG_` and `IMAGE_TAG` belong to Docker Compose, and the others belong to the service. Keep the file readable only by its owner, with `chmod 600 .env`.
+3. Copy `.env.example` to `.env` and set the values of the host, which includes `APP_ENV=production`. The settings that start with `API_`, `GOMEMLIMIT`, `LOG_` and `IMAGE_TAG` belong to Docker Compose, and the others belong to the service. Keep the file readable only by its owner, with `chmod 600 .env`.
 4. Put the loopback ports of the copies in the upstream of the reverse proxy, for example `server 127.0.0.1:8010;` and `server 127.0.0.1:8011;`.
 5. Run `./rolling-update.sh <version>` with the first version, for example `./rolling-update.sh 0.1.0`.
 
@@ -29,7 +29,7 @@ Run `./rolling-update.sh <version>` on the host, in tmux or screen so a dropped 
 3. It sets `IMAGE_TAG` in `.env` to the version.
 4. It recreates `api-1` alone, waits until `/healthz` answers with status `ok` and the version, twice in a row, and only then goes on to `api-2`.
 
-When a copy does not become healthy, the script stops and says which copies run the new version and which still run the old one. It rolls nothing back by itself. `DRY_RUN=1` prints the steps and changes nothing, and `TIMEOUT` sets how many seconds a copy gets to become healthy, 120 by default.
+When a copy does not become healthy, the script stops and says which copies run the new version and which still run the old one, and it warns that a plain `docker compose up -d` would now recreate every copy on the new version. It rolls nothing back by itself. `DRY_RUN=1` prints the steps and changes nothing, and `TIMEOUT` sets how many seconds a copy gets to become healthy, 120 by default.
 
 To go back to an older version, run `ROLLBACK_OK=<version> ./rolling-update.sh <version>`. The extra word is a confirmation, because a newer version may have changed the database in a way that the older one cannot run on. The service has no migrations yet. Read the changelog before going back once it has.
 
