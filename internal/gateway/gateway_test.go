@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aethera-deeptech/backend/internal/gateway"
+	"github.com/aethera-deeptech/backend/internal/janitor"
 	"github.com/aethera-deeptech/backend/internal/testutil"
 )
 
@@ -440,5 +442,80 @@ func TestACompressedBodyIsRefused(t *testing.T) {
 	r = g.e.CallWith(t, http.MethodPost, "/device/v1/readings", `{}`, map[string]string{"Content-Encoding": "gzip", "Authorization": "Bearer " + g.key})
 	if r.Status != http.StatusUnsupportedMediaType {
 		t.Fatalf("compressed readings answered %d", r.Status)
+	}
+}
+
+func TestHourlySumsKeepTheSpikeAndAreNotCountedTwice(t *testing.T) {
+	g := enrolled(t, "budi@example.com", "ESP32-AABBCC", "m")
+
+	hour := time.Now().UTC().Truncate(time.Hour)
+	// all three samples sit inside the current hour, whatever the minute is, so the test does not depend on the time of the day
+	at := func(offset time.Duration) int64 { return hour.Add(offset).Unix() }
+	mk := func(off time.Duration, watts, kwh float64) string {
+		return fmt.Sprintf(`{"t":%d,"p":%v,"e":%v}`, at(off), watts, kwh)
+	}
+
+	body := fmt.Sprintf(`{"seq":1,"sentAt":%d,"nodes":[{"nodeId":"NODE-0001","kind":"plug","samples":[%s,%s,%s]}]}`,
+		time.Now().Unix(), mk(0, 310, 10.00), mk(60*time.Second, 2000, 10.04), mk(120*time.Second, 300, 10.05))
+
+	if time.Now().UTC().Sub(hour) < 130*time.Second {
+		t.Skip("the hour began less than two minutes ago, so a sample would lie in the future")
+	}
+
+	if r := g.send(t, body); r.Status != http.StatusOK || r.Body["accepted"] != float64(3) {
+		t.Fatalf("answered %d %v", r.Status, r.Body)
+	}
+
+	check := func() {
+		t.Helper()
+
+		var samples int
+		var maxW, minW float32
+		var energy float64
+
+		err := g.e.Pool.QueryRow(t.Context(), "SELECT samples, max_watts, min_watts, energy_kwh FROM readings_hourly WHERE hour = $1", hour).
+			Scan(&samples, &maxW, &minW, &energy)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if samples != 3 || maxW != 2000 || minW != 300 || energy < 0.0499 || energy > 0.0501 {
+			t.Fatalf("the hour is %d samples, max %v, min %v, %v kWh", samples, maxW, minW, energy)
+		}
+	}
+
+	check()
+
+	// the same batch again is a retry, and so is the same samples in a new batch, and neither changes the sums
+	g.send(t, body)
+
+	body2 := fmt.Sprintf(`{"seq":2,"sentAt":%d,"nodes":[{"nodeId":"NODE-0001","kind":"plug","samples":[%s,%s]}]}`, time.Now().Unix(), mk(0, 310, 10.00), mk(60*time.Second, 2000, 10.04))
+	if r := g.send(t, body2); r.Status != http.StatusOK || r.Body["accepted"] != float64(0) {
+		t.Fatalf("the same samples in a new batch answered %d %v", r.Status, r.Body)
+	}
+
+	check()
+}
+
+func TestTheJanitorKeepsRecentReadingsAndDeletesOldOnes(t *testing.T) {
+	g := enrolled(t, "budi@example.com", "ESP32-AABBCC", "n")
+	g.send(t, batch(1, "NODE-0001", "plug", sample(10, 50)))
+
+	g.e.Exec(t, "INSERT INTO readings (gateway_id, node_id, t, watts) SELECT gateway_id, node_id, now() - interval '31 days', 5 FROM nodes")
+	g.e.Exec(t, "INSERT INTO readings_hourly (gateway_id, node_id, hour, samples, sum_watts, max_watts, min_watts) SELECT gateway_id, node_id, date_trunc('hour', now() - interval '401 days'), 1, 5, 5, 5 FROM nodes")
+	g.e.Exec(t, "INSERT INTO readings_hourly (gateway_id, node_id, hour, samples, sum_watts, max_watts, min_watts) SELECT gateway_id, node_id, date_trunc('hour', now() - interval '300 days'), 1, 5, 5, 5 FROM nodes")
+
+	j := janitor.New(g.e.Pool, time.Hour, gateway.PurgeTasks()...)
+	if deleted := j.Round(t.Context()); deleted != 2 {
+		t.Fatalf("the round deleted %d rows, want 2", deleted)
+	}
+
+	var raw, hourly int
+	if err := g.e.Pool.QueryRow(t.Context(), "SELECT (SELECT count(*) FROM readings), (SELECT count(*) FROM readings_hourly WHERE hour < now() - interval '1 day')").Scan(&raw, &hourly); err != nil {
+		t.Fatal(err)
+	}
+
+	if raw != 1 || hourly != 1 {
+		t.Fatalf("%d raw rows and %d old hourly rows are left, want 1 and 1", raw, hourly)
 	}
 }

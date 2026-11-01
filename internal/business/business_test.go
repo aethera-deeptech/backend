@@ -96,6 +96,8 @@ func TestSettingsValidation(t *testing.T) {
 		{"unknown zone", `{"timeZone":"Mars/Olympus"}`, "timeZone", "invalid", 422},
 		{"UTC is not a zone of a place", `{"timeZone":"UTC"}`, "timeZone", "invalid", 422},
 		{"Etc/UTC is not a place", `{"timeZone":"Etc/UTC"}`, "timeZone", "invalid", 422},
+		{"a zone with a half hour offset", `{"timeZone":"Asia/Kolkata"}`, "timeZone", "invalid", 422},
+		{"a zone with a 45 minute offset", `{"timeZone":"Asia/Kathmandu"}`, "timeZone", "invalid", 422},
 		{"GMT is not a place", `{"timeZone":"GMT"}`, "timeZone", "invalid", 422},
 		{"posix copy of a zone", `{"timeZone":"posix/Asia/Jakarta"}`, "timeZone", "invalid", 422},
 		{"a very long name", `{"timeZone":"` + strings.Repeat("a/", 40) + `"}`, "timeZone", "invalid", 422},
