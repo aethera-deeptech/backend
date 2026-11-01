@@ -14,6 +14,7 @@ import (
 	"github.com/aethera-deeptech/backend/internal/metrics"
 	"github.com/aethera-deeptech/backend/internal/production"
 	"github.com/aethera-deeptech/backend/internal/server"
+	"github.com/aethera-deeptech/backend/internal/tips"
 )
 
 // passwordHashSlots is how many passwords one copy hashes at the same time. One hash needs about 19 MiB.
@@ -58,6 +59,7 @@ func New(d Deps) *fiber.App {
 	gateways.RegisterDevice(app.Group("/device/v1"))
 	device.NewHandlers(device.NewPairings(d.Pool, limiter)).Register(v1, require)
 	device.NewViewHandlers(device.NewViews(d.Pool)).Register(v1, require)
+	tips.NewHandlers(tips.NewService(d.Pool)).Register(v1, require)
 
 	// the labels of the metrics are the routes that exist now, so a path that a client made up is counted as one series
 	if d.Metrics != nil {
