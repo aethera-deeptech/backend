@@ -19,6 +19,8 @@ const (
 	dateLayout  = "2006-01-02"
 	recentCount = 3
 	maxQuantity = 100000000
+	// maxAgeDays is how far back a day may be saved. The rollups of the energy are kept 400 days, so an older record could never be used.
+	maxAgeDays = 400
 )
 
 // Units are the units that a business can count in. The first one is the default of a new business.
@@ -122,24 +124,43 @@ func (s *Store) Get(ctx context.Context, businessID string, day time.Time) (Reco
 
 // Save stores the record of a day and replaces the one that is there. The day cannot be after today in the time zone of the
 // business, and the unit must be one of Units.
-func (s *Store) Save(ctx context.Context, businessID string, day time.Time, quantity int, unit string) (Record, error) {
-	loc, unitOfBusiness, err := s.location(ctx, businessID)
+func (s *Store) Save(ctx context.Context, businessID string, day time.Time, rawQuantity *int, rawUnit *string) (Record, error) {
+	loc, _, err := s.location(ctx, businessID)
 	if err != nil {
 		return Record{}, err
 	}
 
 	fields := map[string]string{}
+	today := s.today(loc)
 
-	if day.After(s.today(loc)) {
+	switch {
+	case day.After(today):
 		fields["date"] = "in_the_future"
+	case day.Before(today.AddDate(0, 0, -maxAgeDays)):
+		fields["date"] = "too_old"
 	}
 
-	if quantity < 1 || quantity > maxQuantity {
+	var (
+		quantity int
+		unit     string
+	)
+
+	switch {
+	case rawQuantity == nil:
+		fields["quantity"] = "required"
+	case *rawQuantity < 1 || *rawQuantity > maxQuantity:
 		fields["quantity"] = "out_of_range"
+	default:
+		quantity = *rawQuantity
 	}
 
-	if !contains(Units, unit) {
+	switch {
+	case rawUnit == nil:
+		fields["unit"] = "required"
+	case !contains(Units, *rawUnit):
 		fields["unit"] = "invalid"
+	default:
+		unit = *rawUnit
 	}
 
 	if len(fields) > 0 {
@@ -163,11 +184,11 @@ func (s *Store) Save(ctx context.Context, businessID string, day time.Time, quan
 		return Record{}, fmt.Errorf("save the record %w", err)
 	}
 
-	// the unit of the last save becomes the unit of the business, so the form offers it first the next time
-	if unit != unitOfBusiness {
-		if _, err := tx.Exec(ctx, "UPDATE businesses SET production_unit = $2, updated_at = now() WHERE id = $1", businessID, unit); err != nil {
-			return Record{}, fmt.Errorf("remember the unit %w", err)
-		}
+	// the unit of the last save becomes the unit of the business, so the form offers it first the next time. The comparison is part of
+	// the statement, so two saves at the same time cannot decide from a unit that the other one just changed.
+	if _, err := tx.Exec(ctx,
+		"UPDATE businesses SET production_unit = $2, updated_at = now() WHERE id = $1 AND production_unit IS DISTINCT FROM $2", businessID, unit); err != nil {
+		return Record{}, fmt.Errorf("remember the unit %w", err)
 	}
 
 	if err := tx.Commit(ctx); err != nil {
@@ -244,8 +265,8 @@ func (h *Handlers) save(c fiber.Ctx) error {
 	}
 
 	var in struct {
-		Quantity int    `json:"quantity"`
-		Unit     string `json:"unit"`
+		Quantity *int    `json:"quantity"`
+		Unit     *string `json:"unit"`
 	}
 
 	if err := api.Decode(c, &in); err != nil {
