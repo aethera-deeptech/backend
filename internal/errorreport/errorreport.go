@@ -92,7 +92,8 @@ func Start(cfg Config) func() {
 		},
 	})
 	if err != nil {
-		slog.Error("error reports are off because the Sentry settings are not valid", slog.String("reason", scrubText(err.Error())))
+		// the text of the error can hold the DSN, which is a secret in practice, so the line has a fixed text
+		slog.Error("error reports are off because SENTRY_DSN is not valid")
 
 		return func() {}
 	}
