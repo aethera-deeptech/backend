@@ -8,7 +8,7 @@ Two copies of the API run in Docker on one host, `api-1` and `api-2`. Each copy 
 
 `compose.production.example.yml` defines the two copies. Every container runs with a read-only file system, no Linux capabilities and a limit on memory and CPU. The image is `syafa/aethera-backend` on Docker Hub, which a workflow copies from GitHub Container Registry after it checks the signature, see [CI/CD](ci-cd.md#docker-hub-mirror).
 
-The service has no database code yet. When it has, the copies join the Docker network of the shared PostgreSQL container, and this page changes in the same pull request.
+Both copies also join the Docker network of the shared PostgreSQL container, which compose declares as external and never creates or removes. Its name is `DB_NETWORK`, `postgres_postgres` unless it is set. The service connects with the `DB_*` settings of the `.env` file, so the database host is the name of the container on that network.
 
 ## Set up a host
 
@@ -47,4 +47,6 @@ To go back to an older version, run `ROLLBACK_OK=<version> ./rolling-update.sh <
 
 ## Backups
 
-A database that holds data needs a backup before a migration runs on it. The service has no database code yet, so nothing needs one. Make a backup of the database before the pull request that adds the first migration is deployed.
+The service applies its migrations when a copy starts, before the copy listens. The migration library holds a lock in PostgreSQL while it runs, so two copies that start together do not race. A migration that fails stops the copy and the rolling update stops with it. The service never drops a table or deletes rows in a migration without a note in the changelog. A database that holds data needs a backup that you control. Nothing in this repository makes one.
+
+The readiness route `/readyz` answers 200 while the database answers and 503 when it does not. The container health check uses `/healthz`, which ignores the database on purpose, because a restart does not fix a database that is down.
