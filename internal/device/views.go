@@ -165,6 +165,8 @@ func (v *Views) List(ctx context.Context, businessID string) ([]ListItem, error)
 		}
 
 		it.Status = Classify(c.now, lastAt, watts, p95, anomalyAt)
+		watts = roundPtr(watts, round1)
+		today = round3(today)
 
 		switch it.Status {
 		case StatusOffline:
@@ -191,7 +193,11 @@ func (v *Views) List(ctx context.Context, businessID string) ([]ListItem, error)
 			return a < b
 		}
 
-		return strings.ToLower(out[i].Name) < strings.ToLower(out[j].Name)
+		if x, y := strings.ToLower(out[i].Name), strings.ToLower(out[j].Name); x != y {
+			return x < y
+		}
+
+		return out[i].ID < out[j].ID
 	})
 
 	return out, nil
@@ -255,6 +261,8 @@ func (v *Views) Get(ctx context.Context, businessID, id string) (Detail, error) 
 	}
 
 	out.Status = Classify(c.now, sampleAt, watts, p95, anomalyAt)
+	watts, today, month = roundPtr(watts, round1), round3(today), round3(month)
+	standby = roundPtr(standby, round1)
 	out.KindLabel = KindLabel(kind)
 	out.Signal = Signal(c.now, sampleAt, hops)
 	out.MonthKwh = &month
@@ -280,9 +288,13 @@ func (v *Views) Get(ctx context.Context, businessID, id string) (Detail, error) 
 		return Detail{}, err
 	}
 
-	out.OnHoursToday = &onHours
+	// like the day and the power, the hours of the day are not true for a device that is offline
+	if out.Status != StatusOffline {
+		out.OnHoursToday = &onHours
+	}
 
-	out.PowerPattern, err = v.pattern(ctx, gatewayID, nid, c, anomaly)
+	// the chart marks the anomaly only when the detail shows it, so the two never disagree
+	out.PowerPattern, err = v.pattern(ctx, gatewayID, nid, c, out.Anomaly)
 	if err != nil {
 		return Detail{}, err
 	}
@@ -296,6 +308,7 @@ func (v *Views) newestAnomaly(ctx context.Context, gatewayID, nodeID string, now
 	err := v.pool.QueryRow(ctx,
 		"SELECT at, peak_watts FROM anomalies WHERE gateway_id = $1 AND node_id = $2 AND at >= $3 ORDER BY at DESC LIMIT 1",
 		gatewayID, nodeID, now.Add(-AnomalyFor)).Scan(&a.At, &a.PeakW)
+	a.PeakW = round1(a.PeakW)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil //nolint:nilnil // no anomaly is a normal answer
 	}
@@ -493,6 +506,19 @@ func maxOf(v []float64) float64 {
 }
 
 func round1(v float64) float64 { return math.Round(v*10) / 10 }
+
+func round3(v float64) float64 { return math.Round(v*1000) / 1000 }
+
+// roundPtr rounds the value that p points to and returns a new pointer, and keeps a nil
+func roundPtr(p *float64, round func(float64) float64) *float64 {
+	if p == nil {
+		return nil
+	}
+
+	v := round(*p)
+
+	return &v
+}
 
 func round2(v float64) float64 { return math.Round(v*100) / 100 }
 

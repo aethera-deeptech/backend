@@ -353,7 +353,8 @@ func storeSamples(ctx context.Context, tx pgx.Tx, gatewayID string, n NodeBatch,
 		return 0, 0, err
 	}
 
-	if err := detectAnomaly(ctx, tx, gatewayID, n.NodeID, inserted, now); err != nil {
+	// the anomaly check is best effort, so it runs in a savepoint and a failure of it never loses the readings of the gateway
+	if err := watchNode(ctx, tx, gatewayID, n.NodeID, inserted, now); err != nil {
 		return 0, 0, err
 	}
 

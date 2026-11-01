@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math"
 	"time"
 
@@ -25,9 +26,10 @@ const (
 	surgeMinShare   = 0.3
 	// overloadCode is the condition that the node itself reports for an overload
 	overloadCode = 3
-	// historyDays and minHistoryDays are how far back the usual power looks and how many days the same hour of the day needs
+	// historyDays and minHistoryDays are how far back the usual power looks and how many days the same hour of the day needs. A week
+	// is the least that covers every day of the week, so a business that is closed at the weekend does not look quiet at that hour.
 	historyDays    = 15
-	minHistoryDays = 3
+	minHistoryDays = 7
 )
 
 // surgeLimit is the power above which a reading is a surge, given the usual high power of the hour and its spread
@@ -35,6 +37,31 @@ func surgeLimit(mean, std, k float64) float64 {
 	high := mean + k*std
 
 	return high + math.Max(surgeMinExcessW, surgeMinShare*high)
+}
+
+// watchNode runs detectAnomaly in a savepoint. A failure of the detection is logged and rolled back, and only a failure of the
+// savepoint itself reaches the caller, because then the transaction cannot go on.
+func watchNode(ctx context.Context, tx pgx.Tx, gatewayID, nodeID string, samples []stored, now time.Time) error {
+	sp, err := tx.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("start the anomaly check %w", err)
+	}
+
+	if err := detectAnomaly(ctx, sp, gatewayID, nodeID, samples, now); err != nil {
+		slog.ErrorContext(ctx, "the anomaly check failed", "error", err)
+
+		if rbErr := sp.Rollback(ctx); rbErr != nil {
+			return fmt.Errorf("roll back the anomaly check %w", rbErr)
+		}
+
+		return nil
+	}
+
+	if err := sp.Commit(ctx); err != nil {
+		return fmt.Errorf("end the anomaly check %w", err)
+	}
+
+	return nil
 }
 
 // detectAnomaly looks at the new samples of a node that belongs to a business and writes an anomaly when one is far above the usual
@@ -79,14 +106,29 @@ func detectAnomaly(ctx context.Context, tx pgx.Tx, gatewayID, nodeID string, sam
 		return fmt.Errorf("read the sensitivity %w", err)
 	}
 
-	kind, at, watts := "", time.Time{}, 0.0
+	kind, at, watts := "surge", time.Time{}, 0.0
+	if overload != nil {
+		kind, at, watts = "overload", overload.t, overload.watts
+	} else {
+		at, watts = peak.t, peak.watts
+	}
+
+	// the debounce is for each kind, so a surge does not hide the overload that the node reports a little later. It is checked before the
+	// usual power, so a node inside the window costs one query.
+	var recent bool
+	if err := tx.QueryRow(ctx,
+		"SELECT EXISTS (SELECT 1 FROM anomalies WHERE gateway_id = $1 AND node_id = $2 AND kind = $3 AND at > $4)",
+		gatewayID, nodeID, kind, at.Add(-anomalyDebounce)).Scan(&recent); err != nil {
+		return fmt.Errorf("read the anomalies %w", err)
+	}
+
+	if recent {
+		return nil
+	}
 
 	var expected *float64
 
-	switch {
-	case overload != nil:
-		kind, at, watts = "overload", overload.t, overload.watts
-	default:
+	if kind == "surge" {
 		high, ok, err := usualHigh(ctx, tx, gatewayID, nodeID, peak.t, level)
 		if err != nil {
 			return err
@@ -96,18 +138,7 @@ func detectAnomaly(ctx context.Context, tx pgx.Tx, gatewayID, nodeID string, sam
 			return nil
 		}
 
-		kind, at, watts, expected = "surge", peak.t, peak.watts, &high.high
-	}
-
-	var recent bool
-	if err := tx.QueryRow(ctx,
-		"SELECT EXISTS (SELECT 1 FROM anomalies WHERE gateway_id = $1 AND node_id = $2 AND at > $3)",
-		gatewayID, nodeID, at.Add(-anomalyDebounce)).Scan(&recent); err != nil {
-		return fmt.Errorf("read the anomalies %w", err)
-	}
-
-	if recent {
-		return nil
+		expected = &high.high
 	}
 
 	if _, err := tx.Exec(ctx,

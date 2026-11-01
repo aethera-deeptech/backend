@@ -54,7 +54,7 @@ func (g *rig) usual(t *testing.T, days int, high float64) {
 func TestASurgeFarAboveTheUsualPowerRaisesOneAnomaly(t *testing.T) {
 	g := business(t, testutil.New(t), "budi@example.com", "ESP32-AABBCC", "a")
 	id := g.pair(t, "PLUG-0001", "Mesin jahit 1")
-	g.usual(t, 5, 100)
+	g.usual(t, 8, 100)
 
 	// the usual high is 100 W, so the limit is 200 W, and 150 W is still normal
 	g.send(t, "PLUG-0001", 150, 0, nil)
@@ -105,15 +105,15 @@ func TestNoSurgeWithoutEnoughHistoryAndNoneForOldOrUnclaimedReadings(t *testing.
 	g := business(t, testutil.New(t), "budi@example.com", "ESP32-AABBCC", "a")
 	g.pair(t, "PLUG-0001", "Mesin jahit 1")
 
-	// two days are too few to know what is usual
-	g.usual(t, 2, 100)
+	// five days are too few to cover a whole week
+	g.usual(t, 5, 100)
 	g.send(t, "PLUG-0001", 900, 0, nil)
 
 	if n := g.anomalies(t); n != 0 {
-		t.Fatalf("two days of history raised %d anomalies", n)
+		t.Fatalf("five days of history raised %d anomalies", n)
 	}
 
-	g.usual(t, 5, 100)
+	g.usual(t, 8, 100)
 
 	// a reading from 3 hours ago is history and not news
 	g.send(t, "PLUG-0001", 900, 3*time.Hour, nil)
@@ -127,5 +127,21 @@ func TestNoSurgeWithoutEnoughHistoryAndNoneForOldOrUnclaimedReadings(t *testing.
 
 	if n := g.anomalies(t); n != 0 {
 		t.Fatalf("an unclaimed node raised %d anomalies", n)
+	}
+}
+
+func TestAnOverloadIsNotHiddenByASurgeThatCameBeforeIt(t *testing.T) {
+	g := business(t, testutil.New(t), "budi@example.com", "ESP32-AABBCC", "a")
+	g.pair(t, "PLUG-0001", "Mesin jahit 1")
+	g.usual(t, 8, 100)
+
+	g.send(t, "PLUG-0001", 500, 0, nil)
+
+	three := 3
+	g.send(t, "PLUG-0001", 50, 0, &three)
+
+	var kinds int
+	if err := g.e.Pool.QueryRow(t.Context(), "SELECT count(DISTINCT kind) FROM anomalies").Scan(&kinds); err != nil || kinds != 2 {
+		t.Fatalf("the anomalies hold %d kinds (%v)", kinds, err)
 	}
 }
