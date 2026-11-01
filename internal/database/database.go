@@ -33,9 +33,6 @@ const (
 	pingTimeout            = 5 * time.Second
 	connectAttempts        = 10
 	connectWait            = 2 * time.Second
-	// migrationLockTimeout bounds the wait for a table lock in a migration. Without it an ALTER TABLE that waits behind one long
-	// query blocks every other query on the table. A statement timeout is left out, because a long migration is normal.
-	migrationLockTimeout = "10s"
 )
 
 // Open returns a pool and waits until the database answers, so a restart of the database during a deploy does not stop the service
@@ -106,7 +103,6 @@ func Migrate(url string) error {
 
 	cfg.ConnectTimeout = connectTimeout
 	cfg.RuntimeParams["application_name"] = "aethera-migrate"
-	cfg.RuntimeParams["lock_timeout"] = migrationLockTimeout
 
 	db := stdlib.OpenDB(*cfg)
 
