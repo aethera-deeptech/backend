@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"sync"
 
 	"golang.org/x/crypto/argon2"
 )
@@ -29,13 +28,13 @@ var ErrBusy = errors.New("too many passwords are being checked")
 // Hasher hashes and checks passwords with argon2id and lets only a few run at once
 type Hasher struct {
 	slots chan struct{}
-	once  sync.Once
 	dummy string
 }
 
 // NewHasher returns a hasher that runs at most concurrency hashes at the same time
 func NewHasher(concurrency int) *Hasher {
-	return &Hasher{slots: make(chan struct{}, max(concurrency, 1))}
+	// the dummy hash is made once at start, so a failure shows at once and every later call spends the same time
+	return &Hasher{slots: make(chan struct{}, max(concurrency, 1)), dummy: encode("not-a-real-password")}
 }
 
 func (h *Hasher) acquire(ctx context.Context) error {
@@ -56,15 +55,18 @@ func (h *Hasher) Hash(ctx context.Context, password string) (string, error) {
 	}
 	defer h.release()
 
+	return encode(password), nil
+}
+
+// encode hashes a password with a new salt. The random reader of Go does not return an error, it stops the program instead.
+func encode(password string) string {
 	salt := make([]byte, argonSaltLen)
-	if _, err := rand.Read(salt); err != nil {
-		return "", fmt.Errorf("make a salt %w", err)
-	}
+	_, _ = rand.Read(salt)
 
 	key := argon2.IDKey([]byte(password), salt, argonTime, argonMemoryKiB, argonThreads, argonKeyLen)
 
 	return fmt.Sprintf("$argon2id$v=%d$m=%d,t=%d,p=%d$%s$%s", argon2.Version, argonMemoryKiB, argonTime, argonThreads,
-		base64.RawStdEncoding.EncodeToString(salt), base64.RawStdEncoding.EncodeToString(key)), nil
+		base64.RawStdEncoding.EncodeToString(salt), base64.RawStdEncoding.EncodeToString(key))
 }
 
 // Verify reports whether the password matches the encoded hash. A malformed hash never matches.
@@ -118,20 +120,7 @@ func (h *Hasher) Verify(ctx context.Context, password, encoded string) (bool, er
 
 // VerifyDummy spends the time of a real check, so a sign in with an unknown email takes as long as one with a wrong password
 func (h *Hasher) VerifyDummy(ctx context.Context) error {
-	var err error
-
-	// the context does not stop the first hash halfway, because every later call uses its result
-	h.once.Do(func() { h.dummy, err = h.Hash(context.WithoutCancel(ctx), "not-a-real-password") })
-
-	if err != nil {
-		return err
-	}
-
-	if h.dummy == "" {
-		return ErrBusy
-	}
-
-	_, err = h.Verify(ctx, "another-password", h.dummy)
+	_, err := h.Verify(ctx, "another-password", h.dummy)
 
 	return err
 }

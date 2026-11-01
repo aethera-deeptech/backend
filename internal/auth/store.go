@@ -148,6 +148,17 @@ func (s *Store) SaveToken(ctx context.Context, userID, email, purpose string, ha
 }
 
 func saveToken(ctx context.Context, tx pgx.Tx, userID, email, purpose string, hash []byte, ttl time.Duration) error {
+	// the row lock orders this save after a change of the address, and a save for an address that is gone does nothing, so a late
+	// resend cannot delete the link that went to the new address
+	var current string
+	if err := tx.QueryRow(ctx, "SELECT email FROM users WHERE id = $1 FOR UPDATE", userID).Scan(&current); err != nil {
+		return fmt.Errorf("lock the user %w", err)
+	}
+
+	if current != email {
+		return nil
+	}
+
 	if _, err := tx.Exec(ctx, "DELETE FROM email_tokens WHERE user_id = $1 AND purpose = $2 AND used_at IS NULL", userID, purpose); err != nil {
 		return fmt.Errorf("remove the older tokens %w", err)
 	}
