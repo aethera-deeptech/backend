@@ -44,6 +44,8 @@ type Options struct {
 	// TrustProxy and ProxyHeader tell where the address of the client is when a reverse proxy on the host sits in front
 	TrustProxy  bool
 	ProxyHeader string
+	// Observe measures every request, and it is optional. It sits inside the access log and outside the recovery.
+	Observe fiber.Handler
 	// TrustedProxies limits the addresses that may set the header. Empty means every private and loopback address.
 	TrustedProxies []string
 }
@@ -78,7 +80,13 @@ func New(opts Options) *fiber.App {
 	version, db := opts.Version, opts.DB
 
 	// the log is outside the recovery, so a request that panicked still gets its line with the status 500
-	app.Use(api.AccessLog(), api.Recover(), api.SecurityHeaders())
+	app.Use(api.AccessLog())
+
+	if opts.Observe != nil {
+		app.Use(opts.Observe)
+	}
+
+	app.Use(api.Recover(), api.SecurityHeaders())
 
 	// the browser app calls from its own origin with its cookie. A request from any other origin gets no CORS headers.
 	app.Use("/v1", cors.New(cors.Config{

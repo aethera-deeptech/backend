@@ -59,7 +59,11 @@ type Config struct {
 	SentryEnvironment     string `env:"SENTRY_ENVIRONMENT"`
 	SentryServerName      string `env:"SENTRY_SERVER_NAME"`
 	SentryEventsPerMinute int    `env:"SENTRY_EVENTS_PER_MINUTE" envDefault:"30"`
-	SMTPFromAddress       string `env:"SMTP_FROM_ADDRESS"`
+	// MetricsAddress is where the Prometheus endpoint listens, such as ":9100", and empty switches it off. It is a listener of its own
+	// and never the public one, so a scraper on the private network reaches it and the internet does not.
+	MetricsAddress string `env:"METRICS_ADDRESS"`
+
+	SMTPFromAddress string `env:"SMTP_FROM_ADDRESS"`
 
 	// DBMaxConns is the size of the pool of one copy. The database is shared, so two copies must stay well below its connection limit.
 	DBMaxConns uint `env:"DB_MAX_CONNS" envDefault:"8"`
@@ -154,6 +158,15 @@ func parse(environ map[string]string) (Config, error) {
 
 	if cfg.SentryEventsPerMinute < 1 || cfg.SentryEventsPerMinute > maxSentryEvents {
 		return Config{}, fmt.Errorf("SENTRY_EVENTS_PER_MINUTE is %d and must be between 1 and %d", cfg.SentryEventsPerMinute, maxSentryEvents)
+	}
+
+	if cfg.MetricsAddress != "" {
+		_, port, err := net.SplitHostPort(cfg.MetricsAddress)
+		number, convErr := strconv.ParseUint(port, 10, 16)
+
+		if err != nil || convErr != nil || number == 0 || uint(number) == cfg.AppPort {
+			return Config{}, fmt.Errorf("METRICS_ADDRESS is %q and must look like host:port or :port, with a port from 1 to %d that is not APP_PORT", cfg.MetricsAddress, maxPort)
+		}
 	}
 
 	if cfg.DBMaxConns == 0 || cfg.DBMaxConns > maxDBConns {

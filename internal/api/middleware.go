@@ -76,6 +76,23 @@ func Recover() fiber.Handler {
 	}
 }
 
+// StatusOf returns the status that the error handler gives an error, so a middleware can read it before the handler has run
+func StatusOf(err error) int {
+	var (
+		apiErr   *Error
+		fiberErr *fiber.Error
+	)
+
+	switch {
+	case errors.As(err, &apiErr):
+		return apiErr.Status
+	case errors.As(err, &fiberErr):
+		return fiberErr.Code
+	default:
+		return http.StatusInternalServerError
+	}
+}
+
 // AccessLog writes one JSON line for each request. It logs the path without the query and never a header or a body, so a token or a
 // cookie cannot reach the log.
 func AccessLog() fiber.Handler {
@@ -88,16 +105,8 @@ func AccessLog() fiber.Handler {
 		var apiErr *Error
 
 		if err != nil {
-			var fiberErr *fiber.Error
-
-			switch {
-			case errors.As(err, &apiErr):
-				status = apiErr.Status
-			case errors.As(err, &fiberErr):
-				status = fiberErr.Code
-			default:
-				status = http.StatusInternalServerError
-			}
+			status = StatusOf(err)
+			_ = errors.As(err, &apiErr)
 		}
 
 		attrs := []any{

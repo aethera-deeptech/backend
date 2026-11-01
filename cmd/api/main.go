@@ -24,6 +24,7 @@ import (
 	"github.com/aethera-deeptech/backend/internal/janitor"
 	"github.com/aethera-deeptech/backend/internal/logging"
 	"github.com/aethera-deeptech/backend/internal/mail"
+	"github.com/aethera-deeptech/backend/internal/metrics"
 )
 
 // version is set at build time with -ldflags
@@ -106,7 +107,18 @@ func run() (err error) {
 		mailQueue.Close(ctx)
 	}()
 
-	srv := app.New(app.Deps{Version: version, Config: cfg, Pool: pool, Mailer: mailer})
+	stats := metrics.New()
+	stats.RegisterPool(pool)
+
+	// the endpoint listens before the service does, so an address that is taken stops the start and not only the metrics
+	listener, err := stats.Serve(cfg.MetricsAddress)
+	if err != nil {
+		return fmt.Errorf("start the metrics %w", err)
+	}
+
+	defer listener.Close()
+
+	srv := app.New(app.Deps{Version: version, Config: cfg, Pool: pool, Mailer: mailer, Metrics: stats})
 
 	serverErr := make(chan error, 1)
 
