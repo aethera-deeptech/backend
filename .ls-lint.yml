@@ -3,6 +3,7 @@
 # ls-lint picks a rule by the number of parts after the first dot, so a name with two or three dots needs its own key to be checked at all.
 # A rule block that sits under a folder key replaces the rules above it and does not extend them, so the "**" block below repeats every
 # rule. Keep the two lists the same when you edit one.
+# ls-lint checks only the part of a name before its first dot, so the variant parts after it, as in deploy.BAD.yaml, are not checked.
 ls:
   # a folder is lowercase words joined by hyphens, and a leading dot marks the folder of a tool
   .dir: regex:\.?[a-z0-9]+(-[a-z0-9]+)*
@@ -14,6 +15,8 @@ ls:
 
   # a Go file is lowercase words with no separator, and only _test may follow them
   .go: regex:[a-z0-9]+(_test)?
+  .*.go: regex:[a-z0-9]+(_test)?
+  .*.*.go: regex:[a-z0-9]+(_test)?
 
   # the community files in capitals such as README.md and CODE_OF_CONDUCT.md are allowed next to kebab case
   .md: kebab-case | SCREAMING_SNAKE_CASE
@@ -29,6 +32,8 @@ ls:
     .*.*: kebab-case
     .*.*.*: kebab-case
     .go: regex:[a-z0-9]+(_test)?
+    .*.go: regex:[a-z0-9]+(_test)?
+    .*.*.go: regex:[a-z0-9]+(_test)?
     .md: kebab-case | SCREAMING_SNAKE_CASE
     .yaml: exists:0
     .*.yaml: exists:0
