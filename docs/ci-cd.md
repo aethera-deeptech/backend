@@ -30,7 +30,7 @@
 | `security.yaml` | Go licenses | The license of every package that the service and its tests import, with go-licenses. It refuses unknown licenses and AGPL, SSPL and WTFPL. The GPL family passes because the repository is under GPL-3.0 |
 | `security.yaml` | Dependency review | The dependencies that a pull request adds or changes, which fails on a severity of high or above and on the license SSPL-1.0 |
 | `security.yaml` | Secret scan (gitleaks) | The whole history of the repository, with gitleaks. A fixture that must stay in history goes into `.gitleaksignore` with a comment |
-| `security.yaml` | Trivy filesystem scan | Vulnerabilities, secrets and misconfigurations in the files, for severity high and critical that have a fix. The settings are in `.trivyignore.yml` |
+| `security.yaml` | Trivy filesystem scan | Vulnerabilities, secrets and misconfigurations in the files, for severity high and critical that have a fix. The ignored findings are in `.trivyignore.yml` |
 | `security.yaml` | OSSF Scorecard | The security score of the repository, on `main` and on the daily run only |
 | `docker.yaml` | Build, scan and push image | The image build for both platforms, the Trivy scan of each platform, the SBOM, the signature and the check of that signature |
 
