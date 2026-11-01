@@ -3,6 +3,7 @@ package tips
 
 import (
 	"math"
+	"sort"
 	"time"
 
 	"github.com/aethera-deeptech/backend/internal/business"
@@ -123,4 +124,8 @@ func classify(rows []hourRow, loc *time.Location, wh business.WorkHours, days in
 	default:
 		return "", 0
 	}
+}
+
+func sortWaiting(list []Waiting) {
+	sort.SliceStable(list, func(i, j int) bool { return list[i].SavingPerMonthRp > list[j].SavingPerMonthRp })
 }

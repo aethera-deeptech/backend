@@ -9,53 +9,20 @@ import (
 )
 
 type rig struct {
-	e        *testutil.Env
-	session  string
-	business string
-	device   string
+	*testutil.Seeded
+	e *testutil.Env
 }
 
-// seed signs a business up and gives it one device on one gateway, with no readings yet
 func seed(t *testing.T, e *testutil.Env, email, hardware string) *rig {
 	t.Helper()
 
-	session := e.SignUp(t, email)
-	g := &rig{e: e, session: session}
-
-	if err := e.Pool.QueryRow(t.Context(), "SELECT business_id FROM users WHERE email = $1", email).Scan(&g.business); err != nil {
-		t.Fatal(err)
-	}
-
-	var gateway string
-	if err := e.Pool.QueryRow(t.Context(),
-		"INSERT INTO gateways (business_id, name, hardware_id, key_hash) VALUES ($1, 'Hub', $2, sha256(convert_to($2, 'UTF8'))) RETURNING id::text",
-		g.business, hardware).Scan(&gateway); err != nil {
-		t.Fatal(err)
-	}
-
-	e.Exec(t, "INSERT INTO nodes (gateway_id, node_id, kind) VALUES ($1, 'PLUG-0001', 'plug')", gateway)
-
-	var room string
-	if err := e.Pool.QueryRow(t.Context(), "INSERT INTO rooms (business_id, name) VALUES ($1, 'Ruang jahit') RETURNING id::text", g.business).Scan(&room); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := e.Pool.QueryRow(t.Context(),
-		"INSERT INTO devices (business_id, gateway_id, node_id, kind, name, room_id) VALUES ($1, $2, 'PLUG-0001', 'plug', 'Mesin jahit 1', $3) RETURNING id::text",
-		g.business, gateway, room).Scan(&g.device); err != nil {
-		t.Fatal(err)
-	}
-
-	return g
+	return &rig{Seeded: e.SeedDevice(t, email, hardware), e: e}
 }
 
-// hours writes an hour of data for every hour from a number of hours ago up to a number of hours ago, with the same power and energy
 func (g *rig) hours(t *testing.T, fromAgo, toAgo int, watts, kwh float64) {
 	t.Helper()
 
-	g.e.Exec(t, "INSERT INTO readings_hourly (gateway_id, node_id, hour, samples, sum_watts, max_watts, min_watts, energy_kwh) "+
-		"SELECT d.gateway_id, d.node_id, date_trunc('hour', now()) - make_interval(hours => h), 10, $4::float8 * 10, $4, $4, $5 "+
-		"FROM devices d, generate_series($2::int, $3::int) h WHERE d.id = $1 ON CONFLICT DO NOTHING", g.device, toAgo, fromAgo, watts, kwh)
+	g.Hours(t, fromAgo, toAgo, watts, kwh)
 }
 
 func (g *rig) list(t *testing.T) testutil.Reply {
@@ -63,13 +30,13 @@ func (g *rig) list(t *testing.T) testutil.Reply {
 
 	g.e.Exec(t, "UPDATE businesses SET tips_refreshed_at = NULL")
 
-	return g.e.Call(t, http.MethodGet, "/v1/recommendations", "", g.session)
+	return g.e.Call(t, http.MethodGet, "/v1/recommendations", "", g.Session)
 }
 
 func (g *rig) decide(t *testing.T, id, action string) testutil.Reply {
 	t.Helper()
 
-	return g.e.Call(t, http.MethodPost, "/v1/recommendations/"+id+"/"+action, "", g.session)
+	return g.e.Call(t, http.MethodPost, "/v1/recommendations/"+id+"/"+action, "", g.Session)
 }
 
 func TestTheFirstTipComesAfterSevenDaysOfData(t *testing.T) {
@@ -114,7 +81,7 @@ func TestTheOwnerDecidesAndTheStatesFollowTheRules(t *testing.T) {
 	items, _ := g.list(t).Body["items"].([]any)
 	id, _ := items[0].(map[string]any)["id"].(string)
 
-	d := e.Call(t, http.MethodGet, "/v1/recommendations/"+id, "", g.session)
+	d := e.Call(t, http.MethodGet, "/v1/recommendations/"+id, "", g.Session)
 	how, _ := d.Body["howCalculated"].([]any)
 
 	if d.Status != http.StatusOK || d.Body["tariffIsDefault"] != true || d.Body["deviceName"] != "Mesin jahit 1" || len(how) != 2 ||
@@ -157,7 +124,7 @@ func TestTheOwnerDecidesAndTheStatesFollowTheRules(t *testing.T) {
 	}
 
 	// another business sees nothing of it
-	if r := other.e.Call(t, http.MethodGet, "/v1/recommendations/"+id, "", other.session); r.Status != http.StatusNotFound {
+	if r := other.e.Call(t, http.MethodGet, "/v1/recommendations/"+id, "", other.Session); r.Status != http.StatusNotFound {
 		t.Fatalf("a foreign read answered %d", r.Status)
 	}
 
@@ -189,17 +156,17 @@ func TestAnAppliedTipShowsItsDayAndIsVerifiedAfterFourteenDays(t *testing.T) {
 	g.e.Exec(t, "UPDATE tips SET applied_at = now() - interval '15 days'")
 	g.e.Exec(t, "UPDATE businesses SET tips_refreshed_at = NULL")
 
-	if r := g.e.Call(t, http.MethodGet, "/v1/recommendations/"+id, "", g.session); r.Body["status"] != "applied" {
+	if r := g.e.Call(t, http.MethodGet, "/v1/recommendations/"+id, "", g.Session); r.Body["status"] != "applied" {
 		t.Fatalf("with no production the tip is %v", r.Body["status"])
 	}
 
 	// energy was higher before the tip, and every day made 100 pieces
 	g.hours(t, 23*24, 8*24+1, 100, 0.2)
-	g.e.Exec(t, "INSERT INTO production_records (business_id, day, quantity, unit) SELECT $1, (now() AT TIME ZONE 'Asia/Jakarta')::date - d, 100, 'potong' FROM generate_series(1, 24) d", g.business)
+	g.e.Exec(t, "INSERT INTO production_records (business_id, day, quantity, unit) SELECT $1, (now() AT TIME ZONE 'Asia/Jakarta')::date - d, 100, 'potong' FROM generate_series(1, 24) d", g.Business)
 
 	g.e.Exec(t, "UPDATE businesses SET tips_refreshed_at = NULL")
 
-	d := g.e.Call(t, http.MethodGet, "/v1/recommendations/"+id, "", g.session)
+	d := g.e.Call(t, http.MethodGet, "/v1/recommendations/"+id, "", g.Session)
 	result, _ := d.Body["result"].(map[string]any)
 
 	if d.Body["status"] != "verified" || d.Body["verification"] != nil || result["beforeDays"] != 7.0 || result["afterDays"] != 14.0 {
