@@ -192,3 +192,14 @@ func TestTooManyRooms(t *testing.T) {
 		t.Fatalf("the 101st room answered %d %v", r.Status, r.Body)
 	}
 }
+
+func TestABusinessWithoutANameShowsAPlaceholder(t *testing.T) {
+	e := testutil.New(t)
+	session := e.SignUp(t, "budi@example.com")
+
+	e.Exec(t, "UPDATE businesses SET name = NULL")
+
+	if r := e.Call(t, http.MethodGet, "/v1/settings", "", session); r.Body["businessName"] != "Usaha saya" {
+		t.Fatalf("the name is %v", r.Body["businessName"])
+	}
+}

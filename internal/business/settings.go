@@ -45,7 +45,7 @@ type Tariff struct {
 
 // Settings are the settings of a business as the app reads them
 type Settings struct {
-	BusinessName       *string   `json:"businessName"`
+	BusinessName       string    `json:"businessName"`
 	WorkHours          WorkHours `json:"workHours"`
 	Tariff             Tariff    `json:"tariff"`
 	AnomalySensitivity string    `json:"anomalySensitivity"`
@@ -97,7 +97,7 @@ func NewStore(pool *pgxpool.Pool) *Store {
 	return &Store{pool: pool}
 }
 
-const settingsSQL = `SELECT name, work_days, to_char(work_start, 'HH24:MI'), to_char(work_end, 'HH24:MI'),
+const settingsSQL = `SELECT COALESCE(name, 'Usaha saya'), work_days, to_char(work_start, 'HH24:MI'), to_char(work_end, 'HH24:MI'),
 	tariff_rp_per_kwh, anomaly_sensitivity, time_zone FROM businesses WHERE id = $1`
 
 // Settings returns the settings of the business
