@@ -33,9 +33,9 @@ An amount is a whole number of rupiah. A tip shows its saving rounded to the nea
 
 ## Devices
 
-1. A new gateway calls `POST /device/v1/enroll`, which answers a claim code and a poll id. The gateway shows the code.
-2. The owner types the code in the app (`POST /v1/gateways`). The gateway polls and receives its key once. The service stores only a hash of the key.
-3. From then on the gateway signs every request. The scheme is in `openapi.yaml` under `gatewaySignature`. The time stamp and the nonce stop a replay, and the sequence number of a batch makes a retry safe.
+1. A new gateway makes a random key of its own and calls `POST /device/v1/enroll` with the SHA-256 of the key. The answer holds a claim code and a poll id, and the gateway shows the code. The service never sees the key.
+2. The owner types the code in the app (`POST /v1/gateways`). The gateway polls and learns that it belongs to a business.
+3. From then on the gateway sends its key as a bearer token. The service keeps only the hash of the key, so a copy of the database cannot act as a gateway. TLS protects the key in transit, and the sequence number of a batch makes a retry safe. A signature on every request would add nothing over TLS here, because a party that sees the plain request also sees the key.
 4. The owner starts a pairing in the app. The next unclaimed node of that kind that the gateway reports becomes the device.
 
 Raw readings are kept 30 days. Hourly and daily rollups keep the average and the maximum of each period for 400 days, so a short spike stays visible after the raw rows are gone.

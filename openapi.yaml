@@ -39,7 +39,7 @@ tags:
   - name: Pengaturan
     description: The settings of a business
   - name: Gateway
-    description: The routes that the gateway of a business calls
+    description: The routes that the gateway of a business calls, with its key as a bearer token
 security:
   - session: []
 paths:
@@ -456,7 +456,7 @@ paths:
       tags: [Pasang alat]
       operationId: claimGateway
       summary: Claim a gateway with the code that it shows
-      description: A new gateway asks for a claim code at `/device/v1/enroll` and shows it on its display. The owner types the code here, and the gateway then receives its key. A code works once and for 10 minutes.
+      description: A new gateway asks for a claim code at `/device/v1/enroll` and shows it on its display. The owner types the code here and the gateway belongs to the business. A code works once and for 10 minutes. A gateway that the same business claimed before keeps its readings and gets the new key. A gateway of another business answers 409 `gateway_claimed_elsewhere`.
       requestBody:
         required: true
         content:
@@ -526,7 +526,7 @@ paths:
       tags: [Pasang alat]
       operationId: getPairing
       summary: Read the state of a pairing
-      description: The app asks again every 3 seconds while the status is `searching`. `connected` has the id of the new device. `waiting-data` means that the node is claimed and has sent no reading yet.
+      description: The app asks again every 3 seconds while the status is `searching`. `connected` has the id of the new device. The device exists as soon as the first reading of the node has arrived, so there is no state between `searching` and `connected`.
       responses:
         "200":
           description: The pairing
@@ -536,7 +536,7 @@ paths:
                 type: object
                 required: [status]
                 properties:
-                  status: {type: string, enum: [searching, waiting-data, connected, failed, cancelled]}
+                  status: {type: string, enum: [searching, connected, failed, cancelled]}
                   deviceId: {type: [string, "null"], format: uuid}
         "401": {$ref: "#/components/responses/Unauthorized"}
         "404": {$ref: "#/components/responses/NotFound"}
@@ -827,8 +827,9 @@ paths:
       operationId: enrollGateway
       summary: Ask for a claim code
       description: |
-        A gateway that has no key calls this route. The answer holds the claim code that the gateway shows and a poll id. The route
-        has a limit for each address of the client. The code and the poll id are random and work once.
+        A gateway that has no key makes a random key of its own and calls this route with the SHA-256 of that key, written in lower case
+        hex. The service never sees the key itself. The answer holds the claim code that the gateway shows and a poll id. The route has
+        a limit for each address of the client and for each hardware id. The code and the poll id are random and work once.
       security: []
       requestBody:
         required: true
@@ -836,10 +837,11 @@ paths:
           application/json:
             schema:
               type: object
-              required: [hardwareId]
+              required: [hardwareId, keyHash]
               properties:
                 hardwareId: {type: string, minLength: 6, maxLength: 64, pattern: "^[A-Za-z0-9:_-]+$"}
                 firmware: {type: string, maxLength: 32}
+                keyHash: {type: string, pattern: "^[0-9a-f]{64}$"}
       responses:
         "201":
           description: The claim code
@@ -862,7 +864,7 @@ paths:
       tags: [Gateway]
       operationId: pollEnrollment
       summary: Ask whether the code was claimed
-      description: The first answer after the claim holds the key of the gateway. The service keeps only a hash of it, so the key is shown once, and a second read answers 410.
+      description: The first answer after the claim says that the gateway belongs to a business now, and the gateway starts to send its readings with its key. The service removes the enrollment after that answer, so the next poll answers 404.
       security: []
       responses:
         "200":
@@ -871,15 +873,14 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [gatewayId, key]
+                required: [gatewayId]
                 properties:
                   gatewayId: {type: string, format: uuid}
-                  key: {type: string, minLength: 43, maxLength: 64}
         "202":
           description: Not claimed yet
         "404": {$ref: "#/components/responses/NotFound"}
         "410":
-          description: The key was handed out already, or the code expired
+          description: The code expired (code `enrollment_expired`)
           content:
             application/json:
               schema: {$ref: "#/components/schemas/Error"}
@@ -891,12 +892,14 @@ paths:
       operationId: sendReadings
       summary: Send a batch of readings of the nodes of a gateway
       description: |
-        The gateway signs every request with its key, see the scheme `gatewaySignature`. A batch has a sequence number that grows by
-        one for each batch. The service stores a batch once, so a retry of the same sequence number is answered with the same
-        acknowledgement and stores nothing twice. A batch can hold readings of up to 24 hours, so a gateway that lost its Wi-Fi can
-        catch up. A node that the gateway has not been told about is stored as unclaimed and can be claimed by a pairing.
+        The gateway sends its key as a bearer token, see the scheme `gatewayKey`. A batch has a sequence number that grows by one for
+        each batch. The service stores a batch once, so a retry of an older sequence number is answered with the last acknowledgement
+        and stores nothing twice. A batch can hold readings of up to 24 hours, so a gateway that lost its Wi-Fi can catch up. A sample
+        that is out of range or older than a day is dropped and counted in `rejected`, so one bad sample never blocks the gateway. The
+        time stamps move by the difference between the clock of the gateway (`sentAt`) and the clock of the service. A node that has
+        no device yet is kept as unclaimed and can be claimed by a pairing.
       security:
-        - gatewaySignature: []
+        - gatewayKey: []
       requestBody:
         required: true
         content:
@@ -909,10 +912,12 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [ackSeq, serverTime]
+                required: [ackSeq, serverTime, accepted, rejected]
                 properties:
                   ackSeq: {type: integer, minimum: 0}
                   serverTime: {type: string, format: date-time}
+                  accepted: {type: integer, minimum: 0, description: The samples that were stored}
+                  rejected: {type: integer, minimum: 0, description: The samples that were dropped}
         "401": {$ref: "#/components/responses/BadSignature"}
         "409":
           description: The sequence number is not the next one. `expectedSeq` says which one the service waits for.
@@ -939,15 +944,13 @@ components:
         service stores only a hash of the token. The app and the API are on the same site, so SameSite=Lax cookies work with
         credentials. Every request that changes data must also carry the header `X-Requested-With: aethera`, and the service checks the
         `Origin` header against the origin of the app. The session lasts 30 days from the last use and at most 90 days in total.
-    gatewaySignature:
-      type: apiKey
-      in: header
-      name: Authorization
+    gatewayKey:
+      type: http
+      scheme: bearer
       description: |
-        `Authorization: Aethera-HMAC gateway=<id>, ts=<unix seconds>, nonce=<16 random bytes in base64url>, sig=<base64url>`. The
-        signature is HMAC-SHA256 of the lines `METHOD`, `PATH`, `ts`, `nonce` and the hex SHA-256 of the body, joined by a newline,
-        made with the key of the gateway. The service refuses a `ts` that is more than 300 seconds from its own clock and a nonce that
-        it saw in the last 10 minutes.
+        The key that the gateway made when it enrolled, sent as `Authorization: Bearer <key>`. The key is 32 random bytes in base64url
+        (43 characters). The service stores only its SHA-256, so a copy of the database cannot act as a gateway. TLS protects the key in
+        transit, and the sequence number makes a retry safe.
   headers:
     SessionCookie:
       description: The session cookie
@@ -1056,7 +1059,7 @@ components:
         kindLabel: {type: string, examples: [Colokan pintar]}
         currentPowerW: {type: [number, "null"]}
         todayKwh: {type: [number, "null"]}
-        monthKwh: {type: [number, "null"], description: Stays set while the device is offline, because the month is still true}
+        monthKwh: {type: [number, "null"], description: "Stays set while the device is offline, because the month is still true"}
         onHoursToday: {type: [number, "null"]}
         standbyW: {type: [number, "null"]}
         lastSeenAt: {type: [string, "null"], format: date-time}
@@ -1229,7 +1232,7 @@ components:
       properties:
         unit: {type: string, examples: [potong]}
         units: {type: array, minItems: 1, items: {type: string}}
-        today: {type: string, format: date, description: The day of the business now, which is the last day the form lets the user pick}
+        today: {type: string, format: date, description: "The day of the business now, which is the last day the form lets the user pick"}
         recent:
           type: array
           description: The 3 newest records, newest first
