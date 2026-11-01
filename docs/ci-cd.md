@@ -53,7 +53,7 @@ The tags that start with `v` are protected by two more rulesets. `release-tags` 
 
 The Lint job formats, vets and lints the Go code. golangci-lint uses the linters in `.golangci.yml`. Among them, `forbidigo` keeps the program from printing to the standard output and from calling `log.Fatal` outside `cmd`, and `tagliatelle` checks that JSON names are camelCase. A comment that silences a linter has to name the linter and give a reason.
 
-The Tests job runs every test with the race detector, in a random order and without the test cache. It measures the statements of `internal/` and uploads the result to Codecov, which reads its rules from `codecov.yml`. A failed upload fails the build on the `main` branch only, a manual run on `main` included, so an outage of Codecov never blocks a pull request. The Codecov checks are not required. A run on `main` is never cancelled or replaced by a newer one, because it has a concurrency group of its own, so every commit on `main` keeps its coverage report.
+The Tests job runs every test with the race detector, in a random order and without the test cache. It measures the statements of `internal/` and uploads the result to Codecov, which reads its rules from `codecov.yml`. A failed upload fails the build on the `main` branch, and that includes a manual run on `main`. It never fails a pull request, so an outage of Codecov does not block one. The Codecov checks are not required. Every run on `main` has a concurrency group of its own, so a newer run does not cancel or replace it and every commit on `main` keeps its coverage report.
 
 ## File names
 
