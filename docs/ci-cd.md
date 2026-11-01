@@ -35,7 +35,7 @@
 | `security.yaml` | Dependency review | The dependencies that a pull request adds or changes, which fails on a severity of high or above and on the license SSPL-1.0 |
 | `security.yaml` | Secret scan (gitleaks) | The whole history of the repository, with gitleaks. A fixture that must stay in history goes into `.gitleaksignore` with a comment |
 | `security.yaml` | Trivy filesystem scan | Vulnerabilities, secrets and misconfigurations in the files, for severity high and critical that have a fix. The ignored findings are in `.trivyignore.yml` |
-| `security.yaml` | OSSF Scorecard | The security score of the repository, on `main` and on the daily run only |
+| `security.yaml` | OSSF Scorecard | The security score of the repository on pushes to `main`, on the daily run and on manual runs from `main`. It never runs on pull requests or on other branches |
 | `docker.yaml` | Build, scan and push image | The image build for both platforms, the Trivy scan of each platform, the SBOM, the signature and the check of that signature |
 
 More workflows arrive with the pull requests that need them. The jobs for the releases are added together with the code they check.
