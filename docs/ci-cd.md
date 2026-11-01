@@ -44,7 +44,7 @@ More workflows arrive with the pull requests that need them. The jobs for the re
 
 The ruleset of `main` requires a pull request that is merged with a merge commit, resolved review threads, branches that are up to date with `main` (strict checks), and it refuses deletion and force pushes. A new push dismisses stale approvals. The ruleset has no bypass actors.
 
-The ruleset also requires signed commits, so every commit that reaches `main` must have a verified signature. The release App signs its own commits, which was checked on the release pull request of 0.1.0 before the rule was turned on. It also has a code scanning rule that blocks a merge while CodeQL reports an alert of any severity.
+The ruleset also requires signed commits, so every commit that reaches `main` must have a verified signature. GitHub signs the commits that the release App makes through the API, which was checked on the release pull request of 0.1.0 before the rule was turned on. The ruleset also has a code scanning rule that blocks a merge while CodeQL reports an alert of any severity.
 
 Every check below is required and is reported by GitHub Actions.
 
