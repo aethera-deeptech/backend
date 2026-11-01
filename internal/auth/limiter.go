@@ -4,11 +4,13 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"math/rand/v2"
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -29,6 +31,10 @@ func NewLimiter(pool *pgxpool.Pool) *Limiter {
 	return &Limiter{pool: pool}
 }
 
+// the longest window of a rule is one hour, so an event older than two hours counts for nothing
+// lockNotAvailable is the code of PostgreSQL for a wait that ended at lock_timeout
+const lockNotAvailable = "55P03"
+
 // pruneEvery is how often a call also deletes the events that no window needs any more, one in this many
 const pruneEvery = 50
 
@@ -46,8 +52,19 @@ func (l *Limiter) Allow(ctx context.Context, rule Rule, key string) (bool, time.
 
 	defer func() { _ = tx.Rollback(ctx) }()
 
+	// a flood on one key must not hold the connections of the pool for long, so the wait for the key and for a statement is short
+	if _, err := tx.Exec(ctx, "SET LOCAL lock_timeout = '2s'"); err != nil {
+		return false, 0, fmt.Errorf("set the lock timeout %w", err)
+	}
+
 	// two requests for the same key take turns, so both cannot read the same count
 	if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", rule.Bucket+"/"+hashed); err != nil {
+		// a key that so many requests wait for is being hit in a flood, so the latecomers are told to wait and do not hold a connection
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == lockNotAvailable {
+			return false, time.Second, nil
+		}
+
 		return false, 0, fmt.Errorf("lock the limit %w", err)
 	}
 
@@ -74,7 +91,7 @@ func (l *Limiter) Allow(ctx context.Context, rule Rule, key string) (bool, time.
 	}
 
 	if rand.IntN(pruneEvery) == 0 { //nolint:gosec // this only spreads the clean up, it needs no secret
-		if _, err := tx.Exec(ctx, "DELETE FROM rate_limit_events WHERE at < now() - interval '1 day'"); err != nil {
+		if _, err := tx.Exec(ctx, "DELETE FROM rate_limit_events WHERE at < now() - interval '2 hours'"); err != nil {
 			return false, 0, fmt.Errorf("clean up the events %w", err)
 		}
 	}

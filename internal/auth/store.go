@@ -130,8 +130,9 @@ func (s *Store) UserByID(ctx context.Context, id string) (*User, error) {
 	return u, nil
 }
 
-// SaveToken stores a token for a user and removes the unused tokens of the same purpose, so only the newest link works
-func (s *Store) SaveToken(ctx context.Context, userID, purpose string, hash []byte, ttl time.Duration) error {
+// SaveToken stores a token for a user and the address that the link goes to, and removes the unused tokens of the same purpose, so
+// only the newest link works
+func (s *Store) SaveToken(ctx context.Context, userID, email, purpose string, hash []byte, ttl time.Duration) error {
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return fmt.Errorf("start the token save %w", err)
@@ -139,26 +140,52 @@ func (s *Store) SaveToken(ctx context.Context, userID, purpose string, hash []by
 
 	defer func() { _ = tx.Rollback(ctx) }()
 
+	if err := saveToken(ctx, tx, userID, email, purpose, hash, ttl); err != nil {
+		return err
+	}
+
+	return tx.Commit(ctx)
+}
+
+func saveToken(ctx context.Context, tx pgx.Tx, userID, email, purpose string, hash []byte, ttl time.Duration) error {
 	if _, err := tx.Exec(ctx, "DELETE FROM email_tokens WHERE user_id = $1 AND purpose = $2 AND used_at IS NULL", userID, purpose); err != nil {
 		return fmt.Errorf("remove the older tokens %w", err)
 	}
 
 	if _, err := tx.Exec(ctx,
-		"INSERT INTO email_tokens (token_hash, user_id, purpose, expires_at) VALUES ($1, $2, $3, now() + make_interval(secs => $4))",
-		hash, userID, purpose, ttl.Seconds()); err != nil {
+		"INSERT INTO email_tokens (token_hash, user_id, purpose, email, expires_at) VALUES ($1, $2, $3, $4, now() + make_interval(secs => $5))",
+		hash, userID, purpose, email, ttl.Seconds()); err != nil {
 		return fmt.Errorf("store the token %w", err)
 	}
 
-	return tx.Commit(ctx)
+	return nil
+}
+
+// TokenValid reports whether a token is unused, not expired and still bound to the address of its account. It does not use the token.
+func (s *Store) TokenValid(ctx context.Context, purpose string, hash []byte) (bool, error) {
+	var ok bool
+
+	err := s.pool.QueryRow(ctx,
+		`SELECT EXISTS (SELECT 1 FROM email_tokens t JOIN users u ON u.id = t.user_id
+		 WHERE t.token_hash = $1 AND t.purpose = $2 AND t.used_at IS NULL AND t.expires_at > now() AND u.email = t.email)`,
+		hash, purpose).Scan(&ok)
+	if err != nil {
+		return false, fmt.Errorf("read the token %w", err)
+	}
+
+	return ok, nil
 }
 
 // consumeToken marks an unused, unexpired token as used and returns its user
 func consumeToken(ctx context.Context, tx pgx.Tx, purpose string, hash []byte) (string, error) {
 	var userID string
 
+	// the address of the token must still be the address of the account, so a link that went to one mailbox never acts on an account that
+	// moved to another address
 	err := tx.QueryRow(ctx,
-		"UPDATE email_tokens SET used_at = now() WHERE token_hash = $1 AND purpose = $2 AND used_at IS NULL AND expires_at > now() RETURNING user_id",
-		hash, purpose).Scan(&userID)
+		`UPDATE email_tokens t SET used_at = now() FROM users u
+		 WHERE t.token_hash = $1 AND t.purpose = $2 AND t.used_at IS NULL AND t.expires_at > now() AND u.id = t.user_id AND u.email = t.email
+		 RETURNING t.user_id`, hash, purpose).Scan(&userID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", ErrTokenInvalid
 	}
@@ -226,10 +253,28 @@ func (s *Store) ResetPassword(ctx context.Context, hash []byte, passwordHash str
 	return tx.Commit(ctx)
 }
 
-// ChangeEmail sets a new email on an account that is not verified yet. It reports false for an account that is verified.
-func (s *Store) ChangeEmail(ctx context.Context, userID, email string) (bool, error) {
-	tag, err := s.pool.Exec(ctx, "UPDATE users SET email = $2 WHERE id = $1 AND email_verified_at IS NULL", userID, email)
+// ChangeEmail moves an account that is not verified yet to a new address and stores the verification token for that address, in one
+// transaction. It removes every unused token of the account, so no link that went to the old address can act on the new one. It
+// reports false for an account that is verified.
+func (s *Store) ChangeEmail(ctx context.Context, userID, email string, hash []byte, ttl time.Duration) (bool, error) {
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
+		return false, fmt.Errorf("start the change %w", err)
+	}
+
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	// the row is locked, so a resend that read the old address cannot save its token after the change
+	var verified bool
+	if err := tx.QueryRow(ctx, "SELECT email_verified_at IS NOT NULL FROM users WHERE id = $1 FOR UPDATE", userID).Scan(&verified); err != nil {
+		return false, fmt.Errorf("lock the user %w", err)
+	}
+
+	if verified {
+		return false, nil
+	}
+
+	if _, err := tx.Exec(ctx, "UPDATE users SET email = $2 WHERE id = $1", userID, email); err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == uniqueViolation {
 			return false, ErrEmailTaken
@@ -238,7 +283,15 @@ func (s *Store) ChangeEmail(ctx context.Context, userID, email string) (bool, er
 		return false, fmt.Errorf("change the email %w", err)
 	}
 
-	return tag.RowsAffected() == 1, nil
+	if _, err := tx.Exec(ctx, "DELETE FROM email_tokens WHERE user_id = $1 AND used_at IS NULL", userID); err != nil {
+		return false, fmt.Errorf("remove the tokens %w", err)
+	}
+
+	if err := saveToken(ctx, tx, userID, email, purposeVerify, hash, ttl); err != nil {
+		return false, err
+	}
+
+	return true, tx.Commit(ctx)
 }
 
 // CreateSession stores a session and keeps at most maxSessionsForUser for the user, so a stolen password cannot fill the table

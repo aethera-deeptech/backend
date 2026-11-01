@@ -36,6 +36,9 @@ CREATE TABLE email_tokens (
     token_hash bytea PRIMARY KEY,
     user_id uuid NOT NULL REFERENCES users (id) ON DELETE CASCADE,
     purpose text NOT NULL,
+    -- the address that the link was sent to. A token only works while the account still has this address, so a link that went to
+    -- one mailbox can never verify or reset an account that moved to another address.
+    email text NOT NULL,
     created_at timestamptz NOT NULL DEFAULT now(),
     expires_at timestamptz NOT NULL,
     used_at timestamptz,
@@ -46,11 +49,14 @@ CREATE TABLE email_tokens (
 CREATE INDEX email_tokens_user_id_idx ON email_tokens (user_id, purpose);
 CREATE INDEX email_tokens_expires_at_idx ON email_tokens (expires_at);
 
--- One row for each request that a limit counts. The limits live here and not in memory, so both copies of the service share them.
-CREATE TABLE rate_limit_events (
+-- One row for each request that a limit counts. The limits live here and not in memory, so both copies of the service share them. The
+-- table is UNLOGGED, so a count is not written to the log of the shared database. A crash of the database empties it, which only
+-- gives every client a fresh count.
+CREATE UNLOGGED TABLE rate_limit_events (
     bucket text NOT NULL,
     key text NOT NULL,
     at timestamptz NOT NULL DEFAULT now()
 );
 
 CREATE INDEX rate_limit_events_lookup_idx ON rate_limit_events (bucket, key, at);
+CREATE INDEX rate_limit_events_at_idx ON rate_limit_events (at);

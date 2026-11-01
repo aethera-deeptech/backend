@@ -84,13 +84,21 @@ func normalizeEmail(raw string) (string, bool) {
 		return "", false
 	}
 
+	// the address is plain ASCII. A name with other letters has its domain in the punycode form, and a local part with other letters
+	// is refused by most mail servers. PostgreSQL and Go also lower some letters in other ways, which would break the unique index.
+	for i := range len(email) {
+		if email[i] >= 0x80 || email[i] <= ' ' {
+			return "", false
+		}
+	}
+
 	addr, err := mail.ParseAddress(email)
 	if err != nil || addr.Address != email || addr.Name != "" {
 		return "", false
 	}
 
 	_, domain, ok := strings.Cut(email, "@")
-	if !ok || !strings.Contains(domain, ".") || strings.HasSuffix(domain, ".") {
+	if !ok || !strings.Contains(domain, ".") || strings.HasSuffix(domain, ".") || strings.ContainsAny(domain, "[]") {
 		return "", false
 	}
 
@@ -120,7 +128,7 @@ func cleanName(raw string, maxRunes int) (string, string) {
 		return "", "required"
 	case utf8.RuneCountInString(name) > maxRunes:
 		return "", "too_long"
-	case strings.ContainsFunc(name, unicode.IsControl):
+	case strings.ContainsFunc(name, isHidden):
 		return "", "invalid"
 	default:
 		return name, ""
@@ -156,7 +164,7 @@ func (s *Service) sendVerification(ctx context.Context, userID, email string) er
 		return err
 	}
 
-	if err := s.store.SaveToken(ctx, userID, purposeVerify, hash, verifyTTL); err != nil {
+	if err := s.store.SaveToken(ctx, userID, email, purposeVerify, hash, verifyTTL); err != nil {
 		return err
 	}
 
@@ -196,6 +204,13 @@ func (s *Service) Register(ctx context.Context, ip, businessName, rawEmail, pass
 
 	if err := s.allow(ctx, ruleRegisterEmail, email, ""); err != nil {
 		return err
+	}
+
+	// the cheap check comes before the hash, so a request for a taken address costs a query and not a full hash
+	if existing, err := s.store.UserByEmail(ctx, email); err != nil {
+		return err
+	} else if existing != nil {
+		return api.NewError(http.StatusConflict, "email_taken", "The email has an account")
 	}
 
 	hctx, cancel := s.hashContext(ctx)
@@ -315,6 +330,10 @@ func (s *Service) Logout(ctx context.Context, token string) error {
 	return s.store.DeleteSession(ctx, hashToken(token))
 }
 
+// isHidden reports a control character or a format character, such as a zero width space or a right to left override, which a name
+// has no use for and which can make a name look like another one
+func isHidden(r rune) bool { return unicode.IsControl(r) || unicode.Is(unicode.Cf, r) }
+
 func validToken(t string) bool { return len(t) >= 32 && len(t) <= 128 }
 
 // VerifyEmail uses the token of the link, verifies the email and starts a session
@@ -430,7 +449,12 @@ func (s *Service) ChangeEmail(ctx context.Context, ip, rawEmail, password, rawNe
 		return api.NewError(http.StatusUnauthorized, "invalid_credentials", "The email or the password is wrong")
 	}
 
-	changed, err := s.store.ChangeEmail(ctx, user.ID, newEmail)
+	raw, hash, err := newToken()
+	if err != nil {
+		return err
+	}
+
+	changed, err := s.store.ChangeEmail(ctx, user.ID, newEmail, hash, verifyTTL)
 	if errors.Is(err, ErrEmailTaken) {
 		return api.NewError(http.StatusConflict, "email_taken", "The email has an account")
 	}
@@ -443,7 +467,9 @@ func (s *Service) ChangeEmail(ctx context.Context, ip, rawEmail, password, rawNe
 		return api.NewError(http.StatusConflict, "already_verified", "The email is verified, so it cannot be changed here")
 	}
 
-	return s.sendVerification(ctx, user.ID, newEmail)
+	s.mailer.Verification(newEmail, s.link("/verify-email", raw))
+
+	return nil
 }
 
 // ForgotPassword sends the reset link when the email has an account with a password. The answer is the same for every email.
@@ -471,7 +497,7 @@ func (s *Service) ForgotPassword(ctx context.Context, ip, rawEmail string) error
 		return err
 	}
 
-	if err := s.store.SaveToken(ctx, user.ID, purposeReset, hash, resetTTL); err != nil {
+	if err := s.store.SaveToken(ctx, user.ID, email, purposeReset, hash, resetTTL); err != nil {
 		return err
 	}
 
@@ -498,6 +524,13 @@ func (s *Service) ResetPassword(ctx context.Context, ip, token, password string)
 
 	if err := s.allow(ctx, ruleTokenIP, ip, ""); err != nil {
 		return err
+	}
+
+	// a token that does not work is refused before the hash, so a random token with a valid password costs a query
+	if valid, err := s.store.TokenValid(ctx, purposeReset, hashToken(token)); err != nil {
+		return err
+	} else if !valid {
+		return tokenInvalid()
 	}
 
 	hctx, cancel := s.hashContext(ctx)
