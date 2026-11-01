@@ -64,11 +64,11 @@ jobs:
           fi
 
           if [ "$(jq '.labels | length' <<<"$pr")" -eq 0 ]; then
-            fail "The pull request has no label, add bug, enhancement, documentation or another label of the repository, then rerun this check."
+            fail "The pull request has no label, add bug, enhancement, documentation or another label of the repository, and the check runs again."
           fi
 
           if [ "$(jq '.assignees | length' <<<"$pr")" -eq 0 ]; then
-            fail "The pull request has no assignee, then rerun this check."
+            fail "The pull request has no assignee, add one and the check runs again."
           fi
 
           # Every line of the body is a bullet with text. A line that is only an HTML comment, such as the hint of the template, is allowed.

@@ -31,7 +31,7 @@ jobs:
         with:
           persist-credentials: false
 
-      # Lints the commits of the pull request. Merge commits are ignored by commitlint, and the rules are in commitlint.config.mjs.
+      # Lints the commits of the pull request. Only the merge of main into the branch is ignored by commitlint, and the rules are in commitlint.config.mjs.
       - name: Commit messages
         uses: wagoid/commitlint-github-action@b948419dd99f3fd78a6548d48f94e3df7f6bf3ed # v6.2.1
         with:
