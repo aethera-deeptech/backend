@@ -30,6 +30,7 @@ const (
 	lockTimeout            = "5s"
 	idleInTransactionLimit = "30s"
 	connectTimeout         = 5 * time.Second
+	pingTimeout            = 5 * time.Second
 	connectAttempts        = 10
 	connectWait            = 2 * time.Second
 	// migrationLockTimeout bounds the wait for a table lock in a migration. Without it an ALTER TABLE that waits behind one long
@@ -44,7 +45,7 @@ func Open(ctx context.Context, url string, maxConns uint) (*pgxpool.Pool, error)
 		return nil, errors.New("the database settings are not valid")
 	}
 
-	cfg.MaxConns = int32(min(maxConns, 1<<30)) //nolint:gosec // the config loader limits it to 50
+	cfg.MaxConns = int32(min(maxConns, 1<<30))
 	cfg.ConnConfig.ConnectTimeout = connectTimeout
 	cfg.MaxConnLifetime = 30 * time.Minute
 	cfg.MaxConnIdleTime = 5 * time.Minute
@@ -61,7 +62,11 @@ func Open(ctx context.Context, url string, maxConns uint) (*pgxpool.Pool, error)
 	}
 
 	for attempt := 1; ; attempt++ {
-		err = pool.Ping(ctx)
+		pingCtx, cancel := context.WithTimeout(ctx, pingTimeout)
+		err = pool.Ping(pingCtx)
+
+		cancel()
+
 		if err == nil {
 			return pool, nil
 		}
