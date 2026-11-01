@@ -20,8 +20,9 @@ const (
 )
 
 const (
-	maxPort    = 65535
-	maxDBConns = 50
+	maxPort         = 65535
+	maxDBConns      = 50
+	maxSentryEvents = 1000
 )
 
 // Config holds the settings of the service. The names of the variables are listed in .env.example.
@@ -45,13 +46,20 @@ type Config struct {
 	// address is trusted, which includes other containers on a shared Docker network.
 	TrustProxyCIDRs []string `env:"TRUST_PROXY_CIDRS" envSeparator:","`
 
-	SMTPHost        string `env:"SMTP_HOST"`
-	SMTPPort        uint   `env:"SMTP_PORT" envDefault:"465"`
-	SMTPUsername    string `env:"SMTP_USERNAME"`
-	SMTPPassword    string `env:"SMTP_PASSWORD"`
-	SMTPSecurity    string `env:"SMTP_SECURITY" envDefault:"tls"`
-	SMTPFromName    string `env:"SMTP_FROM_NAME" envDefault:"Aethera"`
-	SMTPFromAddress string `env:"SMTP_FROM_ADDRESS"`
+	SMTPHost     string `env:"SMTP_HOST"`
+	SMTPPort     uint   `env:"SMTP_PORT" envDefault:"465"`
+	SMTPUsername string `env:"SMTP_USERNAME"`
+	SMTPPassword string `env:"SMTP_PASSWORD"`
+	SMTPSecurity string `env:"SMTP_SECURITY" envDefault:"tls"`
+	SMTPFromName string `env:"SMTP_FROM_NAME" envDefault:"Aethera"`
+
+	// SentryDSN is where the error reports go, and empty switches them off. SentryEventsPerMinute is the most events that leave in a
+	// minute, so a crash loop cannot use up the quota.
+	SentryDSN             string `env:"SENTRY_DSN"`
+	SentryEnvironment     string `env:"SENTRY_ENVIRONMENT" envDefault:"production"`
+	SentryServerName      string `env:"SENTRY_SERVER_NAME"`
+	SentryEventsPerMinute int    `env:"SENTRY_EVENTS_PER_MINUTE" envDefault:"30"`
+	SMTPFromAddress       string `env:"SMTP_FROM_ADDRESS"`
 
 	// DBMaxConns is the size of the pool of one copy. The database is shared, so two copies must stay well below its connection limit.
 	DBMaxConns uint `env:"DB_MAX_CONNS" envDefault:"8"`
@@ -132,6 +140,10 @@ func parse(environ map[string]string) (Config, error) {
 	// without a mail server nobody can verify an email, so a production service that cannot send refuses to start
 	if cfg.AppEnv == EnvProduction && (cfg.SMTPHost == "" || cfg.SMTPFromAddress == "") {
 		return Config{}, errors.New("SMTP_HOST and SMTP_FROM_ADDRESS are required in production")
+	}
+
+	if cfg.SentryEventsPerMinute < 1 || cfg.SentryEventsPerMinute > maxSentryEvents {
+		return Config{}, fmt.Errorf("SENTRY_EVENTS_PER_MINUTE is %d and must be between 1 and %d", cfg.SentryEventsPerMinute, maxSentryEvents)
 	}
 
 	if cfg.DBMaxConns == 0 || cfg.DBMaxConns > maxDBConns {

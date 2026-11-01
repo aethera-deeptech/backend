@@ -19,6 +19,7 @@ import (
 	"github.com/aethera-deeptech/backend/internal/auth"
 	"github.com/aethera-deeptech/backend/internal/config"
 	"github.com/aethera-deeptech/backend/internal/database"
+	"github.com/aethera-deeptech/backend/internal/errorreport"
 	"github.com/aethera-deeptech/backend/internal/healthcheck"
 	"github.com/aethera-deeptech/backend/internal/janitor"
 	"github.com/aethera-deeptech/backend/internal/logging"
@@ -63,6 +64,13 @@ func run() error {
 	}
 
 	log.Printf("starting backend %s in %s", version, cfg.AppEnv)
+
+	// the reports start first, so a failure while the service starts is sent too. The returned function sends what is still queued.
+	stopReports := errorreport.Start(errorreport.Config{
+		DSN: cfg.SentryDSN, Environment: cfg.SentryEnvironment, ServerName: cfg.SentryServerName, Release: version,
+		EventsPerMinute: cfg.SentryEventsPerMinute,
+	})
+	defer stopReports()
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
