@@ -29,6 +29,6 @@ Every check below is required and is reported by GitHub Actions.
 | Conventional commits | GitHub Actions | yes |
 | PR format | GitHub Actions | yes |
 
-Each required check is pinned to the app that reports it, so another app cannot post a check with the same name. A pull request that adds, renames or removes a job also changes the ruleset in the same change.
+Each required check is pinned to the app that reports it, so another app cannot post a check with the same name. When a pull request adds, renames or removes a job, the ruleset is updated before the pull request is merged.
 
 The tags that start with `v` are protected by two more rulesets. `release-tags` refuses deleting, moving and updating them. `release-tags-creation` lets only the release App create them.
