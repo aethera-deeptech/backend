@@ -126,8 +126,11 @@ func TestAMappedRangeShorterThan96BitsIsRefused(t *testing.T) {
 		}
 	}
 
-	if _, err := parse(withDB(map[string]string{"TRUST_PROXY_CIDRS": "::ffff:10.0.0.0/104"})); err != nil {
-		t.Fatalf("a mapped range of 104 bits was refused %v", err)
+	// a range that only looks like one is a plain IPv6 range and is kept
+	for _, in := range []string{"::ffff:10.0.0.0/104", "::ffff:0:0:0/80"} {
+		if _, err := parse(withDB(map[string]string{"TRUST_PROXY_CIDRS": in})); err != nil {
+			t.Fatalf("%s was refused %v", in, err)
+		}
 	}
 }
 
