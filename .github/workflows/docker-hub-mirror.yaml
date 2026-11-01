@@ -105,7 +105,8 @@ jobs:
                 highest_major="$(sort -V <<< "$versions" | tail -n 1)"
                 candidates=""
                 [ "$highest_minor" = "$source" ] && candidates="${major}.${minor}"
-                [ "$highest_major" = "$source" ] && candidates="${candidates} ${major}"
+                # a major version of 0 has no major tag, docker.yaml never sets one for it
+                [ "$major" != "0" ] && [ "$highest_major" = "$source" ] && candidates="${candidates} ${major}"
                 identity="${workflow}@refs/tags/${HEAD_BRANCH}"
                 trigger="push"
               else
