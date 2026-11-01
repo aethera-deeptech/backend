@@ -175,8 +175,14 @@ func (s *Service) storeEnrollment(ctx context.Context, hardwareID, firmware stri
 
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	if _, err := tx.Exec(ctx, "DELETE FROM gateway_enrollments WHERE gateway_id IS NULL AND (hardware_id = $1 OR expires_at < now())", hardwareID); err != nil {
-		return fmt.Errorf("remove the older enrollments %w", err)
+	// a pending enrollment of the same hardware is replaced only when it holds the same key, which is a gateway that asks again. A request
+	// from someone else with another key must not remove the code that the real gateway shows.
+	if _, err := tx.Exec(ctx, "DELETE FROM gateway_enrollments WHERE gateway_id IS NULL AND hardware_id = $1 AND key_hash = $2", hardwareID, keyHash); err != nil {
+		return fmt.Errorf("remove the older enrollment %w", err)
+	}
+
+	if _, err := tx.Exec(ctx, "DELETE FROM gateway_enrollments WHERE expires_at < now()"); err != nil {
+		return fmt.Errorf("remove the expired enrollments %w", err)
 	}
 
 	if _, err := tx.Exec(ctx,
@@ -315,7 +321,7 @@ func (s *Service) Claim(ctx context.Context, businessID, rawCode, rawName string
 		return Gateway{}, api.NewError(http.StatusConflict, "gateway_claimed_elsewhere", "This gateway belongs to another business")
 	default:
 		err = tx.QueryRow(ctx,
-			"UPDATE gateways SET name = $3, key_hash = $2 WHERE hardware_id = $1 RETURNING id, name, COALESCE(last_seen_at, created_at)",
+			"UPDATE gateways SET name = $3, key_hash = $2, last_seq = 0 WHERE hardware_id = $1 RETURNING id, name, COALESCE(last_seen_at, created_at)",
 			hardwareID, keyHash, name).Scan(&gw.ID, &gw.Name, &gw.LastSeenAt)
 	}
 

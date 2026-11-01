@@ -291,14 +291,9 @@ func TestBatchShape(t *testing.T) {
 	now := time.Now().Unix()
 
 	tests := map[string]string{
-		"seq zero":         fmt.Sprintf(`{"seq":0,"sentAt":%d,"nodes":[{"nodeId":"NODE-0001","kind":"plug","samples":[{"t":%d,"p":1}]}]}`, now, now),
-		"no nodes":         fmt.Sprintf(`{"seq":1,"sentAt":%d,"nodes":[]}`, now),
-		"a bad node id":    fmt.Sprintf(`{"seq":1,"sentAt":%d,"nodes":[{"nodeId":"x","kind":"plug","samples":[{"t":%d,"p":1}]}]}`, now, now),
-		"a bad kind":       fmt.Sprintf(`{"seq":1,"sentAt":%d,"nodes":[{"nodeId":"NODE-0001","kind":"toaster","samples":[{"t":%d,"p":1}]}]}`, now, now),
-		"no samples":       fmt.Sprintf(`{"seq":1,"sentAt":%d,"nodes":[{"nodeId":"NODE-0001","kind":"plug","samples":[]}]}`, now),
-		"a duplicate node": fmt.Sprintf(`{"seq":1,"sentAt":%d,"nodes":[{"nodeId":"NODE-0001","kind":"plug","samples":[{"t":%d,"p":1}]},{"nodeId":"NODE-0001","kind":"plug","samples":[{"t":%d,"p":1}]}]}`, now, now, now),
-		"too many hops":    fmt.Sprintf(`{"seq":1,"sentAt":%d,"nodes":[{"nodeId":"NODE-0001","kind":"plug","hops":9,"samples":[{"t":%d,"p":1}]}]}`, now, now),
-		"a bad sentAt":     fmt.Sprintf(`{"seq":1,"sentAt":5,"nodes":[{"nodeId":"NODE-0001","kind":"plug","samples":[{"t":%d,"p":1}]}]}`, now),
+		"seq zero":     fmt.Sprintf(`{"seq":0,"sentAt":%d,"nodes":[{"nodeId":"NODE-0001","kind":"plug","samples":[{"t":%d,"p":1}]}]}`, now, now),
+		"no nodes":     fmt.Sprintf(`{"seq":1,"sentAt":%d,"nodes":[]}`, now),
+		"a bad sentAt": fmt.Sprintf(`{"seq":1,"sentAt":5,"nodes":[{"nodeId":"NODE-0001","kind":"plug","samples":[{"t":%d,"p":1}]}]}`, now),
 	}
 
 	for name, body := range tests {
@@ -317,8 +312,9 @@ func TestBatchShape(t *testing.T) {
 		parts = append(parts, fmt.Sprintf(`{"t":%d,"p":1}`, now-int64(i)))
 	}
 
-	if r := g.send(t, batch(2, "NODE-0001", "plug", parts...)); r.Status != http.StatusUnprocessableEntity {
-		t.Errorf("1001 samples answered %d, want 422", r.Status)
+	// the samples of one node over the limit are dropped with the node, and the batch moves on
+	if r := g.send(t, batch(2, "NODE-0001", "plug", parts...)); r.Status != http.StatusOK || r.Body["rejected"] != 1001.0 || r.Body["accepted"] != 0.0 {
+		t.Errorf("1001 samples answered %d %v, want 200 with 1001 rejected", r.Status, r.Body)
 	}
 
 	if r := g.send(t, `{"seq":3,"sentAt":`+fmt.Sprint(now)+`,"nodes":[{"nodeId":"NODE-0001","kind":"plug","samples":[{"t":1,"p":1}]}], "extra":1}`); r.Status != http.StatusBadRequest {
@@ -363,7 +359,8 @@ func TestAnotherBusinessCannotTakeTheGatewayOfThisOne(t *testing.T) {
 
 	newKey, _ := key("l")
 
-	if r := g.e.CallWith(t, http.MethodPost, "/device/v1/readings", batch(2, "NODE-0001", "plug", sample(0, 5)), bearer(newKey)); r.Status != http.StatusOK {
+	// a claim again starts the counter of the gateway at zero, so the first batch of the new key is number 1
+	if r := g.e.CallWith(t, http.MethodPost, "/device/v1/readings", batch(1, "NODE-0001", "plug", sample(0, 5)), bearer(newKey)); r.Status != http.StatusOK {
 		t.Fatalf("the new key answered %d %v", r.Status, r.Body)
 	}
 }
@@ -375,5 +372,68 @@ func TestTheRoutesOfTheAppNeedASession(t *testing.T) {
 		if r := e.Call(t, route[0], route[1], `{}`, ""); r.Status != http.StatusUnauthorized {
 			t.Errorf("%s %s answered %d without a session", route[0], route[1], r.Status)
 		}
+	}
+}
+
+func TestABadNodeDoesNotBlockTheBatch(t *testing.T) {
+	g := enrolled(t, "budi@example.com", "ESP32-AABBCC", "m")
+	now := time.Now().Unix()
+
+	body := fmt.Sprintf(`{"seq":1,"sentAt":%d,"nodes":[`+
+		`{"nodeId":"NODE-0001","kind":"plug","samples":[{"t":%d,"p":5}]},`+
+		`{"nodeId":"x","kind":"plug","samples":[{"t":%d,"p":1},{"t":%d,"p":1}]},`+
+		`{"nodeId":"NODE-0002","kind":"toaster","samples":[{"t":%d,"p":1}]},`+
+		`{"nodeId":"NODE-0003","kind":"plug","hops":9,"samples":[{"t":%d,"p":1}]},`+
+		`{"nodeId":"NODE-0004","kind":"plug","samples":[]},`+
+		`{"nodeId":"NODE-0001","kind":"plug","samples":[{"t":%d,"p":1}]}]}`, now, now, now, now, now, now, now)
+
+	r := g.send(t, body)
+	if r.Status != http.StatusOK || r.Body["accepted"] != 1.0 || r.Body["rejected"] != 5.0 {
+		t.Fatalf("the batch answered %d %v, want 1 accepted and 5 rejected", r.Status, r.Body)
+	}
+
+	var n int
+	if err := g.e.Pool.QueryRow(t.Context(), "SELECT count(*) FROM nodes").Scan(&n); err != nil || n != 1 {
+		t.Fatalf("%d nodes were stored (%v), want 1", n, err)
+	}
+}
+
+func TestAGatewayCannotMakeUpMoreNodesThanTheLimit(t *testing.T) {
+	g := enrolled(t, "budi@example.com", "ESP32-AABBCC", "n")
+	now := time.Now().Unix()
+	seq := 0
+
+	for batchNo := range 6 {
+		var nodes []string
+
+		for i := range 16 {
+			nodes = append(nodes, fmt.Sprintf(`{"nodeId":"NODE-%02d%02d","kind":"plug","samples":[{"t":%d,"p":1}]}`, batchNo, i, now))
+		}
+
+		seq++
+
+		body := fmt.Sprintf(`{"seq":%d,"sentAt":%d,"nodes":[%s]}`, seq, now, strings.Join(nodes, ","))
+		if r := g.send(t, body); r.Status != http.StatusOK {
+			t.Fatalf("batch %d answered %d %v", seq, r.Status, r.Body)
+		}
+	}
+
+	var n int
+	if err := g.e.Pool.QueryRow(t.Context(), "SELECT count(*) FROM nodes").Scan(&n); err != nil || n != 64 {
+		t.Fatalf("the gateway has %d nodes (%v), want the limit of 64", n, err)
+	}
+}
+
+func TestACompressedBodyIsRefused(t *testing.T) {
+	g := enrolled(t, "budi@example.com", "ESP32-AABBCC", "o")
+
+	r := g.e.CallWith(t, http.MethodPost, "/device/v1/enroll", `{}`, map[string]string{"Content-Encoding": "gzip"})
+	if r.Status != http.StatusUnsupportedMediaType {
+		t.Fatalf("a compressed enroll answered %d", r.Status)
+	}
+
+	r = g.e.CallWith(t, http.MethodPost, "/device/v1/readings", `{}`, map[string]string{"Content-Encoding": "gzip", "Authorization": "Bearer " + g.key})
+	if r.Status != http.StatusUnsupportedMediaType {
+		t.Fatalf("compressed readings answered %d", r.Status)
 	}
 }

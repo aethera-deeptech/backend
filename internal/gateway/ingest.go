@@ -18,23 +18,25 @@ import (
 
 // The limits of one batch of readings
 const (
-	MaxBodyBytes     = 256 << 10
-	maxNodes         = 16
-	maxSamplesNode   = 1000
-	maxSamplesBatch  = 5000
-	maxAge           = 24 * time.Hour
-	maxFuture        = time.Minute
-	clockSlack       = 5 * time.Second
-	minUnix          = 1700000000
-	maxWatts         = 60000
-	maxVolts         = 500
-	maxAmps          = 200
-	maxHertz         = 100
-	maxHops          = 3
-	maxKWh           = 1e9
-	nodeIDMinLength  = 6
-	nodeIDMaxLength  = 32
-	ingestPerHourMax = 600
+	MaxBodyBytes = 256 << 10
+	maxNodes     = 16
+	// maxNodesPerGateway is how many different nodes one gateway may have, so a gateway that makes up node ids cannot fill the table
+	maxNodesPerGateway = 64
+	maxSamplesNode     = 1000
+	maxSamplesBatch    = 5000
+	maxAge             = 24 * time.Hour
+	maxFuture          = time.Minute
+	clockSlack         = 5 * time.Second
+	minUnix            = 1700000000
+	maxWatts           = 60000
+	maxVolts           = 500
+	maxAmps            = 200
+	maxHertz           = 100
+	maxHops            = 3
+	maxKWh             = 1e9
+	nodeIDMinLength    = 6
+	nodeIDMaxLength    = 32
+	ingestPerHourMax   = 600
 )
 
 var (
@@ -162,7 +164,25 @@ func (s *Service) Ingest(ctx context.Context, p *Principal, b Batch, now time.Ti
 
 	ack := Ack{AckSeq: b.Seq, ServerTime: now}
 
+	// the nodes of the gateway are read after the lock on its row, so two batches of one gateway count one after the other
+	known, err := knownNodes(ctx, tx, p.GatewayID)
+	if err != nil {
+		return Ack{}, err
+	}
+
+	seen := map[string]bool{}
+
 	for _, n := range b.Nodes {
+		// a node that is built wrong, a node that repeats in the batch and a node over the limit are dropped with their samples, and the
+		// rest of the batch is stored, because a gateway that retries one batch for ever would block the nodes behind the bad one
+		if !validNode(n) || seen[n.NodeID] || (!known[n.NodeID] && len(known) >= maxNodesPerGateway) {
+			ack.Rejected += len(n.Samples)
+
+			continue
+		}
+
+		seen[n.NodeID], known[n.NodeID] = true, true
+
 		if err := upsertNode(ctx, tx, p.GatewayID, n, now); err != nil {
 			return Ack{}, err
 		}
@@ -204,35 +224,48 @@ func checkShape(b Batch) error {
 	}
 
 	total := 0
-	seen := map[string]bool{}
 
 	for _, n := range b.Nodes {
-		switch {
-		case !nodeIDPattern.MatchString(n.NodeID):
-			fields["nodes.nodeId"] = "invalid"
-		case seen[n.NodeID]:
-			fields["nodes.nodeId"] = "duplicate"
-		case n.Kind != "plug" && n.Kind != "clamp":
-			fields["nodes.kind"] = "invalid"
-		case n.Hops < 0 || n.Hops > maxHops:
-			fields["nodes.hops"] = "out_of_range"
-		case len(n.Samples) == 0 || len(n.Samples) > maxSamplesNode:
-			fields["nodes.samples"] = "out_of_range"
-		}
-
-		seen[n.NodeID] = true
 		total += len(n.Samples)
-	}
-
-	if total > maxSamplesBatch {
-		fields["nodes.samples"] = "too_many"
 	}
 
 	if len(fields) > 0 {
 		return api.Validation(fields)
 	}
 
+	if total > maxSamplesBatch {
+		return api.NewError(http.StatusRequestEntityTooLarge, "payload_too_large", "The batch holds more than 5000 samples")
+	}
+
 	return nil
+}
+
+// validNode checks one node of a batch. A node that fails is dropped and counted, and it does not fail the batch.
+func validNode(n NodeBatch) bool {
+	return nodeIDPattern.MatchString(n.NodeID) && (n.Kind == "plug" || n.Kind == "clamp") && n.Hops >= 0 && n.Hops <= maxHops &&
+		len(n.Samples) > 0 && len(n.Samples) <= maxSamplesNode
+}
+
+// knownNodes returns the ids of the nodes that the gateway has stored already
+func knownNodes(ctx context.Context, tx pgx.Tx, gatewayID string) (map[string]bool, error) {
+	rows, err := tx.Query(ctx, "SELECT node_id FROM nodes WHERE gateway_id = $1", gatewayID)
+	if err != nil {
+		return nil, fmt.Errorf("read the nodes %w", err)
+	}
+	defer rows.Close()
+
+	out := map[string]bool{}
+
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("read a node %w", err)
+		}
+
+		out[id] = true
+	}
+
+	return out, rows.Err()
 }
 
 func upsertNode(ctx context.Context, tx pgx.Tx, gatewayID string, n NodeBatch, now time.Time) error {

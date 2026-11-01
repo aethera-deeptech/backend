@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
@@ -30,10 +31,20 @@ func (h *Handlers) RegisterApp(r fiber.Router, require fiber.Handler) {
 // RegisterDevice adds the routes of a gateway under /device/v1. They take no cookie and need no CSRF header, because a gateway is
 // not a browser. The routes for readings need the key of the gateway.
 func (h *Handlers) RegisterDevice(r fiber.Router) {
-	r.Use(api.NoStore())
-	r.Post("/enroll", h.enroll, api.BodyLimit(maxEnrollBody))
+	r.Use(api.NoStore(), refuseEncoding)
+	r.Post("/enroll", api.BodyLimit(maxEnrollBody), h.enroll)
 	r.Get("/enroll/:pollId", h.poll)
 	r.Post("/readings", h.readings)
+}
+
+// refuseEncoding answers 415 to a body that is compressed. A gateway has no use for it, and the server would inflate the body before
+// any limit on its size could see it, so a small request could cost a lot of memory.
+func refuseEncoding(c fiber.Ctx) error {
+	if enc := strings.TrimSpace(c.Get(fiber.HeaderContentEncoding)); enc != "" && !strings.EqualFold(enc, "identity") {
+		return api.NewError(http.StatusUnsupportedMediaType, "unsupported_encoding", "The body must not be compressed")
+	}
+
+	return c.Next()
 }
 
 // maxEnrollBody is the largest body of an enroll request, which has a hardware id, a version and a hash

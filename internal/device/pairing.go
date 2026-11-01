@@ -169,9 +169,17 @@ func (p *Pairings) Get(ctx context.Context, businessID, id string) (Pairing, err
 		return out, nil
 	}
 
-	deviceID, found, err := claimNode(ctx, tx, businessID, kind, name, roomID, createdAt)
-	if err != nil {
-		return Pairing{}, err
+	// a search that ran out of time takes no node, even when one was heard after the end
+	var (
+		deviceID string
+		found    bool
+	)
+
+	if !expired {
+		deviceID, found, err = claimNode(ctx, tx, businessID, kind, name, roomID, createdAt)
+		if err != nil {
+			return Pairing{}, err
+		}
 	}
 
 	switch {
@@ -205,7 +213,7 @@ func claimNode(ctx context.Context, tx pgx.Tx, businessID, kind, name, roomID st
 		`SELECT n.gateway_id, n.node_id FROM nodes n JOIN gateways g ON g.id = n.gateway_id
 		 WHERE g.business_id = $1 AND n.kind = $2 AND n.last_seen_at > $3
 		   AND NOT EXISTS (SELECT 1 FROM devices d WHERE d.gateway_id = n.gateway_id AND d.node_id = n.node_id)
-		 ORDER BY n.first_seen_at DESC LIMIT 1 FOR UPDATE OF n SKIP LOCKED`,
+		 ORDER BY n.first_seen_at DESC LIMIT 1 FOR NO KEY UPDATE OF n`,
 		businessID, kind, since.Add(-nodeLookback)).Scan(&gatewayID, &nodeID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", false, nil

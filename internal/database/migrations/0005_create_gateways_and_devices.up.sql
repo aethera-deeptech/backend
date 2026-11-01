@@ -34,6 +34,7 @@ CREATE TABLE gateway_enrollments (
 
 CREATE UNIQUE INDEX gateway_enrollments_code_hash_key ON gateway_enrollments (code_hash);
 CREATE INDEX gateway_enrollments_expires_at_idx ON gateway_enrollments (expires_at);
+CREATE INDEX gateway_enrollments_hardware_id_idx ON gateway_enrollments (hardware_id);
 
 -- A node is a plug or a clamp that a gateway hears over ESP-NOW. The state columns hold the last sample, which the service needs to
 -- turn a growing energy counter into the energy of each hour.
