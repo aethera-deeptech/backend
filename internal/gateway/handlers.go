@@ -23,8 +23,8 @@ func NewHandlers(svc *Service) *Handlers {
 
 // RegisterApp adds the routes of the app under /v1 behind the middleware that needs a signed in user
 func (h *Handlers) RegisterApp(r fiber.Router, require fiber.Handler) {
-	r.Get("/gateways", h.list, require)
-	r.Post("/gateways", h.claim, require)
+	r.Get("/gateways", require, h.list)
+	r.Post("/gateways", require, h.claim)
 }
 
 // RegisterDevice adds the routes of a gateway under /device/v1. They take no cookie and need no CSRF header, because a gateway is

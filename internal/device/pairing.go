@@ -256,9 +256,9 @@ func NewHandlers(pairings *Pairings) *Handlers {
 
 // Register adds the routes behind the middleware that needs a signed in user
 func (h *Handlers) Register(r fiber.Router, require fiber.Handler) {
-	r.Post("/pairings", h.start, require)
-	r.Get("/pairings/:id", h.get, require)
-	r.Delete("/pairings/:id", h.cancel, require)
+	r.Post("/pairings", require, h.start)
+	r.Get("/pairings/:id", require, h.get)
+	r.Delete("/pairings/:id", require, h.cancel)
 }
 
 func (h *Handlers) start(c fiber.Ctx) error {
