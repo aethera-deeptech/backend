@@ -196,3 +196,18 @@ func (e *Env) Exec(t *testing.T, sql string, args ...any) {
 		t.Fatalf("run %q %v", sql, err)
 	}
 }
+
+// CallWith sends a JSON request with a header of the caller, such as the bearer key of a gateway. It sends no CSRF header and no
+// origin, like a gateway.
+func (e *Env) CallWith(t *testing.T, method, path, body string, headers map[string]string) Reply {
+	t.Helper()
+
+	req := httptest.NewRequestWithContext(t.Context(), method, path, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+
+	return e.Send(t, req)
+}

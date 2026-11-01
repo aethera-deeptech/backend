@@ -9,6 +9,8 @@ import (
 	"github.com/aethera-deeptech/backend/internal/auth"
 	"github.com/aethera-deeptech/backend/internal/business"
 	"github.com/aethera-deeptech/backend/internal/config"
+	"github.com/aethera-deeptech/backend/internal/device"
+	"github.com/aethera-deeptech/backend/internal/gateway"
 	"github.com/aethera-deeptech/backend/internal/metrics"
 	"github.com/aethera-deeptech/backend/internal/production"
 	"github.com/aethera-deeptech/backend/internal/server"
@@ -41,7 +43,8 @@ func New(d Deps) *fiber.App {
 
 	app := server.New(opts)
 
-	accounts := auth.NewService(auth.NewStore(d.Pool), auth.NewLimiter(d.Pool), auth.NewHasher(passwordHashSlots), d.Mailer, cfg.AppOrigin)
+	limiter := auth.NewLimiter(d.Pool)
+	accounts := auth.NewService(auth.NewStore(d.Pool), limiter, auth.NewHasher(passwordHashSlots), d.Mailer, cfg.AppOrigin)
 	accountRoutes := auth.NewHandlers(accounts, auth.CookieFor(cfg.AppEnv == config.EnvProduction))
 	require := accountRoutes.Require()
 
@@ -49,6 +52,11 @@ func New(d Deps) *fiber.App {
 	accountRoutes.Register(v1)
 	business.NewHandlers(business.NewStore(d.Pool)).Register(v1, require)
 	production.NewHandlers(production.NewStore(d.Pool)).Register(v1, require)
+
+	gateways := gateway.NewHandlers(gateway.NewService(d.Pool, limiter))
+	gateways.RegisterApp(v1, require)
+	gateways.RegisterDevice(app.Group("/device/v1"))
+	device.NewHandlers(device.NewPairings(d.Pool, limiter)).Register(v1, require)
 
 	// the labels of the metrics are the routes that exist now, so a path that a client made up is counted as one series
 	if d.Metrics != nil {

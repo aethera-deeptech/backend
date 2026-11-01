@@ -871,7 +871,7 @@ paths:
       tags: [Gateway]
       operationId: sendReadings
       summary: Send a batch of readings of the nodes of a gateway
-      description: "The gateway sends its key as a bearer token, see the scheme `gatewayKey`. A batch has a sequence number that grows by one for each batch. The service stores a batch once, so a retry of an older sequence number is answered with the last acknowledgement and stores nothing twice. A batch can hold readings of up to 24 hours, so a gateway that lost its Wi-Fi can catch up. A sample that is out of range or older than a day is dropped and counted in `rejected`, so one bad sample never blocks the gateway. The time stamps move by the difference between the clock of the gateway (`sentAt`) and the clock of the service. A node that has no device yet is kept as unclaimed and can be claimed by a pairing."
+      description: "The gateway sends its key as a bearer token, see the scheme `gatewayKey`. A batch has a sequence number that grows by one for each batch. The service stores a batch once, so a retry of an older sequence number is answered with the last acknowledgement and stores nothing twice. A batch can hold readings of up to 24 hours, so a gateway that lost its Wi-Fi can catch up. A sample that is out of range or older than a day is dropped and counted in `rejected`, so one bad sample never blocks the gateway. The time stamps move by the difference between the clock of the gateway (`sentAt`) and the clock of the service. A node that has no device yet is kept as unclaimed and can be claimed by a pairing. A node that is built wrong, that repeats in the batch or that goes over the 64 nodes of a gateway is dropped with its samples, and the samples are counted in `rejected`. The body must not be compressed, or the answer is 415."
       security:
         - gatewayKey: []
       requestBody:
@@ -900,6 +900,11 @@ paths:
               schema: {$ref: "#/components/schemas/Error"}
         "413":
           description: The batch is larger than 256 KiB or holds more than 5000 samples
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+        "415":
+          description: The body is compressed (code `unsupported_encoding`)
           content:
             application/json:
               schema: {$ref: "#/components/schemas/Error"}
