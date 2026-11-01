@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/aethera-deeptech/backend/internal/database"
 	"github.com/aethera-deeptech/backend/internal/database/dbtest"
@@ -102,5 +103,25 @@ func TestMigrateRefusesADirtyDatabase(t *testing.T) {
 func TestOpenRefusesABrokenURL(t *testing.T) {
 	if _, err := database.Open(context.Background(), "postgres://%zz", 4); err == nil {
 		t.Fatal("a broken url was accepted")
+	}
+}
+
+func TestOpenGivesUpWhenTheContextEndsAndTheDatabaseIsUnreachable(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+
+	// nothing listens on port 1, so every attempt fails at once and the context ends the waiting
+	if _, err := database.Open(ctx, "postgres://u:p@127.0.0.1:1/db?sslmode=disable", 2); err == nil {
+		t.Fatal("Open returned a pool for a database that does not exist")
+	}
+}
+
+func TestMigrateRefusesABrokenURLAndAnUnreachableDatabase(t *testing.T) {
+	if err := database.Migrate("postgres://%zz"); err == nil {
+		t.Fatal("a broken url was accepted")
+	}
+
+	if err := database.Migrate("postgres://u:p@127.0.0.1:1/db?sslmode=disable"); err == nil {
+		t.Fatal("an unreachable database was accepted")
 	}
 }
