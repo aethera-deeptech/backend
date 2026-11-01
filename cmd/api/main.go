@@ -15,11 +15,14 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 
+	"github.com/aethera-deeptech/backend/internal/app"
+	"github.com/aethera-deeptech/backend/internal/auth"
 	"github.com/aethera-deeptech/backend/internal/config"
 	"github.com/aethera-deeptech/backend/internal/database"
 	"github.com/aethera-deeptech/backend/internal/healthcheck"
+	"github.com/aethera-deeptech/backend/internal/janitor"
 	"github.com/aethera-deeptech/backend/internal/logging"
-	"github.com/aethera-deeptech/backend/internal/server"
+	"github.com/aethera-deeptech/backend/internal/mail"
 )
 
 // version is set at build time with -ldflags
@@ -27,6 +30,15 @@ var version = "dev"
 
 // shutdownTimeout is how long the server lets requests that are running finish after a stop signal
 const shutdownTimeout = 15 * time.Second
+
+// janitorEvery is how often a copy tries a round of the clean up. Only one copy gets the lock for a round.
+const janitorEvery = time.Hour
+
+// mailWorkers and mailBacklog size the queue of outgoing emails
+const (
+	mailWorkers = 2
+	mailBacklog = 100
+)
 
 func main() {
 	// the container health check runs this binary again, because the image has no curl
@@ -67,12 +79,23 @@ func run() error {
 		return fmt.Errorf("migrate the database %w", err)
 	}
 
-	app := server.New(version, pool)
+	// the clean up stops with the signal, and a round that is running ends with its context
+	go janitor.New(pool, janitorEvery, auth.PurgeTasks()...).Run(ctx)
+
+	mailQueue, mailer := newMailer(cfg)
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+		defer cancel()
+
+		mailQueue.Close(ctx)
+	}()
+
+	srv := app.New(app.Deps{Version: version, Config: cfg, Pool: pool, Mailer: mailer})
 
 	serverErr := make(chan error, 1)
 
 	go func() {
-		serverErr <- app.Listen(fmt.Sprintf(":%d", cfg.AppPort), fiber.ListenConfig{DisableStartupMessage: true})
+		serverErr <- srv.Listen(fmt.Sprintf(":%d", cfg.AppPort), fiber.ListenConfig{DisableStartupMessage: true})
 	}()
 
 	select {
@@ -85,11 +108,27 @@ func run() error {
 	// from here a second signal gets its default action, so an operator can stop the process without waiting for the timeout
 	stop()
 
-	if err := app.ShutdownWithTimeout(shutdownTimeout); err != nil {
+	if err := srv.ShutdownWithTimeout(shutdownTimeout); err != nil {
 		return fmt.Errorf("graceful shutdown failed %w", err)
 	}
 
 	log.Println("shutdown complete")
 
 	return nil
+}
+
+// newMailer returns the mailer of the account routes. Without a mail server (a development setup) it logs the links instead.
+func newMailer(cfg config.Config) (*mail.Queue, auth.Mailer) {
+	if cfg.SMTPHost == "" {
+		slog.Warn("SMTP_HOST is not set, so the emails are written to the log")
+
+		return mail.NewQueue(nil, 0, 1), mail.Log{}
+	}
+
+	queue := mail.NewQueue(&mail.SMTP{
+		Host: cfg.SMTPHost, Port: cfg.SMTPPort, Username: cfg.SMTPUsername, Password: cfg.SMTPPassword,
+		Security: cfg.SMTPSecurity, FromName: cfg.SMTPFromName, FromAddress: cfg.SMTPFromAddress,
+	}, mailWorkers, mailBacklog)
+
+	return queue, mail.NewOutbox(queue)
 }

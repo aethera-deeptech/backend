@@ -10,7 +10,7 @@ import (
 )
 
 func TestHealthz(t *testing.T) {
-	app := New("v1.2.3", fakeDB{})
+	app := New(Options{AppOrigin: "https://app.example.test", Version: "v1.2.3", DB: fakeDB{}})
 
 	res, err := app.Test(httptest.NewRequest(http.MethodGet, "/healthz", http.NoBody))
 	if err != nil {
@@ -34,7 +34,7 @@ func TestHealthz(t *testing.T) {
 }
 
 func TestUnknownRouteIs404(t *testing.T) {
-	app := New("dev", fakeDB{})
+	app := New(Options{AppOrigin: "https://app.example.test", Version: "dev", DB: fakeDB{}})
 
 	res, err := app.Test(httptest.NewRequest(http.MethodGet, "/nothing", http.NoBody))
 	if err != nil {
@@ -49,7 +49,7 @@ func TestUnknownRouteIs404(t *testing.T) {
 }
 
 func TestConnectionLimits(t *testing.T) {
-	srv := New("dev", fakeDB{}).Server()
+	srv := New(Options{AppOrigin: "https://app.example.test", Version: "dev", DB: fakeDB{}}).Server()
 
 	if srv.ReadTimeout != readTimeout || srv.WriteTimeout != writeTimeout || srv.IdleTimeout != idleTimeout {
 		t.Fatalf("limits are %v, %v and %v", srv.ReadTimeout, srv.WriteTimeout, srv.IdleTimeout)
@@ -73,7 +73,7 @@ func TestReadyz(t *testing.T) {
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			res, err := New("v1", tt.db).Test(httptest.NewRequest(http.MethodGet, "/readyz", http.NoBody))
+			res, err := New(Options{AppOrigin: "https://app.example.test", Version: "v1", DB: tt.db}).Test(httptest.NewRequest(http.MethodGet, "/readyz", http.NoBody))
 			if err != nil {
 				t.Fatalf("request failed %v", err)
 			}
@@ -93,7 +93,7 @@ func TestReadyz(t *testing.T) {
 }
 
 func TestHealthzIgnoresTheDatabase(t *testing.T) {
-	res, err := New("v1", fakeDB{err: errors.New("down")}).Test(httptest.NewRequest(http.MethodGet, "/healthz", http.NoBody))
+	res, err := New(Options{AppOrigin: "https://app.example.test", Version: "v1", DB: fakeDB{err: errors.New("down")}}).Test(httptest.NewRequest(http.MethodGet, "/healthz", http.NoBody))
 	if err != nil {
 		t.Fatalf("request failed %v", err)
 	}
@@ -116,7 +116,7 @@ func (c *countingDB) Ping(context.Context) error {
 
 func TestReadyzReusesTheAnswerForAMoment(t *testing.T) {
 	db := &countingDB{}
-	app := New("v1", db)
+	app := New(Options{AppOrigin: "https://app.example.test", Version: "v1", DB: db})
 
 	for range 5 {
 		res, err := app.Test(httptest.NewRequest(http.MethodGet, "/readyz", http.NoBody))
