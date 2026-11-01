@@ -3,6 +3,8 @@ package server
 
 import (
 	"context"
+	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
@@ -18,6 +20,10 @@ const (
 
 // readyTimeout is how long the readiness route waits for the database
 const readyTimeout = 2 * time.Second
+
+// readyCache is how long the answer of the readiness route is reused, so a flood of requests costs one ping and not one connection of
+// the pool for each request
+const readyCache = 2 * time.Second
 
 // Pinger is the part of the database pool that the readiness route needs
 type Pinger interface {
@@ -39,11 +45,32 @@ func New(version string, db Pinger) *fiber.App {
 
 	// healthz says that the process runs and never looks at the database, because the container is restarted when it fails and a
 	// restart does not fix a database that is down. readyz says that the service can do its work, and a monitor reads it.
-	app.Get("/readyz", func(c fiber.Ctx) error {
-		ctx, cancel := context.WithTimeout(c.Context(), readyTimeout)
-		defer cancel()
+	var (
+		mu       sync.Mutex
+		checked  time.Time
+		lastOK   bool
+		validFor = readyCache
+	)
 
-		if err := db.Ping(ctx); err != nil {
+	app.Get("/readyz", func(c fiber.Ctx) error {
+		mu.Lock()
+		if time.Since(checked) >= validFor {
+			ctx, cancel := context.WithTimeout(context.Background(), readyTimeout)
+			err := db.Ping(ctx)
+
+			cancel()
+
+			if err != nil {
+				slog.Warn("the readiness check failed", "error", err)
+			}
+
+			lastOK, checked = err == nil, time.Now()
+		}
+
+		ok := lastOK
+		mu.Unlock()
+
+		if !ok {
 			return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{"status": "unavailable"})
 		}
 

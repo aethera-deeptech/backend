@@ -104,3 +104,30 @@ func TestHealthzIgnoresTheDatabase(t *testing.T) {
 		t.Fatalf("status is %d, want 200 while the database is down", res.StatusCode)
 	}
 }
+
+// countingDB counts the pings
+type countingDB struct{ pings int }
+
+func (c *countingDB) Ping(context.Context) error {
+	c.pings++
+
+	return nil
+}
+
+func TestReadyzReusesTheAnswerForAMoment(t *testing.T) {
+	db := &countingDB{}
+	app := New("v1", db)
+
+	for range 5 {
+		res, err := app.Test(httptest.NewRequest(http.MethodGet, "/readyz", http.NoBody))
+		if err != nil {
+			t.Fatalf("request failed %v", err)
+		}
+
+		_ = res.Body.Close()
+	}
+
+	if db.pings != 1 {
+		t.Fatalf("the database was pinged %d times for 5 requests, want 1", db.pings)
+	}
+}
