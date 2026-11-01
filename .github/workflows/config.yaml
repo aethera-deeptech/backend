@@ -144,11 +144,11 @@ jobs:
           persist-credentials: false
 
       # docker compose config reads the file and builds nothing and starts nothing. Nothing else uses the example file, so this is what
-      # keeps it from drifting away from the settings in .env.example
+      # keeps it from drifting away from the settings in .env.example. IMAGE_TAG is empty in the example, so the command sets one
       - name: Check the compose file
         run: |
           cp .env.example .env
-          docker compose -f compose.production.example.yml config --quiet
+          IMAGE_TAG=ci docker compose -f compose.production.example.yml config --quiet
 
   names:
     name: File names
