@@ -78,7 +78,8 @@ jobs:
             type=ref,event=pr,prefix=pr-
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
+            # a major version of 0 means that the API can still change, so no floating tag points at it
+            type=semver,pattern={{major}},enable=${{ !startsWith(github.ref, 'refs/tags/v0.') }}
 
       - name: Login to GitHub Container Registry
         if: env.PUSH == 'true'
