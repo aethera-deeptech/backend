@@ -15,7 +15,8 @@ func (g *rig) send(t *testing.T, node string, watts float64, age time.Duration, 
 
 	g.seq++
 
-	at := time.Now().Add(-age).Unix()
+	// readings are unique for each second of a node, so every call goes back a second more than the one before and never meets the pairing reading
+	at := time.Now().Add(-age - time.Duration(g.seq)*time.Second).Unix()
 	extra := ""
 
 	if state != nil {
