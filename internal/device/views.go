@@ -403,18 +403,6 @@ func (v *Views) pattern(ctx context.Context, gatewayID, nodeID string, c clock, 
 	return out, nil
 }
 
-// sensitivityK is how many standard deviations the band is wide. A business that wants more alerts has a narrower band.
-func sensitivityK(level string) float64 {
-	switch level {
-	case "tinggi":
-		return 2
-	case "rendah":
-		return 4
-	default:
-		return 3
-	}
-}
-
 // expected is the usual range of the power at each point, from the same hour of the day on the days before the window. It needs
 // minDays days for every hour of the day, or it is left out.
 func (v *Views) expected(ctx context.Context, gatewayID, nodeID string, c clock, since time.Time) (*Band, error) {
@@ -427,7 +415,7 @@ func (v *Views) expected(ctx context.Context, gatewayID, nodeID string, c clock,
 	}
 	defer rows.Close()
 
-	k := sensitivityK(c.sensitivity)
+	k := business.SensitivityK(c.sensitivity)
 
 	var low, high [24]float64
 

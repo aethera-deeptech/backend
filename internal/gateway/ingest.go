@@ -323,7 +323,7 @@ func storeSamples(ctx context.Context, tx pgx.Tx, gatewayID string, n NodeBatch,
 		 FROM unnest($3::timestamptz[], $4::float8[], $5::float8[], $6::float8[], $7::float8[], $8::float8[], $9::float8[], $10::int4[])
 		   AS x(t, v, i, p, e, f, pf, a)
 		 ON CONFLICT DO NOTHING
-		 RETURNING t, watts, energy_kwh`,
+		 RETURNING t, watts, energy_kwh, node_state`,
 		gatewayID, n.NodeID, ts, volts, amps, watts, energy, hertz, pfs, states)
 	if err != nil {
 		return 0, 0, fmt.Errorf("store the samples %w", err)
@@ -333,7 +333,7 @@ func storeSamples(ctx context.Context, tx pgx.Tx, gatewayID string, n NodeBatch,
 
 	for rows.Next() {
 		var s stored
-		if err := rows.Scan(&s.t, &s.watts, &s.energy); err != nil {
+		if err := rows.Scan(&s.t, &s.watts, &s.energy, &s.nodeState); err != nil {
 			rows.Close()
 
 			return 0, 0, fmt.Errorf("read a stored sample %w", err)
@@ -350,6 +350,10 @@ func storeSamples(ctx context.Context, tx pgx.Tx, gatewayID string, n NodeBatch,
 
 	// only the samples that were new are counted, so a retry of a batch never counts the same energy twice
 	if err := apply(ctx, tx, gatewayID, n.NodeID, inserted); err != nil {
+		return 0, 0, err
+	}
+
+	if err := detectAnomaly(ctx, tx, gatewayID, n.NodeID, inserted, now); err != nil {
 		return 0, 0, err
 	}
 

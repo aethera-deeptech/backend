@@ -90,9 +90,3 @@ func TestNiceCeiling(t *testing.T) {
 		}
 	}
 }
-
-func TestSensitivityK(t *testing.T) {
-	if sensitivityK("tinggi") >= sensitivityK("sedang") || sensitivityK("sedang") >= sensitivityK("rendah") {
-		t.Fatal("a more sensitive business must have a narrower band")
-	}
-}

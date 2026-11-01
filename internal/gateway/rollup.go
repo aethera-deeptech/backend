@@ -24,9 +24,10 @@ const (
 
 // stored is a sample that was written to the table, which is the only kind that a rollup counts, so a retry never counts twice
 type stored struct {
-	t      time.Time
-	watts  float64
-	energy *float64
+	t         time.Time
+	watts     float64
+	energy    *float64
+	nodeState *int32
 }
 
 // bucket is the sum of one hour
