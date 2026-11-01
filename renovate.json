@@ -19,6 +19,11 @@
   },
   "packageRules": [
     {
+      "description": "the Go release is raised by hand in go.mod, which the workflows read, so a patch release is a decision and not a bot update",
+      "matchDatasources": ["golang-version"],
+      "enabled": false
+    },
+    {
       "matchManagers": ["gomod"],
       "semanticCommitType": "chore",
       "addLabels": ["go"]
