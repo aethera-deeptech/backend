@@ -20,6 +20,7 @@ import (
 	"github.com/aethera-deeptech/backend/internal/config"
 	"github.com/aethera-deeptech/backend/internal/database"
 	"github.com/aethera-deeptech/backend/internal/healthcheck"
+	"github.com/aethera-deeptech/backend/internal/janitor"
 	"github.com/aethera-deeptech/backend/internal/logging"
 	"github.com/aethera-deeptech/backend/internal/mail"
 )
@@ -29,6 +30,9 @@ var version = "dev"
 
 // shutdownTimeout is how long the server lets requests that are running finish after a stop signal
 const shutdownTimeout = 15 * time.Second
+
+// janitorEvery is how often a copy tries a round of the clean up. Only one copy gets the lock for a round.
+const janitorEvery = time.Hour
 
 // mailWorkers and mailBacklog size the queue of outgoing emails
 const (
@@ -74,6 +78,9 @@ func run() error {
 	if err := database.Migrate(cfg.DatabaseURL()); err != nil {
 		return fmt.Errorf("migrate the database %w", err)
 	}
+
+	// the clean up stops with the signal, and a round that is running ends with its context
+	go janitor.New(pool, janitorEvery, auth.PurgeTasks()...).Run(ctx)
 
 	mailQueue, mailer := newMailer(cfg)
 	defer func() {
