@@ -215,19 +215,20 @@ func TestTheCapDropsTheEventsOverTheLimitAndStartsAgainEachMinute(t *testing.T) 
 
 func TestScrubTextCasesOneByOne(t *testing.T) {
 	tests := map[string]struct{ in, want string }{
-		"an email":            {"a.b+c@mail.example.co.id failed", "[email] failed"},
-		"a jwt":               {"token " + strings.Join([]string{"eyJhbGciOiJIUzI1NiJ9", "eyJzdWIiOiIxIn0", "sig"}, ".") + " end", "token [token] end"},
-		"a bearer header":     {"Authorization: Bearer abc.DEF-123_x end", "Authorization: Bearer [token] end"},
-		"a long key":          {"key 0123456789abcdef0123456789abcdef0123456789abcdef end", "key [secret] end"},
-		"a phone number":      {"phone 628123456789", "phone [number]"},
-		"an ipv4 and a port":  {"dial 172.18.0.3:5432 refused", "dial [ip] refused"},
-		"a compressed ipv6":   {"from 2001:db8::1 failed", "from [ip] failed"},
-		"a loopback ipv6":     {"dial [::1]:5432 refused", "dial [[ip]]:5432 refused"},
-		"a time stays":        {"at 10:20:30 it failed", "at 10:20:30 it failed"},
-		"a long ipv6":         {"from 2001:db8:1:2:3:4:5:6 failed", "from [ip] failed"},
-		"a short number":      {"status 500 after 1234 ms", "status 500 after 1234 ms"},
-		"a uuid stays":        {"row 0b8f6a52-3c4d-4e5f-8a6b-7c8d9e0f1a2b", "row 0b8f6a52-3c4d-4e5f-8a6b-7c8d9e0f1a2b"},
-		"a text without data": {"context deadline exceeded", "context deadline exceeded"},
+		"an email":                {"a.b+c@mail.example.co.id failed", "[email] failed"},
+		"a jwt":                   {"token " + strings.Join([]string{"eyJhbGciOiJIUzI1NiJ9", "eyJzdWIiOiIxIn0", "sig"}, ".") + " end", "token [token] end"},
+		"a bearer header":         {"Authorization: Bearer abc.DEF-123_x end", "Authorization: Bearer [token] end"},
+		"a long key":              {"key 0123456789abcdef0123456789abcdef0123456789abcdef end", "key [secret] end"},
+		"a phone number":          {"phone 628123456789", "phone [number]"},
+		"an ipv4 and a port":      {"dial 172.18.0.3:5432 refused", "dial [ip] refused"},
+		"a compressed ipv6":       {"from 2001:db8::1 failed", "from [ip] failed"},
+		"a loopback ipv6":         {"dial [::1]:5432 refused", "dial [[ip]]:5432 refused"},
+		"a time stays":            {"at 10:20:30 it failed", "at 10:20:30 it failed"},
+		"a secret before an ipv6": {"key a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4::text end", "key [secret][ip]text end"},
+		"a long ipv6":             {"from 2001:db8:1:2:3:4:5:6 failed", "from [ip] failed"},
+		"a short number":          {"status 500 after 1234 ms", "status 500 after 1234 ms"},
+		"a uuid stays":            {"row 0b8f6a52-3c4d-4e5f-8a6b-7c8d9e0f1a2b", "row 0b8f6a52-3c4d-4e5f-8a6b-7c8d9e0f1a2b"},
+		"a text without data":     {"context deadline exceeded", "context deadline exceeded"},
 	}
 
 	for name, test := range tests {
