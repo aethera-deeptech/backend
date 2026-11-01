@@ -36,7 +36,7 @@ This Code of Conduct applies within all community spaces, and also applies when 
 
 ## Enforcement
 
-Instances of abusive, harassing, or otherwise unacceptable behavior may be reported to the community leaders responsible for enforcement through GitHub private vulnerability reporting at [https://github.com/aethera-deeptech/backend/security/advisories/new](https://github.com/aethera-deeptech/backend/security/advisories/new). All complaints will be reviewed and investigated promptly and fairly.
+Instances of abusive, harassing, or otherwise unacceptable behavior may be reported to the community leaders responsible for enforcement through GitHub private vulnerability reporting at [https://github.com/aethera-deeptech/backend/security/advisories/new](https://github.com/aethera-deeptech/backend/security/advisories/new). All complaints will be reviewed and investigated promptly and fairly. This project has one maintainer, who is also its only community leader. A report about the maintainer can go to GitHub through its [report abuse form](https://github.com/contact/report-abuse).
 
 All community leaders are obligated to respect the privacy and security of the reporter of any incident.
 
