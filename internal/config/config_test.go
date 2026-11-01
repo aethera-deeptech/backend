@@ -1,9 +1,20 @@
 package config
 
 import (
+	"os"
 	"strings"
 	"testing"
 )
+
+// withDB adds the settings of the database, which have no default, to a test environment
+func withDB(environ map[string]string) map[string]string {
+	out := map[string]string{"DB_HOST": "db", "DB_NAME": "app", "DB_USERNAME": "user", "DB_PASSWORD": "pass"}
+	for k, v := range environ {
+		out[k] = v
+	}
+
+	return out
+}
 
 func TestParse(t *testing.T) {
 	tests := []struct {
@@ -12,16 +23,28 @@ func TestParse(t *testing.T) {
 		want    Config
 		wantErr string
 	}{
-		{name: "defaults", environ: map[string]string{}, want: Config{AppEnv: EnvDevelopment, AppPort: 8080}},
+		{name: "defaults", environ: withDB(nil), want: Config{
+			AppEnv: EnvDevelopment, AppPort: 8080, DBHost: "db", DBPort: 5432, DBName: "app", DBUsername: "user", DBPassword: "pass",
+			DBSSLMode: "require", DBMaxConns: 8,
+		}},
 		{
 			name:    "values from the environment",
-			environ: map[string]string{"APP_ENV": "production", "APP_PORT": "9090"},
-			want:    Config{AppEnv: EnvProduction, AppPort: 9090},
+			environ: withDB(map[string]string{"APP_ENV": "production", "APP_PORT": "9090", "DB_SSL_MODE": "disable", "DB_MAX_CONNS": "4", "DB_PORT": "6432"}),
+			want: Config{
+				AppEnv: EnvProduction, AppPort: 9090, DBHost: "db", DBPort: 6432, DBName: "app", DBUsername: "user", DBPassword: "pass",
+				DBSSLMode: "disable", DBMaxConns: 4,
+			},
 		},
-		{name: "unknown environment", environ: map[string]string{"APP_ENV": "staging"}, wantErr: "APP_ENV"},
-		{name: "port zero", environ: map[string]string{"APP_PORT": "0"}, wantErr: "APP_PORT"},
-		{name: "port too high", environ: map[string]string{"APP_PORT": "65536"}, wantErr: "APP_PORT"},
-		{name: "port is not a number", environ: map[string]string{"APP_PORT": "abc"}, wantErr: "parse the environment"},
+		{name: "unknown environment", environ: withDB(map[string]string{"APP_ENV": "staging"}), wantErr: "APP_ENV"},
+		{name: "port zero", environ: withDB(map[string]string{"APP_PORT": "0"}), wantErr: "APP_PORT"},
+		{name: "port too high", environ: withDB(map[string]string{"APP_PORT": "65536"}), wantErr: "APP_PORT"},
+		{name: "port is not a number", environ: withDB(map[string]string{"APP_PORT": "abc"}), wantErr: "parse the environment"},
+		{name: "no database settings", environ: map[string]string{}, wantErr: "DB_HOST"},
+		{name: "empty password", environ: withDB(map[string]string{"DB_PASSWORD": ""}), wantErr: "DB_PASSWORD"},
+		{name: "database port zero", environ: withDB(map[string]string{"DB_PORT": "0"}), wantErr: "DB_PORT"},
+		{name: "unknown ssl mode", environ: withDB(map[string]string{"DB_SSL_MODE": "yes"}), wantErr: "DB_SSL_MODE"},
+		{name: "no connections", environ: withDB(map[string]string{"DB_MAX_CONNS": "0"}), wantErr: "DB_MAX_CONNS"},
+		{name: "too many connections", environ: withDB(map[string]string{"DB_MAX_CONNS": "51"}), wantErr: "DB_MAX_CONNS"},
 	}
 
 	for _, tt := range tests {
@@ -50,6 +73,10 @@ func TestParse(t *testing.T) {
 func TestLoadReadsTheProcessEnvironment(t *testing.T) {
 	t.Setenv("APP_ENV", EnvProduction)
 	t.Setenv("APP_PORT", "8181")
+	t.Setenv("DB_HOST", "db")
+	t.Setenv("DB_NAME", "app")
+	t.Setenv("DB_USERNAME", "user")
+	t.Setenv("DB_PASSWORD", "pass")
 
 	got, err := Load()
 	if err != nil {
@@ -58,5 +85,42 @@ func TestLoadReadsTheProcessEnvironment(t *testing.T) {
 
 	if got.AppEnv != EnvProduction || got.AppPort != 8181 {
 		t.Fatalf("config is %+v", got)
+	}
+}
+
+func TestDatabaseURLEscapesTheCredentials(t *testing.T) {
+	cfg := Config{DBHost: "db.internal", DBPort: 5432, DBName: "app", DBUsername: "us er", DBPassword: "p@ss/w:rd", DBSSLMode: "disable"}
+
+	want := "postgres://us%20er:p%40ss%2Fw%3Ard@db.internal:5432/app?sslmode=disable"
+	if got := cfg.DatabaseURL(); got != want {
+		t.Fatalf("url is %s, want %s", got, want)
+	}
+}
+
+// TestEnvExampleIsValid reads .env.example, so the file that the docs point to cannot drift away from what the loader accepts
+func TestEnvExampleIsValid(t *testing.T) {
+	raw, err := os.ReadFile("../../.env.example")
+	if err != nil {
+		t.Fatalf("read the example %v", err)
+	}
+
+	environ := map[string]string{}
+
+	for line := range strings.Lines(string(raw)) {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		key, value, ok := strings.Cut(line, "=")
+		if !ok {
+			t.Fatalf("the line %q has no =", line)
+		}
+
+		environ[key] = value
+	}
+
+	if _, err := parse(environ); err != nil {
+		t.Fatalf("the example is not accepted %v", err)
 	}
 }
