@@ -1,0 +1,81 @@
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  default: standard
+  enable:
+    - bodyclose
+    - errorlint
+    - gosec
+    - misspell
+    - nilerr
+    # the json tags of the API are camelCase, as the frontend reads them
+    - tagliatelle
+    # a //nolint comment has to name the linter and say why, so a suppression is never left behind by accident
+    - nolintlint
+    # an error value is named ErrSomething and an error type SomethingError
+    - errname
+    # a request or a command that is built without the context of its caller cannot be cancelled
+    - noctx
+    - contextcheck
+    # the program writes to its log and not to the standard output, and only main may end the process
+    - forbidigo
+    - unconvert
+    - usestdlibvars
+  settings:
+    nolintlint:
+      # a suppression says which linter it silences and why
+      require-explanation: true
+      require-specific: true
+    staticcheck:
+      # the default leaves out the style checks, and this one brings back ST1003, the names of Go, such as ID and URL in capitals and
+      # no underscore in a name. The other style checks stay out as they are by default.
+      checks:
+        - all
+        - -ST1000
+        - -ST1016
+        - -ST1020
+        - -ST1021
+        - -ST1022
+    forbidigo:
+      # resolve the package behind a name, so an import under another name is found too
+      analyze-types: true
+      forbid:
+        - pattern: ^fmt\.(Print|Printf|Println)$
+          msg: write to the log, and not to the standard output
+        - pattern: ^log\.(Fatal|Fatalf|Fatalln)$
+          msg: return the error, and let main decide to end the process
+        - pattern: ^(print|println)$
+          msg: write to the log, and not to the standard error
+    tagliatelle:
+      case:
+        rules:
+          json: camel
+          # the names of the settings are capital words with underscores
+          env: upperSnake
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters:
+          - gosec
+          - errcheck
+          - bodyclose
+          # a test builds its requests and listeners with the background context on purpose
+          - noctx
+          - contextcheck
+      # a test may print, and main decides how the program ends and what it prints
+      - path: (_test\.go|^cmd/)
+        linters:
+          - forbidigo
+
+issues:
+  # show every finding, the default of three for the same message hides the others
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+formatters:
+  enable:
+    - gofmt
