@@ -4,7 +4,7 @@ Backend of an energy audit dashboard for small businesses (UMKM) in Indonesia, b
 
 ## Status
 
-This repository holds the repository baseline only. It has no service code yet. The checks, the rules of the `main` branch and the way of working are in place so that the service can be built on top of them. The routes that the frontend reads are listed in `docs/api-assumptions.md` of the frontend repository. This repository will publish its own API description when the service exists.
+This repository holds the repository baseline and the first piece of the service, a small Go program with a health route and a loader for its settings. It has no database and no API routes yet. The routes that the frontend reads are listed in `docs/api-assumptions.md` of the frontend repository. This repository will publish its own API description when the routes exist.
 
 ## Plan
 

@@ -6,7 +6,7 @@ Everyone who takes part in this project follows the [Code of Conduct](CODE_OF_CO
 
 ## Set up
 
-The repository has no service code yet, so there is nothing to install or run. The pull request that adds the Go service will also describe how to run it. Until then a change is a change of the workflows, the configuration or the documentation.
+The service is written in Go, and `go.mod` names the version. It reads its settings from environment variables, and `.env.example` lists their names and defaults. To start it, set the variables you want to change and run `go run ./cmd/api`. It answers `GET /healthz` on the port in `APP_PORT`. The checks that build and test it run in CI, so you only need to run the program when you want to see it work.
 
 ## Making a change
 
