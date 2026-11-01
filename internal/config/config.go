@@ -2,6 +2,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"net/url"
@@ -33,6 +34,21 @@ type Config struct {
 	DBUsername string `env:"DB_USERNAME,required,notEmpty"`
 	DBPassword string `env:"DB_PASSWORD,required,notEmpty"`
 	DBSSLMode  string `env:"DB_SSL_MODE" envDefault:"require"`
+	// AppOrigin is the origin of the web app. CORS allows only this origin, and the links in the emails point to it.
+	AppOrigin string `env:"APP_ORIGIN" envDefault:"http://localhost:5173"`
+	// TrustProxy makes the service read the address of the client from ProxyHeader when the request comes from a private or loopback
+	// address, which is the reverse proxy on the same host.
+	TrustProxy  bool   `env:"TRUST_PROXY" envDefault:"false"`
+	ProxyHeader string `env:"PROXY_HEADER" envDefault:"X-Real-IP"`
+
+	SMTPHost        string `env:"SMTP_HOST"`
+	SMTPPort        uint   `env:"SMTP_PORT" envDefault:"465"`
+	SMTPUsername    string `env:"SMTP_USERNAME"`
+	SMTPPassword    string `env:"SMTP_PASSWORD"`
+	SMTPSecurity    string `env:"SMTP_SECURITY" envDefault:"tls"`
+	SMTPFromName    string `env:"SMTP_FROM_NAME" envDefault:"Aethera"`
+	SMTPFromAddress string `env:"SMTP_FROM_ADDRESS"`
+
 	// DBMaxConns is the size of the pool of one copy. The database is shared, so two copies must stay well below its connection limit.
 	DBMaxConns uint `env:"DB_MAX_CONNS" envDefault:"8"`
 }
@@ -67,6 +83,28 @@ func parse(environ map[string]string) (Config, error) {
 
 	if !slices.Contains(sslModes, cfg.DBSSLMode) {
 		return Config{}, fmt.Errorf("DB_SSL_MODE is %q and must be one of %v", cfg.DBSSLMode, sslModes)
+	}
+
+	origin, err := url.Parse(cfg.AppOrigin)
+	if err != nil || (origin.Scheme != "http" && origin.Scheme != "https") || origin.Host == "" || origin.Path != "" || origin.RawQuery != "" {
+		return Config{}, fmt.Errorf("APP_ORIGIN is %q and must be an origin such as https://app.example.com with no path", cfg.AppOrigin)
+	}
+
+	if cfg.AppEnv == EnvProduction && origin.Scheme != "https" {
+		return Config{}, fmt.Errorf("APP_ORIGIN is %q and must use https in production", cfg.AppOrigin)
+	}
+
+	if !slices.Contains([]string{"tls", "starttls", "none"}, cfg.SMTPSecurity) {
+		return Config{}, fmt.Errorf("SMTP_SECURITY is %q and must be tls, starttls or none", cfg.SMTPSecurity)
+	}
+
+	if cfg.SMTPPort == 0 || cfg.SMTPPort > maxPort {
+		return Config{}, fmt.Errorf("SMTP_PORT is %d and must be between 1 and %d", cfg.SMTPPort, maxPort)
+	}
+
+	// without a mail server nobody can verify an email, so a production service that cannot send refuses to start
+	if cfg.AppEnv == EnvProduction && (cfg.SMTPHost == "" || cfg.SMTPFromAddress == "") {
+		return Config{}, errors.New("SMTP_HOST and SMTP_FROM_ADDRESS are required in production")
 	}
 
 	if cfg.DBMaxConns == 0 || cfg.DBMaxConns > maxDBConns {

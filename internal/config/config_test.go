@@ -25,20 +25,31 @@ func TestParse(t *testing.T) {
 	}{
 		{name: "defaults", environ: withDB(nil), want: Config{
 			AppEnv: EnvDevelopment, AppPort: 8080, DBHost: "db", DBPort: 5432, DBName: "app", DBUsername: "user", DBPassword: "pass",
-			DBSSLMode: "require", DBMaxConns: 8,
+			DBSSLMode: "require", DBMaxConns: 8, AppOrigin: "http://localhost:5173", ProxyHeader: "X-Real-IP", SMTPPort: 465,
+			SMTPSecurity: "tls", SMTPFromName: "Aethera",
 		}},
 		{
-			name:    "values from the environment",
-			environ: withDB(map[string]string{"APP_ENV": "production", "APP_PORT": "9090", "DB_SSL_MODE": "disable", "DB_MAX_CONNS": "4", "DB_PORT": "6432"}),
+			name: "values from the environment",
+			environ: withDB(map[string]string{
+				"APP_ENV": "production", "APP_PORT": "9090", "DB_SSL_MODE": "disable", "DB_MAX_CONNS": "4", "DB_PORT": "6432",
+				"APP_ORIGIN": "https://app.example.com", "SMTP_HOST": "smtp.example.com", "SMTP_FROM_ADDRESS": "no-reply@example.com",
+			}),
 			want: Config{
 				AppEnv: EnvProduction, AppPort: 9090, DBHost: "db", DBPort: 6432, DBName: "app", DBUsername: "user", DBPassword: "pass",
-				DBSSLMode: "disable", DBMaxConns: 4,
+				DBSSLMode: "disable", DBMaxConns: 4, AppOrigin: "https://app.example.com", ProxyHeader: "X-Real-IP",
+				SMTPHost: "smtp.example.com", SMTPPort: 465, SMTPSecurity: "tls", SMTPFromName: "Aethera", SMTPFromAddress: "no-reply@example.com",
 			},
 		},
 		{name: "unknown environment", environ: withDB(map[string]string{"APP_ENV": "staging"}), wantErr: "APP_ENV"},
 		{name: "port zero", environ: withDB(map[string]string{"APP_PORT": "0"}), wantErr: "APP_PORT"},
 		{name: "port too high", environ: withDB(map[string]string{"APP_PORT": "65536"}), wantErr: "APP_PORT"},
 		{name: "port is not a number", environ: withDB(map[string]string{"APP_PORT": "abc"}), wantErr: "parse the environment"},
+		{name: "origin with a path", environ: withDB(map[string]string{"APP_ORIGIN": "https://app.example.com/app"}), wantErr: "APP_ORIGIN"},
+		{name: "origin without a scheme", environ: withDB(map[string]string{"APP_ORIGIN": "app.example.com"}), wantErr: "APP_ORIGIN"},
+		{name: "http origin in production", environ: withDB(map[string]string{"APP_ENV": "production", "APP_ORIGIN": "http://app.example.com", "SMTP_HOST": "m", "SMTP_FROM_ADDRESS": "a@b.cd"}), wantErr: "https"},
+		{name: "production without a mail server", environ: withDB(map[string]string{"APP_ENV": "production", "APP_ORIGIN": "https://app.example.com"}), wantErr: "SMTP_HOST"},
+		{name: "unknown smtp security", environ: withDB(map[string]string{"SMTP_SECURITY": "ssl"}), wantErr: "SMTP_SECURITY"},
+		{name: "smtp port zero", environ: withDB(map[string]string{"SMTP_PORT": "0"}), wantErr: "SMTP_PORT"},
 		{name: "no database settings", environ: map[string]string{}, wantErr: "DB_HOST"},
 		{name: "empty password", environ: withDB(map[string]string{"DB_PASSWORD": ""}), wantErr: "DB_PASSWORD"},
 		{name: "database port zero", environ: withDB(map[string]string{"DB_PORT": "0"}), wantErr: "DB_PORT"},
@@ -77,6 +88,9 @@ func TestLoadReadsTheProcessEnvironment(t *testing.T) {
 	t.Setenv("DB_NAME", "app")
 	t.Setenv("DB_USERNAME", "user")
 	t.Setenv("DB_PASSWORD", "pass")
+	t.Setenv("APP_ORIGIN", "https://app.example.com")
+	t.Setenv("SMTP_HOST", "smtp.example.com")
+	t.Setenv("SMTP_FROM_ADDRESS", "no-reply@example.com")
 
 	got, err := Load()
 	if err != nil {
