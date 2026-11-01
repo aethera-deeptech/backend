@@ -21,10 +21,10 @@ func NewHandlers(store *Store) *Handlers {
 
 // Register adds the routes to the router. The routes need a signed in user, so the caller passes the middleware that checks it.
 func (h *Handlers) Register(r fiber.Router, require fiber.Handler) {
-	r.Get("/settings", h.getSettings, require)
-	r.Patch("/settings", h.patchSettings, require)
-	r.Get("/rooms", h.listRooms, require)
-	r.Post("/rooms", h.createRoom, require)
+	r.Get("/settings", require, h.getSettings)
+	r.Patch("/settings", require, h.patchSettings)
+	r.Get("/rooms", require, h.listRooms)
+	r.Post("/rooms", require, h.createRoom)
 }
 
 func (h *Handlers) getSettings(c fiber.Ctx) error {
