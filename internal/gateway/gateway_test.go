@@ -325,7 +325,7 @@ func TestBatchShape(t *testing.T) {
 func TestABigBodyIsRefused(t *testing.T) {
 	g := enrolled(t, "budi@example.com", "ESP32-AABBCC", "j")
 
-	big := `{"seq":1,"sentAt":1800000000,"pad":"` + strings.Repeat("a", 300<<10) + `"}`
+	big := `{"seq":1,"sentAt":1800000000,"pad":"` + strings.Repeat("a", 270<<10) + `"}`
 	if r := g.send(t, big); r.Status != http.StatusRequestEntityTooLarge {
 		t.Fatalf("a body over 256 KiB answered %d, want 413", r.Status)
 	}

@@ -202,7 +202,7 @@ func (e *Env) Exec(t *testing.T, sql string, args ...any) {
 func (e *Env) CallWith(t *testing.T, method, path, body string, headers map[string]string) Reply {
 	t.Helper()
 
-	req := httptest.NewRequest(method, path, strings.NewReader(body))
+	req := httptest.NewRequestWithContext(t.Context(), method, path, strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 
 	for k, v := range headers {
