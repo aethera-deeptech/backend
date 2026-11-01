@@ -1,0 +1,1366 @@
+openapi: 3.1.0
+info:
+  title: Aethera API
+  version: 0.1.0
+  summary: The API of the energy audit dashboard for small businesses
+  description: |
+    The API serves two clients. The web app of a business reads and writes under `/v1`, and the gateway of a business sends its
+    readings under `/device/v1`. Every amount of money is a whole number of rupiah. Every moment is ISO 8601 with the offset of the
+    time zone of the business, and the service stores it in UTC.
+
+    The paths under `/v1` that the frontend already assumes keep the shapes of `docs/api-assumptions.md` of the frontend
+    repository. Where this file adds to them, the text says so.
+  license:
+    name: GPL-3.0-only
+    identifier: GPL-3.0-only
+  contact:
+    name: Aethera
+    url: https://github.com/aethera-deeptech/backend
+servers:
+  - url: https://aethera-api.syafahadyan.com
+    description: Production
+tags:
+  - name: Health
+    description: Routes for the container and for a monitor
+  - name: Account
+    description: Sign up, verify, sign in, sign out and reset the password
+  - name: Beranda
+    description: The home screen
+  - name: Saran
+    description: The tips and the decisions on them
+  - name: Alat
+    description: The devices of a business
+  - name: Pasang alat
+    description: Rooms, gateways and the pairing of a new device
+  - name: Produksi
+    description: The production records
+  - name: Laporan
+    description: The monthly report
+  - name: Pengaturan
+    description: The settings of a business
+  - name: Gateway
+    description: The routes that the gateway of a business calls
+security:
+  - session: []
+paths:
+  /healthz:
+    get:
+      tags: [Health]
+      operationId: getHealth
+      summary: Say that the process runs
+      description: It never looks at the database, because a restart does not fix a database that is down. The rolling update reads the version from it.
+      security: []
+      responses:
+        "200":
+          description: The process runs
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, version]
+                properties:
+                  status: {type: string, const: ok}
+                  version: {type: string, examples: ["0.1.0"]}
+        "4XX": {$ref: "#/components/responses/Error"}
+  /readyz:
+    get:
+      tags: [Health]
+      operationId: getReady
+      summary: Say that the service can do its work
+      security: []
+      responses:
+        "200":
+          description: The database answers
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status: {type: string, const: ready}
+        "503":
+          description: The database does not answer
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status: {type: string, const: unavailable}
+        "4XX": {$ref: "#/components/responses/Error"}
+
+  /v1/auth/register:
+    post:
+      tags: [Account]
+      operationId: register
+      summary: Create a business and its owner and send the verification email
+      description: |
+        The sign up counts as the consent to the terms and the privacy policy, and the service stores the time and the version of
+        the texts. The answer is the same wait time for every email, but a second sign up with a taken email answers 409, as the
+        frames of the app show "Email sudah terdaftar". That reveals which emails have an account, so the route has a limit for each
+        address of the client.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [businessName, email, password]
+              properties:
+                businessName: {$ref: "#/components/schemas/BusinessName"}
+                email: {$ref: "#/components/schemas/Email"}
+                password: {$ref: "#/components/schemas/Password"}
+      responses:
+        "201":
+          description: The account exists and the email is sent
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/VerificationSent"}
+        "409": {$ref: "#/components/responses/EmailTaken"}
+        "422": {$ref: "#/components/responses/Validation"}
+        "429": {$ref: "#/components/responses/RateLimited"}
+        "4XX": {$ref: "#/components/responses/Error"}
+  /v1/auth/login:
+    post:
+      tags: [Account]
+      operationId: login
+      summary: Sign in with an email and a password
+      description: |
+        A wrong password and an unknown email give the same answer in the same time. The code `email_not_verified` only comes after
+        the password was right, so it does not reveal which emails exist. The cookie is set on success.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: {$ref: "#/components/schemas/Email"}
+                password: {type: string, minLength: 1, maxLength: 128}
+      responses:
+        "200":
+          description: Signed in
+          headers:
+            Set-Cookie: {$ref: "#/components/headers/SessionCookie"}
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Me"}
+        "401": {$ref: "#/components/responses/InvalidCredentials"}
+        "403": {$ref: "#/components/responses/EmailNotVerified"}
+        "422": {$ref: "#/components/responses/Validation"}
+        "429": {$ref: "#/components/responses/RateLimited"}
+        "4XX": {$ref: "#/components/responses/Error"}
+  /v1/auth/google:
+    post:
+      tags: [Account]
+      operationId: loginWithGoogle
+      summary: Sign in or sign up with a Google ID token
+      description: |
+        The service checks the signature, the audience, the expiry and `email_verified` of the token. A new Google account gets a
+        business without a name, and `me.businessName` is then null until the owner sets it with `PATCH /v1/settings`. A Google
+        email that already has a password account is refused with `google_failed`, so a person who controls only the Google side
+        cannot take over the account. The route answers 503 `google_unavailable` while the service has no Google client id.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [idToken]
+              properties:
+                idToken: {type: string, minLength: 1, maxLength: 4096}
+      responses:
+        "200":
+          description: Signed in
+          headers:
+            Set-Cookie: {$ref: "#/components/headers/SessionCookie"}
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Me"}
+        "401":
+          description: The token is not valid, or the email belongs to a password account
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+              examples:
+                failed: {value: {code: google_failed, message: The Google sign in failed}}
+        "429": {$ref: "#/components/responses/RateLimited"}
+        "503":
+          description: The service has no Google client id
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+        "4XX": {$ref: "#/components/responses/Error"}
+  /v1/auth/logout:
+    post:
+      tags: [Account]
+      operationId: logout
+      summary: End the session of this device
+      responses:
+        "204":
+          description: The session is gone and the cookie is cleared
+        "4XX": {$ref: "#/components/responses/Error"}
+  /v1/auth/me:
+    get:
+      tags: [Account]
+      operationId: getMe
+      summary: Read who is signed in
+      responses:
+        "200":
+          description: The signed in user
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Me"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "4XX": {$ref: "#/components/responses/Error"}
+  /v1/auth/verify-email:
+    post:
+      tags: [Account]
+      operationId: verifyEmail
+      summary: Verify an email with the token of the link and sign in
+      description: The link in the email opens `/verify-email?token=` of the app, which calls this route. The token works once. A newer email makes the older tokens invalid.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token: {$ref: "#/components/schemas/Token"}
+      responses:
+        "200":
+          description: The email is verified and the user is signed in
+          headers:
+            Set-Cookie: {$ref: "#/components/headers/SessionCookie"}
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Me"}
+        "410": {$ref: "#/components/responses/TokenInvalid"}
+        "422": {$ref: "#/components/responses/Validation"}
+        "429": {$ref: "#/components/responses/RateLimited"}
+        "4XX": {$ref: "#/components/responses/Error"}
+  /v1/auth/resend-verification:
+    post:
+      tags: [Account]
+      operationId: resendVerification
+      summary: Send the verification email again
+      description: The answer is 202 for every email, so the route does not reveal which emails exist. A second request within 60 seconds for the same email answers 429 `resend_too_soon` with `retryAfterSeconds`.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: {$ref: "#/components/schemas/Email"}
+      responses:
+        "202":
+          description: The email is sent when the account exists and is not verified
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/VerificationSent"}
+        "422": {$ref: "#/components/responses/Validation"}
+        "429": {$ref: "#/components/responses/RateLimited"}
+        "4XX": {$ref: "#/components/responses/Error"}
+  /v1/auth/change-email:
+    post:
+      tags: [Account]
+      operationId: changeEmail
+      summary: Change the email of an account that is not verified yet
+      description: This is the "Ganti email" link of the verification screen. It needs the current email and password, because the user is not signed in. It sends a new verification email to the new address, and the older tokens stop working. A verified account cannot use it.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password, newEmail]
+              properties:
+                email: {$ref: "#/components/schemas/Email"}
+                password: {type: string, minLength: 1, maxLength: 128}
+                newEmail: {$ref: "#/components/schemas/Email"}
+      responses:
+        "202":
+          description: The new address got the verification email
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/VerificationSent"}
+        "401": {$ref: "#/components/responses/InvalidCredentials"}
+        "409": {$ref: "#/components/responses/EmailTaken"}
+        "422": {$ref: "#/components/responses/Validation"}
+        "429": {$ref: "#/components/responses/RateLimited"}
+        "4XX": {$ref: "#/components/responses/Error"}
+  /v1/auth/forgot-password:
+    post:
+      tags: [Account]
+      operationId: forgotPassword
+      summary: Send a link to reset the password
+      description: The answer is 202 for every email and takes about the same time, so the route does not reveal which emails exist.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: {$ref: "#/components/schemas/Email"}
+      responses:
+        "202":
+          description: The email is sent when the account exists
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/VerificationSent"}
+        "422": {$ref: "#/components/responses/Validation"}
+        "429": {$ref: "#/components/responses/RateLimited"}
+        "4XX": {$ref: "#/components/responses/Error"}
+  /v1/auth/reset-password:
+    post:
+      tags: [Account]
+      operationId: resetPassword
+      summary: Set a new password with the token of the link
+      description: The token works once. A reset ends every session of the user, and the user signs in again with the new password.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, password]
+              properties:
+                token: {$ref: "#/components/schemas/Token"}
+                password: {$ref: "#/components/schemas/Password"}
+      responses:
+        "204":
+          description: The password is changed
+        "410": {$ref: "#/components/responses/TokenInvalid"}
+        "422": {$ref: "#/components/responses/Validation"}
+        "429": {$ref: "#/components/responses/RateLimited"}
+        "4XX": {$ref: "#/components/responses/Error"}
+
+  /v1/settings:
+    get:
+      tags: [Pengaturan]
+      operationId: getSettings
+      summary: Read the settings of the business
+      responses:
+        "200":
+          description: The settings
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Settings"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "4XX": {$ref: "#/components/responses/Error"}
+    patch:
+      tags: [Pengaturan]
+      operationId: updateSettings
+      summary: Change the settings of the business
+      description: |
+        The body has only the fields that change. The key of the tariff is `tariffRpPerKwh` here and `tariff.rpPerKwh` in the
+        answer of the GET, because the frontend was written against that shape. A `tariffRpPerKwh` of null goes back to the default.
+        The answer is the new settings.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/SettingsPatch"}
+      responses:
+        "200":
+          description: The new settings
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Settings"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "422": {$ref: "#/components/responses/Validation"}
+        "4XX": {$ref: "#/components/responses/Error"}
+
+  /v1/rooms:
+    get:
+      tags: [Pasang alat]
+      operationId: listRooms
+      summary: List the rooms of the business
+      responses:
+        "200":
+          description: The rooms, ordered by name
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: {$ref: "#/components/schemas/Room"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "4XX": {$ref: "#/components/responses/Error"}
+    post:
+      tags: [Pasang alat]
+      operationId: createRoom
+      summary: Add a room
+      description: This route is new. The frames have no way to add a room, and a business with no rooms cannot add a device without it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: {$ref: "#/components/schemas/Name40"}
+      responses:
+        "201":
+          description: The room
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Room"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "409":
+          description: A room with this name exists
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+        "422": {$ref: "#/components/responses/Validation"}
+        "4XX": {$ref: "#/components/responses/Error"}
+  /v1/gateways:
+    get:
+      tags: [Pasang alat]
+      operationId: listGateways
+      summary: List the gateways of the business
+      description: The gateway is the only unit that talks to the service. The nodes send their readings to it over ESP-NOW.
+      responses:
+        "200":
+          description: The gateways
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: {$ref: "#/components/schemas/Gateway"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "4XX": {$ref: "#/components/responses/Error"}
+    post:
+      tags: [Pasang alat]
+      operationId: claimGateway
+      summary: Claim a gateway with the code that it shows
+      description: A new gateway asks for a claim code at `/device/v1/enroll` and shows it on its display. The owner types the code here, and the gateway then receives its key. A code works once and for 10 minutes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [claimCode, name]
+              properties:
+                claimCode: {type: string, pattern: "^[A-Z2-9]{8}$"}
+                name: {$ref: "#/components/schemas/Name40"}
+      responses:
+        "201":
+          description: The gateway belongs to the business now
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Gateway"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404":
+          description: The code is unknown, used or expired
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+        "422": {$ref: "#/components/responses/Validation"}
+        "429": {$ref: "#/components/responses/RateLimited"}
+        "4XX": {$ref: "#/components/responses/Error"}
+  /v1/pairings:
+    post:
+      tags: [Pasang alat]
+      operationId: startPairing
+      summary: Start the search for a new device
+      description: |
+        The business must have a gateway. The next node of this kind that the gateway reports as unclaimed becomes the device. The
+        pairing ends as `failed` after 3 minutes. A business can have one pairing at a time, and a second request answers 409.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [kind, name, roomId]
+              properties:
+                kind: {$ref: "#/components/schemas/DeviceKind"}
+                name: {$ref: "#/components/schemas/Name40"}
+                roomId: {type: string, format: uuid}
+      responses:
+        "201":
+          description: The pairing
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id]
+                properties:
+                  id: {type: string, format: uuid}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "409":
+          description: A pairing is running, or the business has no gateway (code `no_gateway`)
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+        "422": {$ref: "#/components/responses/Validation"}
+        "4XX": {$ref: "#/components/responses/Error"}
+  /v1/pairings/{id}:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      tags: [Pasang alat]
+      operationId: getPairing
+      summary: Read the state of a pairing
+      description: The app asks again every 3 seconds while the status is `searching`. `connected` has the id of the new device. `waiting-data` means that the node is claimed and has sent no reading yet.
+      responses:
+        "200":
+          description: The pairing
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status: {type: string, enum: [searching, waiting-data, connected, failed, cancelled]}
+                  deviceId: {type: [string, "null"], format: uuid}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "4XX": {$ref: "#/components/responses/Error"}
+    delete:
+      tags: [Pasang alat]
+      operationId: cancelPairing
+      summary: Stop the search
+      description: This route is new. The frames only have a back button, and without it the business cannot start another pairing for 3 minutes.
+      responses:
+        "204":
+          description: The pairing is cancelled, or was already over
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "4XX": {$ref: "#/components/responses/Error"}
+
+  /v1/devices:
+    get:
+      tags: [Alat]
+      operationId: listDevices
+      summary: List the devices
+      description: The list is ordered by status (anomali, offline, siaga, nyala, mati) and then by name. An empty list means that no device is installed. The app filters by status on its own side.
+      responses:
+        "200":
+          description: The devices
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: {$ref: "#/components/schemas/DeviceListItem"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "4XX": {$ref: "#/components/responses/Error"}
+  /v1/devices/{id}:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      tags: [Alat]
+      operationId: getDevice
+      summary: Read one device
+      responses:
+        "200":
+          description: The device
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Device"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "4XX": {$ref: "#/components/responses/Error"}
+    patch:
+      tags: [Alat]
+      operationId: renameDevice
+      summary: Rename a device
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: {$ref: "#/components/schemas/Name40"}
+      responses:
+        "200":
+          description: The device
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Device"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "422": {$ref: "#/components/responses/Validation"}
+        "4XX": {$ref: "#/components/responses/Error"}
+
+  /v1/beranda:
+    get:
+      tags: [Beranda]
+      operationId: getBeranda
+      summary: Read the home screen
+      description: The field `phase` tells which shape follows.
+      responses:
+        "200":
+          description: The home screen
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Beranda"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "4XX": {$ref: "#/components/responses/Error"}
+
+  /v1/recommendations:
+    get:
+      tags: [Saran]
+      operationId: listRecommendations
+      summary: List the tips
+      responses:
+        "200":
+          description: The tips
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/RecommendationList"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "4XX": {$ref: "#/components/responses/Error"}
+  /v1/recommendations/{id}:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      tags: [Saran]
+      operationId: getRecommendation
+      summary: Read one tip
+      responses:
+        "200":
+          description: The tip
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Recommendation"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "4XX": {$ref: "#/components/responses/Error"}
+  /v1/recommendations/{id}/apply:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      tags: [Saran]
+      operationId: applyRecommendation
+      summary: Record that the user applied the tip
+      description: Allowed from `pending` and `deferred`. It starts the check of 14 days, which compares the energy for each piece with the 7 days before. Another state answers 409 `invalid_transition`.
+      responses:
+        "200":
+          description: The tip
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Recommendation"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/InvalidTransition"}
+        "4XX": {$ref: "#/components/responses/Error"}
+  /v1/recommendations/{id}/defer:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      tags: [Saran]
+      operationId: deferRecommendation
+      summary: Record that the user chose "Nanti"
+      description: Allowed from `pending` only, so a tip cannot be deferred twice.
+      responses:
+        "200":
+          description: The tip
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Recommendation"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/InvalidTransition"}
+        "4XX": {$ref: "#/components/responses/Error"}
+  /v1/recommendations/{id}/reject:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      tags: [Saran]
+      operationId: rejectRecommendation
+      summary: Record that the user said no
+      description: Allowed from `pending` and `deferred`. A rejected tip is final.
+      responses:
+        "200":
+          description: The tip
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Recommendation"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/InvalidTransition"}
+        "4XX": {$ref: "#/components/responses/Error"}
+  /v1/recommendations/{id}/cancel:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      tags: [Saran]
+      operationId: cancelRecommendation
+      summary: Remove the record that the tip was applied
+      description: Allowed from `applied` only. The progress of the check is erased and the tip waits for a decision again. A verified tip is final.
+      responses:
+        "200":
+          description: The tip
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Recommendation"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/InvalidTransition"}
+        "4XX": {$ref: "#/components/responses/Error"}
+
+  /v1/production:
+    get:
+      tags: [Produksi]
+      operationId: listProduction
+      summary: Read the production records
+      responses:
+        "200":
+          description: The records
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Production"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "4XX": {$ref: "#/components/responses/Error"}
+  /v1/production/{date}:
+    parameters:
+      - {name: date, in: path, required: true, schema: {type: string, format: date}}
+    get:
+      tags: [Produksi]
+      operationId: getProductionRecord
+      summary: Read the record of one day
+      description: This route is new. The form needs the record of a day that is older than the `recent` list, to tell a new record from a change.
+      responses:
+        "200":
+          description: The record
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ProductionRecord"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "4XX": {$ref: "#/components/responses/Error"}
+    put:
+      tags: [Produksi]
+      operationId: saveProductionRecord
+      summary: Save the record of one day
+      description: A day has one record, so saving a day that has one replaces it. A future day, a quantity of 0 or less, and a quantity above 100000000 answer 422. The unit must be one of `units`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [quantity, unit]
+              properties:
+                quantity: {type: integer, minimum: 1, maximum: 100000000}
+                unit: {type: string, minLength: 1, maxLength: 20}
+      responses:
+        "200":
+          description: The record
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ProductionRecord"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "422": {$ref: "#/components/responses/Validation"}
+        "4XX": {$ref: "#/components/responses/Error"}
+
+  /v1/reports:
+    get:
+      tags: [Laporan]
+      operationId: getReport
+      summary: Read the report of a month
+      description: Without `period` the answer is the running month. A month that has no report answers 404.
+      parameters:
+        - name: period
+          in: query
+          schema: {type: string, pattern: "^[0-9]{4}-(0[1-9]|1[0-2])$", examples: ["2026-09"]}
+      responses:
+        "200":
+          description: The report
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Report"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "4XX": {$ref: "#/components/responses/Error"}
+  /v1/reports/{period}/pdf:
+    parameters:
+      - {name: period, in: path, required: true, schema: {type: string, pattern: "^[0-9]{4}-(0[1-9]|1[0-2])$"}}
+    get:
+      tags: [Laporan]
+      operationId: getReportPdf
+      summary: Download the report of a month as one A4 page
+      responses:
+        "200":
+          description: The PDF
+          content:
+            application/pdf:
+              schema: {type: string, format: binary}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "4XX": {$ref: "#/components/responses/Error"}
+
+  /device/v1/enroll:
+    post:
+      tags: [Gateway]
+      operationId: enrollGateway
+      summary: Ask for a claim code
+      description: |
+        A gateway that has no key calls this route. The answer holds the claim code that the gateway shows and a poll id. The route
+        has a limit for each address of the client. The code and the poll id are random and work once.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [hardwareId]
+              properties:
+                hardwareId: {type: string, minLength: 6, maxLength: 64, pattern: "^[A-Za-z0-9:_-]+$"}
+                firmware: {type: string, maxLength: 32}
+      responses:
+        "201":
+          description: The claim code
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [claimCode, pollId, expiresInSeconds]
+                properties:
+                  claimCode: {type: string, pattern: "^[A-Z2-9]{8}$"}
+                  pollId: {type: string, minLength: 32, maxLength: 64}
+                  expiresInSeconds: {type: integer, examples: [600]}
+        "422": {$ref: "#/components/responses/Validation"}
+        "429": {$ref: "#/components/responses/RateLimited"}
+        "4XX": {$ref: "#/components/responses/Error"}
+  /device/v1/enroll/{pollId}:
+    parameters:
+      - {name: pollId, in: path, required: true, schema: {type: string, minLength: 32, maxLength: 64}}
+    get:
+      tags: [Gateway]
+      operationId: pollEnrollment
+      summary: Ask whether the code was claimed
+      description: The first answer after the claim holds the key of the gateway. The service keeps only a hash of it, so the key is shown once, and a second read answers 410.
+      security: []
+      responses:
+        "200":
+          description: The code is claimed
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [gatewayId, key]
+                properties:
+                  gatewayId: {type: string, format: uuid}
+                  key: {type: string, minLength: 43, maxLength: 64}
+        "202":
+          description: Not claimed yet
+        "404": {$ref: "#/components/responses/NotFound"}
+        "410":
+          description: The key was handed out already, or the code expired
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+        "429": {$ref: "#/components/responses/RateLimited"}
+        "4XX": {$ref: "#/components/responses/Error"}
+  /device/v1/readings:
+    post:
+      tags: [Gateway]
+      operationId: sendReadings
+      summary: Send a batch of readings of the nodes of a gateway
+      description: |
+        The gateway signs every request with its key, see the scheme `gatewaySignature`. A batch has a sequence number that grows by
+        one for each batch. The service stores a batch once, so a retry of the same sequence number is answered with the same
+        acknowledgement and stores nothing twice. A batch can hold readings of up to 24 hours, so a gateway that lost its Wi-Fi can
+        catch up. A node that the gateway has not been told about is stored as unclaimed and can be claimed by a pairing.
+      security:
+        - gatewaySignature: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ReadingBatch"}
+      responses:
+        "200":
+          description: The batch is stored, or was stored before
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ackSeq, serverTime]
+                properties:
+                  ackSeq: {type: integer, minimum: 0}
+                  serverTime: {type: string, format: date-time}
+        "401": {$ref: "#/components/responses/BadSignature"}
+        "409":
+          description: The sequence number is not the next one. `expectedSeq` says which one the service waits for.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+        "413":
+          description: The batch is larger than 256 KiB or holds more than 5000 samples
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+        "422": {$ref: "#/components/responses/Validation"}
+        "429": {$ref: "#/components/responses/RateLimited"}
+        "4XX": {$ref: "#/components/responses/Error"}
+
+components:
+  securitySchemes:
+    session:
+      type: apiKey
+      in: cookie
+      name: __Host-aethera_session
+      description: |
+        An opaque token in a cookie that is HttpOnly, Secure and SameSite=Lax, with no Domain, so only the API host reads it. The
+        service stores only a hash of the token. The app and the API are on the same site, so SameSite=Lax cookies work with
+        credentials. Every request that changes data must also carry the header `X-Requested-With: aethera`, and the service checks the
+        `Origin` header against the origin of the app. The session lasts 30 days from the last use and at most 90 days in total.
+    gatewaySignature:
+      type: apiKey
+      in: header
+      name: Authorization
+      description: |
+        `Authorization: Aethera-HMAC gateway=<id>, ts=<unix seconds>, nonce=<16 random bytes in base64url>, sig=<base64url>`. The
+        signature is HMAC-SHA256 of the lines `METHOD`, `PATH`, `ts`, `nonce` and the hex SHA-256 of the body, joined by a newline,
+        made with the key of the gateway. The service refuses a `ts` that is more than 300 seconds from its own clock and a nonce that
+        it saw in the last 10 minutes.
+  headers:
+    SessionCookie:
+      description: The session cookie
+      schema: {type: string}
+  schemas:
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code: {type: string, description: A stable code for the app to react to, examples: [invalid_credentials]}
+        message: {type: string, description: A text in English for a developer. The app writes its own texts.}
+        fields:
+          type: object
+          description: The codes of the fields that failed, for example `{"password":"too_short"}`
+          additionalProperties: {type: string}
+        retryAfterSeconds: {type: integer, minimum: 1}
+        expectedSeq: {type: integer, minimum: 0}
+    Email: {type: string, format: email, maxLength: 254}
+    Password: {type: string, minLength: 8, maxLength: 128, description: At least 8 and at most 128 characters. There is no rule about the kinds of characters.}
+    Token: {type: string, minLength: 32, maxLength: 128}
+    BusinessName: {type: string, minLength: 1, maxLength: 80, description: Between 1 and 80 characters after the spaces at both ends are removed}
+    Name40: {type: string, minLength: 1, maxLength: 40, description: Between 1 and 40 characters after the spaces at both ends are removed}
+    Room:
+      type: object
+      required: [id, name]
+      properties:
+        id: {type: string, format: uuid}
+        name: {$ref: "#/components/schemas/Name40"}
+    Gateway:
+      type: object
+      required: [id, name, lastSeenAt]
+      properties:
+        id: {type: string, format: uuid}
+        name: {$ref: "#/components/schemas/Name40"}
+        lastSeenAt: {type: [string, "null"], format: date-time}
+    DeviceKind:
+      type: string
+      enum: [plug, clamp]
+      description: "`plug` is a smart plug and `clamp` is a current clamp"
+    DeviceStatus:
+      type: string
+      enum: [nyala, mati, siaga, offline, anomali]
+    VerificationSent:
+      type: object
+      required: [retryAfterSeconds]
+      properties:
+        retryAfterSeconds: {type: integer, examples: [60]}
+    Me:
+      type: object
+      required: [email, emailVerified, businessName]
+      properties:
+        email: {$ref: "#/components/schemas/Email"}
+        emailVerified: {type: boolean}
+        businessName: {type: [string, "null"], description: Null until a Google sign up names the business}
+    WorkHours:
+      type: object
+      required: [days, start, end]
+      properties:
+        days: {type: string, enum: [mon-fri, mon-sat, daily]}
+        start: {type: string, pattern: "^([01][0-9]|2[0-3]):[0-5][0-9]$"}
+        end: {type: string, pattern: "^([01][0-9]|2[0-3]):[0-5][0-9]$", description: Later than start on the same day}
+    Settings:
+      type: object
+      required: [businessName, workHours, tariff, anomalySensitivity, timeZone]
+      properties:
+        businessName: {type: [string, "null"]}
+        workHours: {$ref: "#/components/schemas/WorkHours"}
+        tariff:
+          type: object
+          required: [rpPerKwh, isDefault, defaultRpPerKwh]
+          properties:
+            rpPerKwh: {type: integer}
+            isDefault: {type: boolean}
+            defaultRpPerKwh: {type: integer, examples: [1444]}
+        anomalySensitivity: {type: string, enum: [rendah, sedang, tinggi]}
+        timeZone: {type: string, examples: [Asia/Jakarta], description: An IANA zone name. This field is new and the frames have no screen for it.}
+    SettingsPatch:
+      type: object
+      minProperties: 1
+      additionalProperties: false
+      properties:
+        businessName: {$ref: "#/components/schemas/BusinessName"}
+        workHours: {$ref: "#/components/schemas/WorkHours"}
+        tariffRpPerKwh: {type: [integer, "null"], minimum: 1, maximum: 100000}
+        anomalySensitivity: {type: string, enum: [rendah, sedang, tinggi]}
+        timeZone: {type: string, minLength: 1, maxLength: 64}
+    DeviceListItem:
+      type: object
+      required: [id, name, status, currentPowerW, todayKwh]
+      properties:
+        id: {type: string, format: uuid}
+        name: {type: string}
+        status: {$ref: "#/components/schemas/DeviceStatus"}
+        currentPowerW: {type: [number, "null"], description: Null while the device does not answer}
+        todayKwh: {type: [number, "null"]}
+        anomalyAt: {type: string, format: date-time, description: Only with the status anomali}
+        lastSeenAt: {type: string, format: date-time, description: Only with the status offline}
+    Device:
+      type: object
+      required: [id, name, status, room, kindLabel, currentPowerW, todayKwh, monthKwh, onHoursToday, standbyW, lastSeenAt, signal, powerPattern]
+      properties:
+        id: {type: string, format: uuid}
+        name: {type: string}
+        status: {$ref: "#/components/schemas/DeviceStatus"}
+        room: {type: string}
+        kindLabel: {type: string, examples: [Colokan pintar]}
+        currentPowerW: {type: [number, "null"]}
+        todayKwh: {type: [number, "null"]}
+        monthKwh: {type: [number, "null"], description: Stays set while the device is offline, because the month is still true}
+        onHoursToday: {type: [number, "null"]}
+        standbyW: {type: [number, "null"]}
+        lastSeenAt: {type: [string, "null"], format: date-time}
+        signal: {type: string, enum: [baik, cukup, lemah, tidak-ada]}
+        anomaly:
+          type: object
+          description: Only while the status is anomali
+          required: [at, peakW]
+          properties:
+            at: {type: string, format: date-time}
+            peakW: {type: number}
+        powerPattern:
+          type: [object, "null"]
+          description: Null while there is no recent data. The points cover the 24 hours that end now, spread evenly.
+          required: [points, yMaxW]
+          properties:
+            points: {type: array, items: {type: number}}
+            yMaxW: {type: number}
+            expected:
+              type: object
+              required: [low, high]
+              properties:
+                low: {type: array, items: {type: number}}
+                high: {type: array, items: {type: number}}
+            anomaly:
+              type: object
+              required: [from, to]
+              properties:
+                from: {type: integer, minimum: 0}
+                to: {type: integer, minimum: 0}
+    Savings:
+      type: object
+      required: [rp, count]
+      properties:
+        rp: {type: integer}
+        count: {type: integer}
+    EnergyPerPiece:
+      oneOf:
+        - type: object
+          required: [state, beforeKwh, afterKwh]
+          properties:
+            state: {type: string, enum: [verified, estimate]}
+            beforeKwh: {type: number}
+            afterKwh: {type: number}
+        - type: object
+          required: [state, collectedDays, neededDays]
+          properties:
+            state: {type: string, const: collecting}
+            collectedDays: {type: integer}
+            neededDays: {type: integer}
+    TopDevice:
+      type: object
+      required: [name, kwh]
+      properties:
+        name: {type: string}
+        kwh: {type: number}
+    Beranda:
+      type: object
+      required: [phase, businessName, asOf]
+      properties:
+        phase: {type: string, enum: [no-devices, collecting, ready]}
+        businessName: {type: [string, "null"]}
+        asOf: {type: string, format: date-time}
+        collectedDays: {type: integer, description: Only with collecting}
+        neededDays: {type: integer, description: Only with collecting}
+        savingPerMonthRp: {type: integer, description: "Only with ready. It is the sum of the tips that wait for a decision."}
+        statusCounts:
+          type: object
+          description: Only with ready
+          required: [anomali, offline, siaga, nyala, mati]
+          properties:
+            anomali: {type: integer}
+            offline: {type: integer}
+            siaga: {type: integer}
+            nyala: {type: integer}
+            mati: {type: integer}
+        recommendations:
+          type: array
+          description: Only with ready
+          items:
+            type: object
+            required: [id, title, deviceName, savingPerMonthRp]
+            properties:
+              id: {type: string, format: uuid}
+              title: {type: string}
+              deviceName: {type: string}
+              savingPerMonthRp: {type: integer}
+        bill:
+          type: object
+          description: Only with ready
+          required: [dailyTotalRp, projectedTotalRp, potentialTotalRp]
+          properties:
+            dailyTotalRp: {type: array, items: {type: integer}}
+            projectedTotalRp: {type: integer}
+            potentialTotalRp: {type: integer}
+        topDevices:
+          type: array
+          description: With collecting and ready
+          items: {$ref: "#/components/schemas/TopDevice"}
+        energyPerPiece: {$ref: "#/components/schemas/EnergyPerPiece"}
+    TipStatus:
+      type: string
+      enum: [pending, deferred, applied, verified, rejected]
+    RecommendationItem:
+      type: object
+      required: [id, title, savingPerMonthRp, status]
+      properties:
+        id: {type: string, format: uuid}
+        title: {type: string}
+        savingPerMonthRp: {type: integer}
+        status: {$ref: "#/components/schemas/TipStatus"}
+        progress:
+          type: object
+          description: Only with applied
+          required: [collectedDays, neededDays]
+          properties:
+            collectedDays: {type: integer}
+            neededDays: {type: integer}
+        resultPercent: {type: number, description: "Only with verified. The drop of the energy for each piece in percent."}
+    RecommendationList:
+      type: object
+      required: [phase, businessName]
+      properties:
+        phase: {type: string, enum: [no-devices, collecting, ready]}
+        businessName: {type: [string, "null"]}
+        neededDays: {type: integer, description: Only with collecting}
+        items: {type: array, description: Only with ready, items: {$ref: "#/components/schemas/RecommendationItem"}}
+    Recommendation:
+      type: object
+      required: [id, title, deviceName, status, savingPerMonthRp, tariffIsDefault, whatToDo, why, howCalculated]
+      properties:
+        id: {type: string, format: uuid}
+        title: {type: string}
+        deviceName: {type: string}
+        status: {$ref: "#/components/schemas/TipStatus"}
+        savingPerMonthRp: {type: integer, description: Rounded to the nearest 1000 rupiah. It becomes the measured value when the tip is verified.}
+        tariffIsDefault: {type: boolean}
+        whatToDo: {type: string}
+        why: {type: string}
+        howCalculated: {type: array, items: {type: string}}
+        appliedAt: {type: string, format: date-time}
+        rejectedAt: {type: string, format: date-time}
+        verification:
+          type: object
+          description: Only while applied
+          required: [collectedDays, neededDays]
+          properties:
+            collectedDays: {type: integer}
+            neededDays: {type: integer}
+        result:
+          type: object
+          description: Only after the verification
+          required: [beforeKwh, afterKwh, beforeDays, afterDays]
+          properties:
+            beforeKwh: {type: number}
+            afterKwh: {type: number}
+            beforeDays: {type: integer}
+            afterDays: {type: integer}
+    ProductionRecord:
+      type: object
+      required: [date, quantity, unit]
+      properties:
+        date: {type: string, format: date}
+        quantity: {type: integer, minimum: 1}
+        unit: {type: string}
+    Production:
+      type: object
+      required: [unit, units, today, recent]
+      properties:
+        unit: {type: string, examples: [potong]}
+        units: {type: array, items: {type: string}}
+        today: {type: string, format: date, description: The day of the business now, which is the last day the form lets the user pick}
+        recent:
+          type: array
+          description: The 3 newest records, newest first
+          maxItems: 3
+          items: {$ref: "#/components/schemas/ProductionRecord"}
+    Report:
+      type: object
+      required: [phase, period, periods]
+      properties:
+        phase: {type: string, enum: [no-devices, collecting, ready]}
+        period: {type: string, pattern: "^[0-9]{4}-(0[1-9]|1[0-2])$"}
+        periods:
+          type: array
+          description: The months that have a report, newest first
+          items: {type: string, pattern: "^[0-9]{4}-(0[1-9]|1[0-2])$"}
+        collectedDays: {type: integer, description: Only with collecting}
+        neededDays: {type: integer, description: Only with collecting}
+        through: {type: string, format: date-time, description: Only for the running month}
+        tariff:
+          type: object
+          description: The tariff of the report, so the text can say that the default was used
+          required: [rpPerKwh, isDefault]
+          properties:
+            rpPerKwh: {type: integer}
+            isDefault: {type: boolean}
+        saving:
+          type: object
+          description: Only with ready. The three sums are counted apart.
+          required: [verified, applied, estimate]
+          properties:
+            verified:
+              type: object
+              required: [rp, count, checkedDays]
+              properties:
+                rp: {type: integer}
+                count: {type: integer}
+                checkedDays: {type: integer}
+            applied:
+              type: object
+              required: [rp, count, day, neededDays]
+              properties:
+                rp: {type: integer}
+                count: {type: integer}
+                day: {type: integer}
+                neededDays: {type: integer}
+            estimate: {$ref: "#/components/schemas/Savings"}
+        topDevices: {type: array, items: {$ref: "#/components/schemas/TopDevice"}}
+        billRp: {type: integer}
+        energyPerPiece: {$ref: "#/components/schemas/EnergyPerPiece"}
+    Sample:
+      type: object
+      required: [t, p]
+      properties:
+        t: {type: integer, description: Unix seconds of the sample, minimum: 1700000000}
+        v: {type: number, description: Volts, minimum: 0, maximum: 500}
+        i: {type: number, description: Amperes, minimum: 0, maximum: 200}
+        p: {type: number, description: Watts, minimum: 0, maximum: 60000}
+        e: {type: number, description: Total energy of the node in kWh since it was made, minimum: 0}
+        f: {type: number, description: Hertz, minimum: 0, maximum: 100}
+        pf: {type: number, description: Power factor, minimum: 0, maximum: 1}
+    ReadingBatch:
+      type: object
+      required: [seq, sentAt, nodes]
+      properties:
+        seq: {type: integer, minimum: 1}
+        sentAt: {type: integer, description: Unix seconds on the clock of the gateway}
+        nodes:
+          type: array
+          maxItems: 16
+          items:
+            type: object
+            required: [nodeId, kind, samples]
+            properties:
+              nodeId: {type: string, minLength: 6, maxLength: 32, pattern: "^[A-Za-z0-9:_-]+$"}
+              kind: {$ref: "#/components/schemas/DeviceKind"}
+              hops: {type: integer, minimum: 0, maximum: 3, description: How many nodes relayed the packets}
+              samples: {type: array, minItems: 1, maxItems: 1000, items: {$ref: "#/components/schemas/Sample"}}
+  responses:
+    Error:
+      description: The request failed
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+    Unauthorized:
+      description: There is no session, or it expired (code `unauthorized`)
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+    NotFound:
+      description: The id does not exist, or it belongs to another business (code `not_found`). Both answer the same.
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+    Validation:
+      description: A field is not valid. `fields` names each one with a code such as `required`, `too_short`, `too_long` or `invalid`.
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+    RateLimited:
+      description: Too many requests. `retryAfterSeconds` and the header `Retry-After` say when to try again (code `rate_limited`, or `resend_too_soon` for a resend).
+      headers:
+        Retry-After: {schema: {type: integer}}
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+    InvalidCredentials:
+      description: The email or the password is wrong (code `invalid_credentials`). The answer is the same for an unknown email.
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+    EmailNotVerified:
+      description: The password was right and the email is not verified (code `email_not_verified`)
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+    EmailTaken:
+      description: The email has an account (code `email_taken`)
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+    TokenInvalid:
+      description: The token is unknown, used or expired (code `token_invalid_or_expired`). One answer covers all three.
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+    InvalidTransition:
+      description: The tip is not in a state that allows this decision (code `invalid_transition`)
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+    BadSignature:
+      description: The signature, the time stamp or the nonce is not valid (code `bad_signature`)
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
