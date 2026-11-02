@@ -33,7 +33,7 @@ func TestNewestFindsTheLastSwitchTimeSinceTheLastLook(t *testing.T) {
 		{"the exact minute counts", time.Date(2026, 11, 3, 16, 59, 0, 0, time.UTC), time.Date(2026, 11, 3, 17, 0, 0, 0, time.UTC), Off},
 		{"a time that was seen is not used again", time.Date(2026, 11, 3, 17, 0, 0, 0, time.UTC), time.Date(2026, 11, 3, 17, 5, 0, 0, time.UTC), ""},
 		{"Saturday has no switch", time.Date(2026, 11, 7, 16, 58, 0, 0, time.UTC), time.Date(2026, 11, 7, 17, 1, 0, 0, time.UTC), ""},
-		{"the newest of two wins", time.Date(2026, 11, 3, 7, 0, 0, 0, time.UTC), time.Date(2026, 11, 3, 17, 30, 0, 0, time.UTC), Off},
+		{"a look older than the life of a command is cut", time.Date(2026, 11, 3, 7, 0, 0, 0, time.UTC), time.Date(2026, 11, 3, 17, 30, 0, 0, time.UTC), ""},
 		{"a look that is too old is cut", time.Date(2026, 11, 2, 0, 0, 0, 0, time.UTC), time.Date(2026, 11, 3, 17, 1, 0, 0, time.UTC), Off},
 	}
 
@@ -44,6 +44,19 @@ func TestNewestFindsTheLastSwitchTimeSinceTheLastLook(t *testing.T) {
 		if got != tt.want {
 			t.Errorf("%s gave %q, want %q", tt.name, got, tt.want)
 		}
+	}
+}
+
+func TestNewestTakesTheNewerOfTwoTimesInOneWindow(t *testing.T) {
+	on := clock(t, "17:05")
+	d := due{offAt: clock(t, "17:00"), onAt: &on, days: "daily", zone: "UTC", checked: time.Date(2026, 11, 3, 16, 58, 0, 0, time.UTC)}
+
+	if got, _ := newest(d, time.Date(2026, 11, 3, 17, 6, 0, 0, time.UTC)); got != On {
+		t.Fatalf("got %q, want on", got)
+	}
+
+	if got, _ := newest(d, time.Date(2026, 11, 3, 17, 4, 0, 0, time.UTC)); got != Off {
+		t.Fatalf("got %q, want off", got)
 	}
 }
 
