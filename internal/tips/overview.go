@@ -39,9 +39,7 @@ type Overview struct {
 
 // Overview refreshes the tips and returns the phase and the tips that the home screen shows
 func (s *Service) Overview(ctx context.Context, businessID string) (Overview, error) {
-	if err := s.Refresh(ctx, businessID); err != nil {
-		return Overview{}, err
-	}
+	s.refresh(ctx, businessID)
 
 	p, err := s.profile(ctx, s.pool, businessID)
 	if err != nil {

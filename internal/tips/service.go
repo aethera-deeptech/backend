@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math"
 	"sort"
 	"time"
@@ -61,7 +62,8 @@ type List struct {
 	Phase        string `json:"phase"`
 	BusinessName string `json:"businessName"`
 	NeededDays   *int   `json:"neededDays,omitempty"`
-	Items        []Item `json:"items,omitempty"`
+	// Items is a pointer, so an empty list is still written as [] and the other phases leave it out
+	Items *[]Item `json:"items,omitempty"`
 }
 
 // Result is what the check of a tip found
@@ -148,14 +150,25 @@ func (s *Service) profile(ctx context.Context, q interface {
 // Phase says whether the business has devices, has collected enough days, or is ready for tips. The days are counted from the first
 // hour of data of any device of the business.
 func (s *Service) Phase(ctx context.Context, businessID string) (string, int, error) {
+	return s.phaseOn(ctx, s.pool, businessID)
+}
+
+// phaseOn is Phase on a connection of the caller, so a refresh does not need a second connection of the pool while it holds one
+func (s *Service) phaseOn(ctx context.Context, q interface {
+	QueryRow(context.Context, string, ...any) pgx.Row
+}, businessID string,
+) (string, int, error) {
 	var (
 		devices int
 		first   *time.Time
 	)
 
-	err := s.pool.QueryRow(ctx,
-		`SELECT count(DISTINCT d.id), min(h.hour) FROM devices d
-		 LEFT JOIN readings_hourly h ON h.gateway_id = d.gateway_id AND h.node_id = d.node_id WHERE d.business_id = $1`,
+	// the first hour is one index probe for each device, because the table holds up to 400 days of hours for every node
+	err := q.QueryRow(ctx,
+		`SELECT (SELECT count(*) FROM devices WHERE business_id = $1),
+		 (SELECT min(f.hour) FROM devices d CROSS JOIN LATERAL
+		   (SELECT h.hour FROM readings_hourly h WHERE h.gateway_id = d.gateway_id AND h.node_id = d.node_id ORDER BY h.hour LIMIT 1) f
+		  WHERE d.business_id = $1)`,
 		businessID).Scan(&devices, &first)
 	if err != nil {
 		return "", 0, fmt.Errorf("read the phase %w", err)
@@ -180,6 +193,16 @@ func (s *Service) Phase(ctx context.Context, businessID string) (string, int, er
 // Refresh verifies the tips that are due and makes new ones, at most every few minutes for a business. A business that is busy with
 // another refresh is left alone, because the tips it reads are only a few minutes old.
 func (s *Service) Refresh(ctx context.Context, businessID string) error {
+	// a plain read first, so a read inside the window takes no lock and writes nothing
+	var seen *time.Time
+	if err := s.pool.QueryRow(ctx, "SELECT tips_refreshed_at FROM businesses WHERE id = $1", businessID).Scan(&seen); err != nil {
+		return fmt.Errorf("read the refresh time %w", err)
+	}
+
+	if seen != nil && s.now().Sub(*seen) < refreshEvery {
+		return nil
+	}
+
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return fmt.Errorf("start the refresh %w", err)
@@ -215,7 +238,7 @@ func (s *Service) Refresh(ctx context.Context, businessID string) error {
 		return err
 	}
 
-	if phase, _, err := s.Phase(ctx, businessID); err != nil {
+	if phase, _, err := s.phaseOn(ctx, tx, businessID); err != nil {
 		return err
 	} else if phase == PhaseReady {
 		if err := s.generate(ctx, tx, businessID, p, now); err != nil {
@@ -267,11 +290,17 @@ func (s *Service) generate(ctx context.Context, tx pgx.Tx, businessID string, p 
 		return fmt.Errorf("read the hours %w", err)
 	}
 
+	// keep holds the device and kind of every tip that still holds, so a waiting tip of a device that no longer qualifies, or that
+	// changed kind, goes away and the saving of one device is never counted twice
+	keep := []string{}
+
 	for id, list := range byDevice {
 		kind, kwh := classify(list, p.loc, p.work, BaselineDays)
 		if kind == "" || RoundRp(kwh, p.tariff) < minSavingRp {
 			continue
 		}
+
+		keep = append(keep, id+":"+kind)
 
 		if _, err := tx.Exec(ctx,
 			`INSERT INTO tips (business_id, device_id, kind, saving_kwh_month) VALUES ($1, $2, $3, $4)
@@ -280,6 +309,12 @@ func (s *Service) generate(ctx context.Context, tx pgx.Tx, businessID string, p 
 			businessID, id, kind, kwh); err != nil {
 			return fmt.Errorf("store the tip %w", err)
 		}
+	}
+
+	// only a tip that nobody decided on is removed, the other states are the history of the business
+	if _, err := tx.Exec(ctx,
+		"DELETE FROM tips WHERE business_id = $1 AND status = 'pending' AND NOT (device_id::text || ':' || kind) = ANY($2)", businessID, keep); err != nil {
+		return fmt.Errorf("remove the tips that no longer hold %w", err)
 	}
 
 	return nil
@@ -295,7 +330,7 @@ func day(t time.Time, loc *time.Location) time.Time {
 // window sums the energy of all devices of the business and the production of the days from first up to but not including last
 func (s *Service) window(ctx context.Context, q interface {
 	QueryRow(context.Context, string, ...any) pgx.Row
-}, businessID string, first, last time.Time,
+}, businessID string, loc *time.Location, first, last time.Time,
 ) (float64, int, error) {
 	var (
 		kwh    float64
@@ -304,9 +339,10 @@ func (s *Service) window(ctx context.Context, q interface {
 
 	err := q.QueryRow(ctx,
 		`SELECT COALESCE((SELECT sum(h.energy_kwh) FROM devices d JOIN readings_hourly h ON h.gateway_id = d.gateway_id AND h.node_id = d.node_id
-		   WHERE d.business_id = $1 AND h.hour >= $2 AND h.hour < $3), 0),
+		   WHERE d.business_id = $1 AND h.hour >= $2 AND h.hour < $3
+		     AND EXISTS (SELECT 1 FROM production_records r WHERE r.business_id = $1 AND r.day = (h.hour AT TIME ZONE $6)::date)), 0),
 		 COALESCE((SELECT sum(quantity) FROM production_records WHERE business_id = $1 AND day >= $4::date AND day < $5::date), 0)`,
-		businessID, first.UTC(), last.UTC(), first.Format("2006-01-02"), last.Format("2006-01-02")).Scan(&kwh, &pieces)
+		businessID, first.UTC(), last.UTC(), first.Format("2006-01-02"), last.Format("2006-01-02"), loc.String()).Scan(&kwh, &pieces)
 	if err != nil {
 		return 0, 0, fmt.Errorf("read the energy for each piece %w", err)
 	}
@@ -356,12 +392,12 @@ func (s *Service) verifyDue(ctx context.Context, tx pgx.Tx, businessID string, p
 			continue
 		}
 
-		beforeKwh, beforePieces, err := s.window(ctx, tx, businessID, from.AddDate(0, 0, -BaselineDays), from)
+		beforeKwh, beforePieces, err := s.window(ctx, tx, businessID, p.loc, from.AddDate(0, 0, -BaselineDays), from)
 		if err != nil {
 			return err
 		}
 
-		afterKwh, afterPieces, err := s.window(ctx, tx, businessID, from, afterEnd)
+		afterKwh, afterPieces, err := s.window(ctx, tx, businessID, p.loc, from, afterEnd)
 		if err != nil {
 			return err
 		}
@@ -436,11 +472,16 @@ func (r tipRow) elapsed(p profile, now time.Time) int {
 	return min(max(days, 1), VerifyDays)
 }
 
+// refresh works out the tips again, and when that fails it logs and goes on, because the tips of the last refresh can still be read
+func (s *Service) refresh(ctx context.Context, businessID string) {
+	if err := s.Refresh(ctx, businessID); err != nil {
+		slog.ErrorContext(ctx, "the tips could not be refreshed", "error", err)
+	}
+}
+
 // List returns the tips in the order of the screen, the ones that wait first
 func (s *Service) List(ctx context.Context, businessID string) (List, error) {
-	if err := s.Refresh(ctx, businessID); err != nil {
-		return List{}, err
-	}
+	s.refresh(ctx, businessID)
 
 	p, err := s.profile(ctx, s.pool, businessID)
 	if err != nil {
@@ -495,7 +536,7 @@ func (s *Service) List(ctx context.Context, businessID string) (List, error) {
 		return a.savingRp(p) > b.savingRp(p)
 	})
 
-	out.Items = []Item{}
+	list := []Item{}
 
 	for _, r := range items {
 		f := r.facts(p)
@@ -511,8 +552,10 @@ func (s *Service) List(ctx context.Context, businessID string) (List, error) {
 			}
 		}
 
-		out.Items = append(out.Items, it)
+		list = append(list, it)
 	}
+
+	out.Items = &list
 
 	return out, nil
 }
@@ -523,9 +566,7 @@ func (s *Service) Get(ctx context.Context, businessID, id string) (Detail, error
 		return Detail{}, api.NotFound()
 	}
 
-	if err := s.Refresh(ctx, businessID); err != nil {
-		return Detail{}, err
-	}
+	s.refresh(ctx, businessID)
 
 	return s.detail(ctx, businessID, id)
 }

@@ -192,3 +192,52 @@ func TestAnAppliedTipShowsItsDayAndIsVerifiedAfterFourteenDays(t *testing.T) {
 		t.Fatalf("cancel of a verified tip answered %d", r.Status)
 	}
 }
+
+func TestAWaitingTipGoesAwayWhenTheDeviceStopsDrawingPowerAndTheListStaysAnArray(t *testing.T) {
+	e := testutil.New(t)
+	g := seed(t, e, "budi@example.com", "ESP32-AABBCC")
+	g.hours(t, 8*24, 1, 100, 0.1)
+
+	if items, _ := g.list(t).Body["items"].([]any); len(items) != 1 {
+		t.Fatalf("the list has %d tips", len(items))
+	}
+
+	g.e.Exec(t, "UPDATE readings_hourly SET energy_kwh = 0, sum_watts = 0, max_watts = 0, min_watts = 0")
+
+	r := g.list(t)
+
+	items, ok := r.Body["items"].([]any)
+	if r.Body["phase"] != "ready" || !ok || len(items) != 0 {
+		t.Fatalf("a quiet device left %v", r.Body)
+	}
+}
+
+func TestTheCheckCountsTheEnergyOnlyOfDaysWithProduction(t *testing.T) {
+	e := testutil.New(t)
+	g := seed(t, e, "budi@example.com", "ESP32-AABBCC")
+	g.hours(t, 8*24, 1, 100, 0.1)
+
+	items, _ := g.list(t).Body["items"].([]any)
+	id, _ := items[0].(map[string]any)["id"].(string)
+	g.decide(t, id, "apply")
+
+	g.e.Exec(t, "UPDATE tips SET applied_at = now() - interval '15 days'")
+
+	// the same energy every day before the tip, and production on only 3 of the 7 days before it, so the energy of the other days must
+	// not be set against the pieces of the 3
+	g.hours(t, 23*24, 8*24+1, 100, 0.2)
+	g.e.Exec(t, "INSERT INTO production_records (business_id, day, quantity, unit) SELECT $1, (now() AT TIME ZONE 'Asia/Jakarta')::date - d, 100, 'potong' FROM generate_series(1, 14) d", g.Business)
+	g.e.Exec(t, "INSERT INTO production_records (business_id, day, quantity, unit) SELECT $1, (now() AT TIME ZONE 'Asia/Jakarta')::date - d, 100, 'potong' FROM generate_series(17, 19) d", g.Business)
+	g.e.Exec(t, "UPDATE businesses SET tips_refreshed_at = NULL")
+
+	d := g.e.Call(t, http.MethodGet, "/v1/recommendations/"+id, "", g.Session)
+	result, _ := d.Body["result"].(map[string]any)
+
+	before, _ := result["beforeKwh"].(float64)
+	after, _ := result["afterKwh"].(float64)
+
+	// 3 days of 24 hours at 0,2 kWh for 300 pieces is 0,048 kWh for each piece, and the 14 days after are 0,1 kWh for each hour
+	if before < 0.045 || before > 0.05 || after <= 0 || after >= before {
+		t.Fatalf("the energy for each piece is %v before and %v after, %v", before, after, d.Body)
+	}
+}
