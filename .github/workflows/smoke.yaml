@@ -2,9 +2,9 @@ name: Smoke
 
 # Started by hand from the Actions tab after a deploy, and never by a pull request, because it tests the API that is deployed and
 # not the code of a branch. Only people with write access can start it. The password of the keeper account lives in the
-# smoke-production environment, which only runs from main can read, so a workflow edited on another branch cannot print it. The run
-# sends no write request, but reading the tips works them out again for the keeper business, so the keeper has to be a dedicated account
-# with no real data, see smoke/prod.py.
+# smoke-production environment. That environment must allow deployments from main only, so a workflow edited on another branch cannot
+# read the password. The run sends no request that changes business data, but it creates and ends one session, and reading the tips
+# works them out again for the keeper business, so the keeper has to be a dedicated account with no real data, see smoke/prod.py.
 on:
   workflow_dispatch:
     inputs:

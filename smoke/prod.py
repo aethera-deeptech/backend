@@ -1,8 +1,9 @@
 """Smoke test of the deployed API, started by hand from the Smoke workflow after a deploy.
 
-It signs in as the keeper account, opens every screen of the app once, and signs out. It sends no write request, but the tips screen
-works out the tips of the keeper business again when it is read, which can change the tips of that business and the time of the last
-refresh. So the keeper must be a dedicated account with no real business data. The keeper account is made once by hand and verified by
+It signs in as the keeper account, opens every screen of the app once, and signs out. It sends no request that changes business data,
+but signing in and out creates and ends one session, and the tips screen works out the tips of the keeper business again when it is
+read, which can change the tips of that business and the time of the last refresh. So the keeper must be a dedicated account with no
+real business data. The keeper account is made once by hand and verified by
 email.
 
 Settings come from the environment
@@ -23,7 +24,7 @@ from urllib.parse import urlsplit
 
 BASE = os.environ.get("BASE_URL", "").rstrip("/")
 ORIGIN = os.environ.get("APP_ORIGIN", "")
-EXPECTED = os.environ.get("EXPECTED_VERSION", "")
+EXPECTED = os.environ.get("EXPECTED_VERSION", "").strip().removeprefix("v")
 EMAIL = os.environ.get("SMOKE_KEEPER_EMAIL", "").strip().lower()
 PASSWORD = os.environ.get("SMOKE_KEEPER_PASSWORD", "")
 
@@ -33,6 +34,9 @@ SECURE = URL.scheme == "https" and bool(URL.hostname) and URL.username is None a
 
 if not SECURE or not ORIGIN or not EXPECTED or not EMAIL or not PASSWORD:
     sys.exit("set BASE_URL (https), APP_ORIGIN, EXPECTED_VERSION, SMOKE_KEEPER_EMAIL and SMOKE_KEEPER_PASSWORD")
+
+# no answer of the API is larger than this, so a wrong host cannot fill the memory of the runner
+MAX_BODY = 1_000_000
 
 passed = 0
 failed = []
@@ -75,9 +79,9 @@ def call(method, path, body=None, cookie=""):
 
     try:
         with OPENER.open(req, timeout=20) as res:
-            return Answer(res.status, res.headers, res.read())
+            return Answer(res.status, res.headers, res.read(MAX_BODY))
     except urllib.error.HTTPError as err:
-        return Answer(err.code, err.headers, err.read())
+        return Answer(err.code, err.headers, err.read(MAX_BODY))
 
 
 def check(name, ok, detail=""):
@@ -106,9 +110,13 @@ def main():
 
     login = call("POST", "/v1/auth/login", {"email": EMAIL, "password": PASSWORD})
     expect("sign in as the keeper", login, 200)
-    header = login.headers.get("Set-Cookie", "")
-    cookie = header.split(";", 1)[0] if "=" in header else ""
-    check("signing in sets a session", cookie.startswith("__Host-aethera_session="))
+    cookies = [c.split(";", 1)[0] for c in login.headers.get_all("Set-Cookie") or []]
+    cookie = next((c for c in cookies if c.startswith("__Host-aethera_session=")), "")
+    check("signing in sets a session", bool(cookie))
+
+    # a failed sign in stops the run, so a wrong password is tried once and not nine times against the login limit
+    if not cookie:
+        return
 
     try:
         me = expect("who am I", call("GET", "/v1/auth/me", cookie=cookie), 200)
