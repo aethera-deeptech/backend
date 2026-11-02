@@ -66,8 +66,7 @@ services:
       - /etc/alloy/config.alloy
     # the token has its own file, which only this container loads, so the API copies never see it
     env_file:
-      - path: grafana/alloy/.env
-        required: true
+      - grafana/alloy/.env
     deploy:
       resources:
         limits:

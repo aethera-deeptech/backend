@@ -29,19 +29,21 @@ The dashboards pick their data sources with two variables at the top (`Metrics` 
 
 1. In the Grafana Cloud stack, open the connection details of the Prometheus and the Loki data source and note the push URL and the user (instance id) of each.
 2. Create an access policy for the stack with the scopes `metrics:write` and `logs:write`, then create a token for it. The token is shown once.
-3. Copy `grafana/alloy/.env.example` to `grafana/alloy/.env` on the host, which git ignores, and fill in the `GRAFANA_CLOUD_*` values and `GRAFANA_HOST`. Only Alloy loads that file, so the API copies never see the token. Add `COMPOSE_PROFILES=monitoring` and `METRICS_ADDRESS=:9100` to the root `.env`.
-4. Copy the `grafana` folder to the host next to `compose.yml`, then start the two new containers and check that Alloy runs.
+3. Copy the `grafana` folder to the host next to `compose.yml`.
+4. Copy `grafana/alloy/.env.example` to `grafana/alloy/.env` on the host, which git ignores, and fill in the `GRAFANA_CLOUD_*` values and `GRAFANA_HOST`. Only Alloy loads that file, so the API copies never see the token. Add `COMPOSE_PROFILES=monitoring` and `METRICS_ADDRESS=:9100` to the root `.env`.
+5. The API copies read `METRICS_ADDRESS` when they start, so recreate them one at a time with the version that runs now, for example `./scripts/rolling-update.sh 0.3.0`. The script checks the health of each copy before it goes on to the next.
+6. Start the two new containers and check that Alloy runs.
 
    ```sh
    docker compose up -d alloy socket-proxy
    docker compose logs --since 5m alloy
    ```
 
-5. After a few minutes the Explore view of the Prometheus data source answers `up{service="aethera-api"}` with `1`, and the Loki data source answers `{service_name="aethera", role="api"}` with lines.
-6. Set the scrape interval of the Prometheus data source to `1m`, which is how often Alloy scrapes, then import the dashboards from `grafana/dashboards` and choose the two data sources when asked.
-7. Create a contact point that reaches the owner and a notification policy that uses it, then create the alert rules. Replace `__PROMETHEUS_UID__` in `grafana/alerts/rules.json` with the id of the Prometheus data source and send each rule to the provisioning API. A folder with the id `aethera` has to exist first.
+7. After a few minutes the Explore view of the Prometheus data source answers `up{service="aethera-api"}` with `1`, and the Loki data source answers `{service_name="aethera", role="api"}` with lines.
+8. Set the scrape interval of the Prometheus data source to `1m`, which is how often Alloy scrapes, then import the dashboards from `grafana/dashboards` and choose the two data sources when asked.
+9. Create a contact point that reaches the owner and a notification policy that uses it, then create the alert rules. Replace `__PROMETHEUS_UID__` in `grafana/alerts/rules.json` with the id of the Prometheus data source and send each rule to the provisioning API. A folder with the id `aethera` has to exist first.
 
-Alloy keeps a small write-ahead log in the `aethera-alloy` volume, so a short outage of the network does not lose samples. The script `scripts/rolling-update.sh` recreates the API copies only, so a deploy does not restart Alloy.
+Alloy keeps a small write-ahead log in the `aethera-alloy` volume, so a short outage of the network does not lose metric samples. The script `scripts/rolling-update.sh` recreates the API copies only, so a deploy does not restart Alloy.
 
 ## Keep it inside the free plan
 

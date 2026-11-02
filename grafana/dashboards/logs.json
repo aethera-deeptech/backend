@@ -191,7 +191,7 @@
     {
       "type": "logs",
       "title": "Rate limited",
-      "description": "error_code and retry_after say which kind of refusal it was",
+      "description": "The field code says which kind of refusal it was",
       "datasource": {
         "type": "loki",
         "uid": "${ds_loki}"
