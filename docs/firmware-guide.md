@@ -24,11 +24,11 @@ POST /device/v1/enroll
 - `firmware` is optional, at most 32 characters, with no line break or null character.
 - `keyHash` is the SHA-256 of the key text exactly as the gateway sends it in the bearer header, not of decoded bytes, written in lower case hex. The service never sees the key.
 - The answer 201 holds `claimCode` (8 characters, no letters that look alike), `pollId` and `expiresInSeconds` (600). Show the code on the display or send it to the phone.
-- A network can ask for 20 codes in an hour, and the answer 429 says how long to wait in the `Retry-After` header and in `retryAfterSeconds`.
+- A client address (an IPv4 address, or an IPv6 /64 prefix) can ask for 20 codes in an hour, and the answer 429 says how long to wait in the `Retry-After` header and in `retryAfterSeconds`.
 
 ## 2. Poll
 
-`GET /device/v1/enroll/{pollId}` answers 202 while the code waits. A network has a limit of 300 polls in 15 minutes, shared by every gateway on it, which is one poll every 3 seconds for the whole network. With one gateway on the network, poll every 5 seconds. With n gateways that enroll at the same time, poll every 5 times n seconds. The answer 200 says `{"gatewayId": "..."}`, and the gateway now belongs to a business. The enrollment is gone after that answer, so the next poll answers 404. A lost 200 turns into a 404 on the retry, and then the gateway sends one batch of readings to see whether its key works. The answer 410 and an answer 404 before any 200 both mean that the code expired, because the service deletes expired codes when anyone enrolls, so enroll again.
+`GET /device/v1/enroll/{pollId}` answers 202 while the code waits. An IPv4 client address or an IPv6 /64 has a limit of 300 polls in 15 minutes, shared by every gateway that reaches the service from that address, which is one poll every 3 seconds for that address. With one gateway on the address, poll every 5 seconds. With n gateways on the same address that enroll at the same time, poll every 5 times n seconds. Gateways on different addresses do not share the limit. The answer 200 says `{"gatewayId": "..."}`, and the gateway now belongs to a business. The enrollment is gone after that answer, so the next poll answers 404. A lost 200 turns into a 404 on the retry, and then the gateway sends one batch of readings to see whether its key works. The answer 410 and an answer 404 before any 200 both mean that the code expired, because the service deletes expired codes when anyone enrolls, so enroll again.
 
 ## 3. Send readings
 
