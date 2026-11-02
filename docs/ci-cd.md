@@ -105,7 +105,7 @@ The Tests job runs every test with the race detector, in a random order and with
 
 The `Dockerfile` has two stages. The first compiles the program on the machine that builds the image, and cross-compiles for the platform of the image, so an arm64 image needs no emulation. The second is a distroless image without a shell or a package manager. It holds the one binary and runs it as the user 65532, which is not root. The base images are pinned by digest, and Renovate keeps the digests current.
 
-The image has no `curl`, so its health check runs the program again with the argument `healthcheck`. That call asks `/healthz` on the loopback address and exits with 0 only when the answer is 200. The memory limit of the container and the `GOMEMLIMIT` setting belong to the compose file that runs the image, and `.dockerignore` keeps the env files, the documentation and the tool settings out of the build context.
+The image has no `curl`, so its health check runs the program again with the argument `healthcheck`. That call asks `/healthz` on the loopback address and exits with 0 only when the answer is 200, which means the database answers too. The memory limit of the container and the `GOMEMLIMIT` setting belong to the compose file that runs the image, and `.dockerignore` keeps the env files, the documentation and the tool settings out of the build context.
 
 The Hadolint job lints the `Dockerfile`, and `docker.yaml` builds, scans and publishes the image.
 

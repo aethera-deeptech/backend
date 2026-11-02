@@ -60,7 +60,7 @@ To go back to an older version, run `ROLLBACK_OK=<version> ./rolling-update.sh <
 ## Check a copy
 
 - `docker compose ps` shows the state and the health of both copies.
-- `curl http://127.0.0.1:8010/healthz` answers `{"status":"ok","version":"..."}` for the first copy, and port 8011 for the second.
+- `curl http://127.0.0.1:8010/healthz` shows the health of the first copy, and port 8011 shows the second. The body has `status` (`ok`, or `down` with HTTP 503 while the database does not answer), `version`, `uptimeSeconds`, `checks` (`database` as `ok`, `busy` or `down`, and `mail` as `smtp` or `log`) and `pool` (the connections that are in use, idle and allowed).
 - `docker compose logs api-1` shows the logs of a copy. They are JSON lines, one object for each line.
 
 ## Do not do these
@@ -79,4 +79,4 @@ The library marks the schema version as dirty before it runs a migration and cle
 
 The compose services are called `api-1` and `api-2`, and Docker adds those names as network aliases on the shared database network. An app on that network that has a service with the same name would share the alias. Check the aliases on that network before the first deploy.
 
-The readiness route `/readyz` answers 200 while the database answers and 503 when it does not. The container health check uses `/healthz`, which ignores the database on purpose, because a restart does not fix a database that is down. The answer of `/readyz` is reused for 2 seconds, and it should stay off the public reverse proxy, which only needs `/healthz`.
+The health route `/healthz` runs a database check, and the answer is reused for 2 seconds so a flood of requests costs one ping. While the database does not answer, it answers 503 with `status` `down`. When the check times out while every connection of the pool is in use, the database is busy and not down, so it answers 200 with `database` `busy`. A reverse proxy that probes a copy should use `/healthz`, and nothing on the host should stop or restart a copy because it is unhealthy, because a restart does not fix a database. The container health check then marks the copy unhealthy, and nothing restarts a copy for that, because Docker only restarts a container that exits. The rolling update waits for `status` `ok`, so a deploy during a database outage stops at the first copy and says so. The short route `/readyz` answers 200 while the database answers and 503 when it does not, and it shares the same check. Both routes should stay off the public reverse proxy, except when an outside monitor needs `/healthz`.
