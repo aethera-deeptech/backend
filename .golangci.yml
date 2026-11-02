@@ -3,6 +3,9 @@ version: "2"
 run:
   timeout: 5m
   tests: true
+  # the explain test only builds with this tag, so the linter reads it too
+  build-tags:
+    - explain
 
 linters:
   default: standard
