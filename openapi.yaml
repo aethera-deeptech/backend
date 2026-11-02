@@ -44,20 +44,57 @@ paths:
     get:
       tags: [Health]
       operationId: getHealth
-      summary: Say that the process runs
-      description: It never looks at the database, because a restart does not fix a database that is down. The rolling update reads the version from it.
+      summary: Say how the process and its database are
+      description: It answers 503 while the database does not answer. The container health check only marks the copy unhealthy for that and nothing restarts it, and the rolling update reads the version from it and waits for status ok.
       security: []
       responses:
         "200":
-          description: The process runs
+          description: The process runs and the database answers
           content:
             application/json:
               schema:
                 type: object
-                required: [status, version]
+                required: [status, version, uptimeSeconds, checks]
                 properties:
                   status: {type: string, const: ok}
                   version: {type: string, examples: ["0.1.0"]}
+                  uptimeSeconds: {type: integer, minimum: 0, description: Seconds since this copy started}
+                  checks:
+                    type: object
+                    required: [database]
+                    properties:
+                      database: {type: string, enum: [ok, busy], description: "busy when the check timed out while every connection of the pool was in use, which still answers 200"}
+                      mail: {type: string, enum: [smtp, log], description: smtp when a mail server is set and log when the links go to the log}
+                  pool:
+                    type: object
+                    description: Connections of the database pool of this copy
+                    properties:
+                      acquired: {type: integer, minimum: 0}
+                      idle: {type: integer, minimum: 0}
+                      max: {type: integer, minimum: 0}
+        "503":
+          description: The database does not answer
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, version, uptimeSeconds, checks]
+                properties:
+                  status: {type: string, const: down}
+                  version: {type: string, examples: ["0.1.0"]}
+                  uptimeSeconds: {type: integer, minimum: 0}
+                  checks:
+                    type: object
+                    required: [database]
+                    properties:
+                      database: {type: string, const: down}
+                      mail: {type: string, enum: [smtp, log]}
+                  pool:
+                    type: object
+                    properties:
+                      acquired: {type: integer, minimum: 0}
+                      idle: {type: integer, minimum: 0}
+                      max: {type: integer, minimum: 0}
         "4XX": {$ref: "#/components/responses/Error"}
   /readyz:
     get:

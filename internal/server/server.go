@@ -21,6 +21,17 @@ const (
 	idleTimeout  = 60 * time.Second
 )
 
+// started is when the process started, which the health route turns into an uptime
+var started = time.Now()
+
+// The states of the database check, ok when it answers, busy when the ping timed out while every connection of the pool was in use,
+// and down otherwise
+const (
+	dbOK   = "ok"
+	dbBusy = "busy"
+	dbDown = "down"
+)
+
 // readyTimeout is how long the readiness route waits for the database
 const readyTimeout = 2 * time.Second
 
@@ -33,12 +44,21 @@ type Pinger interface {
 	Ping(ctx context.Context) error
 }
 
+// PoolStats is how many connections of the pool are in use, which the health route shows
+type PoolStats struct {
+	Acquired, Idle, Max int32
+}
+
 // Options are what the application needs from the rest of the service
 type Options struct {
 	// Version is the one that the binary was built with
 	Version string
-	// DB answers the readiness route
+	// DB answers the health and readiness routes
 	DB Pinger
+	// Pool and Mail are optional and only shown in the health route. Mail is smtp when a mail server is set and log when the links
+	// go to the log, which is the setup of development.
+	Pool func() PoolStats
+	Mail string
 	// AppOrigin is the only origin that CORS allows, for example https://aethera.example.com
 	AppOrigin string
 	// TrustProxy and ProxyHeader tell where the address of the client is when a reverse proxy on the host sits in front
@@ -98,39 +118,87 @@ func New(opts Options) *fiber.App {
 		MaxAge:           600,
 	}), api.NoStore(), api.CSRF(opts.AppOrigin))
 
-	// the health route stays outside /v1 because it belongs to the container and not to the API that the dashboard reads
-	app.Get("/healthz", func(c fiber.Ctx) error {
-		return c.JSON(fiber.Map{"status": "ok", "version": version})
-	})
-
-	// healthz says that the process runs and never looks at the database, because the container is restarted when it fails and a
-	// restart does not fix a database that is down. readyz says that the service can do its work, and a monitor reads it.
+	// the answer of the database check is reused for a moment, so a flood of requests costs one ping and not one connection of the
+	// pool for each request. A ping takes a connection of the pool, so when every connection is in use and the ping times out, the
+	// database is busy and not down. That answers 200, because a probe that took both copies out of service under load would turn a
+	// slowdown into an outage.
 	var (
 		mu       sync.Mutex
 		checked  time.Time
-		lastOK   bool
+		lastSeen = dbDown
 		validFor = readyCache
 	)
 
-	app.Get("/readyz", func(c fiber.Ctx) error {
+	databaseState := func() string {
 		mu.Lock()
+		defer mu.Unlock()
+
 		if time.Since(checked) >= validFor {
 			ctx, cancel := context.WithTimeout(context.Background(), readyTimeout)
 			err := db.Ping(ctx)
 
 			cancel()
 
-			if err != nil {
-				slog.Warn("the readiness check failed", "error", err)
+			saturated := false
+			if opts.Pool != nil {
+				p := opts.Pool()
+				saturated = p.Max > 0 && p.Acquired >= p.Max
 			}
 
-			lastOK, checked = err == nil, time.Now()
+			switch {
+			case err == nil:
+				lastSeen = dbOK
+			case saturated:
+				slog.Warn("the database check timed out while every connection of the pool is in use", "error", err)
+
+				lastSeen = dbBusy
+			default:
+				slog.Warn("the database check failed", "error", err)
+
+				lastSeen = dbDown
+			}
+
+			checked = time.Now()
 		}
 
-		ok := lastOK
-		mu.Unlock()
+		return lastSeen
+	}
 
-		if !ok {
+	// the health route stays outside /v1 because it belongs to the container and not to the API that the dashboard reads. It answers
+	// 503 while the database does not answer. The container health check only marks the copy unhealthy for that and nothing restarts
+	// it, and the rolling update waits for it, so a deploy during a database outage stops at the first copy and says why.
+	app.Get("/healthz", func(c fiber.Ctx) error {
+		database := databaseState()
+		status, state := fiber.StatusOK, "ok"
+
+		if database == dbDown {
+			status, state = fiber.StatusServiceUnavailable, "down"
+		}
+
+		checks := fiber.Map{"database": database}
+
+		if opts.Mail != "" {
+			checks["mail"] = opts.Mail
+		}
+
+		body := fiber.Map{
+			"status":        state,
+			"version":       version,
+			"uptimeSeconds": int64(time.Since(started).Seconds()),
+			"checks":        checks,
+		}
+
+		if opts.Pool != nil {
+			p := opts.Pool()
+			body["pool"] = fiber.Map{"acquired": p.Acquired, "idle": p.Idle, "max": p.Max}
+		}
+
+		return c.Status(status).JSON(body)
+	})
+
+	// readyz is the short form that a monitor reads, 200 while the database answers and 503 when it does not
+	app.Get("/readyz", func(c fiber.Ctx) error {
+		if databaseState() == dbDown {
 			return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{"status": "unavailable"})
 		}
 
