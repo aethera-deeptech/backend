@@ -37,10 +37,12 @@ jobs:
       - name: Create the environment file
         run: |
           cp .env.example .env
+          go_image="$(grep -oE 'golang:[0-9][^ "]*@sha256:[0-9a-f]{64}' Dockerfile | head -1)"
+          test -n "$go_image" || { echo "no pinned golang image in the Dockerfile" >&2; exit 1; }
           {
             echo "APP_ENV=development"
             echo "DB_PASSWORD=$(openssl rand -hex 16)"
-            echo "GO_IMAGE=$(grep -oE 'golang:[0-9][^ "]*@sha256:[0-9a-f]{64}' Dockerfile | head -1)"
+            echo "GO_IMAGE=${go_image}"
           } >> .env
 
       - name: Start the stack
