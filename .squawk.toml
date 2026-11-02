@@ -1,0 +1,17 @@
+# The settings of squawk, the linter for PostgreSQL migrations, see docs/ci-cd.md.
+pg_version = "18.0"
+
+# golang-migrate sends the statements of one file in one call, so they run in one transaction
+assume_in_transaction = true
+
+excluded_rules = [
+  # CREATE INDEX CONCURRENTLY cannot run inside a transaction, and the tables of this service are small enough for a plain index
+  "require-concurrent-index-creation",
+  # the model sizes its text columns on purpose, and the counters and scores are small numbers that cannot reach the limit of a 32-bit integer
+  "prefer-text-field",
+  "prefer-bigint-over-int",
+  "prefer-bigint-over-smallint",
+  # the migrations run once at startup on small tables, before the API takes traffic, so a statement or lock timeout would only make a slow start fail
+  "require-statement-timeout",
+  "require-lock-timeout",
+]
