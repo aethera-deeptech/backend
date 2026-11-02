@@ -449,6 +449,11 @@ func (s *Service) ChangeEmail(ctx context.Context, ip, rawEmail, password, rawNe
 		return api.NewError(http.StatusUnauthorized, "invalid_credentials", "The email or the password is wrong")
 	}
 
+	// the answer comes after the password check, so a stranger learns nothing about an address from it
+	if newEmail == email {
+		return api.Validation(map[string]string{"newEmail": "invalid"})
+	}
+
 	raw, hash, err := newToken()
 	if err != nil {
 		return err
