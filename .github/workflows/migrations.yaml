@@ -1,0 +1,83 @@
+name: Migration lint
+
+# The migrations are applied by the API when it starts, and two copies run during a rolling update, so a migration that locks a
+# table or breaks the copy that is still running is the likeliest way to cause downtime. This job runs squawk on the .up.sql files
+# that a pull request adds or changes, and every other pull request ends the job at once with a green result.
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: migrations-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  squawk:
+    name: Migration lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # the list of changed files is the difference with the base branch
+          fetch-depth: 0
+
+      # only the up files count, a down file drops what the up file made and is not run by the API when it starts
+      - name: Find the migrations of this change
+        id: changes
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+
+          if [ "$EVENT" = "pull_request" ]; then
+            git diff --no-renames --name-only --diff-filter=AM "origin/${BASE_REF}...HEAD" -- 'internal/database/migrations/*.up.sql' > "$RUNNER_TEMP/changed.txt"
+          else
+            : > "$RUNNER_TEMP/changed.txt"
+          fi
+
+          echo "count=$(wc -l < "$RUNNER_TEMP/changed.txt" | tr -d ' ')" >> "$GITHUB_OUTPUT"
+
+          # A change of this workflow, of the settings or of the squawk image, or a run by hand, also reports on every migration, so the
+          # rules can be tuned. The names go to a file first, because grep that stops at the first match would end a pipe early.
+          git diff --name-only "origin/${BASE_REF:-main}...HEAD" > "$RUNNER_TEMP/touched.txt"
+          if [ "$EVENT" = "workflow_dispatch" ] || grep -E -q '^(\.squawk\.toml|\.github/workflows/migrations\.yaml|\.github/tools/Dockerfile)$' "$RUNNER_TEMP/touched.txt"; then
+            echo "report=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "report=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if [ "$(wc -l < "$RUNNER_TEMP/changed.txt")" -eq 0 ]; then
+            echo "No migration was added or changed, so there is nothing to lint." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Lint the migrations of this change
+        if: ${{ steps.changes.outputs.count != '0' }}
+        run: |
+          set -euo pipefail
+          mapfile -t files < "$RUNNER_TEMP/changed.txt"
+          docker run --rm -v "$PWD:/data:ro" -w /data "$(bash ./.github/tools/image.sh squawk)" \
+            --config .squawk.toml "${files[@]}"
+
+      # Report only. The old migrations are already applied, so a finding in one of them is not a failure, but the list shows which
+      # rules the settings have to relax for the next migration to follow the same style.
+      - name: Report on every migration
+        if: ${{ !cancelled() && steps.changes.outputs.report == 'true' }}
+        run: |
+          report="$(docker run --rm -v "$PWD:/data:ro" -w /data "$(bash ./.github/tools/image.sh squawk)" \
+            --config .squawk.toml 'internal/database/migrations/*.up.sql' 2>&1 || true)"
+          echo "$report"
+          {
+            echo '### squawk on every migration, for information'
+            echo '```'
+            echo "$report"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
