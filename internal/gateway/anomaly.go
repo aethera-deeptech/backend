@@ -25,8 +25,16 @@ const (
 	// raise an anomaly for 5 W and a node that draws 3 kW does not raise one for 100 W
 	surgeMinExcessW = 100.0
 	surgeMinShare   = 0.3
-	// overloadCode is the condition that the node itself reports for an overload
-	overloadCode = 3
+	// overloadCode and degradationCode are the conditions that the node itself reports for an overload and for a motor that is wearing out
+	overloadCode    = 3
+	degradationCode = 2
+	// degradationMaxPF is the power factor under which a loaded motor is a poor one, and degradationMinW is the load that counts as
+	// loaded, because the power factor of an idle motor is low anyway. A batch needs degradationMinSamples loaded samples and at least
+	// degradationShare of them under the limit, so one odd reading does not raise it.
+	degradationMaxPF      = 0.55
+	degradationMinW       = 150.0
+	degradationMinSamples = 3
+	degradationShare      = 0.8
 	// historyDays and minHistoryDays are how far back the usual power looks and how many days the same hour of the day needs. A week
 	// is the least that covers every day of the week, so a business that is closed at the weekend does not look quiet at that hour.
 	historyDays    = 15
@@ -66,11 +74,17 @@ func watchNode(ctx context.Context, tx pgx.Tx, gatewayID, nodeID string, samples
 }
 
 // detectAnomaly looks at the new samples of a node that belongs to a business and writes an anomaly when one is far above the usual
-// power of that hour of the day, or when the node says it is overloaded. A node that no business claimed is not watched, and a node
+// power of that hour of the day, when the node says it is overloaded or wearing out, or when a loaded motor has a poor power factor. A node that no business claimed is not watched, and a node
 // that raised an anomaly in the last hours does not raise another.
 func detectAnomaly(ctx context.Context, tx pgx.Tx, gatewayID, nodeID string, samples []stored, now time.Time) error {
 	var (
 		overload *stored
+		// loaded counts the samples with a power factor at a high load, poor counts those under the limit, and worst is the sample of the
+		// highest power among the poor ones
+		loaded, poor int
+		worst        *stored
+		pfSum        float64
+		reported     *stored
 		// peaks holds the highest sample of each UTC hour, because the usual power belongs to an hour of the day
 		peaks    = map[time.Time]*stored{}
 		anySurge bool
@@ -86,6 +100,23 @@ func detectAnomaly(ctx context.Context, tx pgx.Tx, gatewayID, nodeID string, sam
 			overload = s
 		}
 
+		if s.nodeState != nil && *s.nodeState == degradationCode && reported == nil {
+			reported = s
+		}
+
+		if s.pf != nil && s.watts >= degradationMinW {
+			loaded++
+
+			if *s.pf < degradationMaxPF {
+				poor++
+				pfSum += *s.pf
+
+				if worst == nil || s.watts > worst.watts {
+					worst = s
+				}
+			}
+		}
+
 		hour := s.t.UTC().Truncate(time.Hour)
 		if p := peaks[hour]; p == nil || s.watts > p.watts {
 			peaks[hour] = s
@@ -96,8 +127,20 @@ func detectAnomaly(ctx context.Context, tx pgx.Tx, gatewayID, nodeID string, sam
 		}
 	}
 
+	// the motor is poor when the node says so, or when most of the loaded samples of the batch have a poor power factor
+	var degradation *stored
+
+	switch {
+	case reported != nil:
+		// the power factor of one sample says little about what the node saw, so only a degradation that the service found keeps it
+		degradation = &stored{t: reported.t, watts: reported.watts}
+	case loaded >= degradationMinSamples && worst != nil && float64(poor) >= degradationShare*float64(loaded):
+		mean := pfSum / float64(poor)
+		degradation = &stored{t: worst.t, watts: worst.watts, pf: &mean}
+	}
+
 	// the cheap checks come first, because most batches have nothing to report
-	if overload == nil && !anySurge {
+	if overload == nil && degradation == nil && !anySurge {
 		return nil
 	}
 
@@ -114,9 +157,15 @@ func detectAnomaly(ctx context.Context, tx pgx.Tx, gatewayID, nodeID string, sam
 		return fmt.Errorf("read the sensitivity %w", err)
 	}
 
-	// the two kinds are checked on their own, so a batch that holds both reports both
+	// the kinds are checked on their own, so a batch that holds two of them reports both
 	if overload != nil {
 		if err := raise(ctx, tx, gatewayID, nodeID, "overload", overload, level); err != nil {
+			return err
+		}
+	}
+
+	if degradation != nil {
+		if err := raise(ctx, tx, gatewayID, nodeID, "degradation", degradation, level); err != nil {
 			return err
 		}
 	}
@@ -171,9 +220,15 @@ func raise(ctx context.Context, tx pgx.Tx, gatewayID, nodeID, kind string, s *st
 		expected = &high.high
 	}
 
+	// only a degradation keeps the power factor, because it is what that kind is about
+	var pf *float64
+	if kind == "degradation" {
+		pf = s.pf
+	}
+
 	if _, err := tx.Exec(ctx,
-		"INSERT INTO anomalies (gateway_id, node_id, at, peak_watts, expected_high_watts, kind) VALUES ($1, $2, $3, $4, $5, $6)",
-		gatewayID, nodeID, s.t, s.watts, expected, kind); err != nil {
+		"INSERT INTO anomalies (gateway_id, node_id, at, peak_watts, expected_high_watts, kind, power_factor) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+		gatewayID, nodeID, s.t, s.watts, expected, kind, pf); err != nil {
 		return fmt.Errorf("store the anomaly %w", err)
 	}
 
