@@ -1,0 +1,29 @@
+# A local stack of the API and its database, for development and for the Smoke stack workflow. Copy .env.example to .env first.
+# The production host uses compose.production.example.yml instead, and the shared database of that host is not part of this file.
+services:
+  api:
+    build: .
+    image: aethera-backend:dev
+    env_file:
+      - .env
+    environment:
+      # the host name of the database service below, whatever the env file says
+      DB_HOST: db
+    ports:
+      - "127.0.0.1:${APP_PORT:-8080}:${APP_PORT:-8080}"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_DB: ${DB_NAME:?set DB_NAME in the env file}
+      POSTGRES_USER: ${DB_USERNAME:?set DB_USERNAME in the env file}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in the env file}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
