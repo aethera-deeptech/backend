@@ -19,9 +19,21 @@ const (
 	topCount = 4
 	// maxPeriods is the number of months that the list offers, a little more than the 400 days that the rollups are kept
 	maxPeriods = 14
+	// maxWeeks is the number of weeks that the list offers, which covers the 400 days that the rollups are kept
+	maxWeeks = 58
 )
 
-var periodPattern = regexp.MustCompile(`^[0-9]{4}-(0[1-9]|1[0-2])$`)
+var (
+	periodPattern = regexp.MustCompile(`^[0-9]{4}-(0[1-9]|1[0-2])$`)
+	// weekPattern is an ISO 8601 week, a year, a W and a week from 01 to 53. A week runs from Monday to Sunday in the time zone of the business.
+	weekPattern = regexp.MustCompile(`^[0-9]{4}-W(0[1-9]|[1-4][0-9]|5[0-3])$`)
+)
+
+// The two sizes of a report
+const (
+	Month = "month"
+	Week  = "week"
+)
 
 // Tariff is the price that the rupiah of the report use
 type Tariff struct {
@@ -70,11 +82,14 @@ type PerPiece struct {
 	AfterKwh  float64 `json:"afterKwh"`
 }
 
-// Report is the report of one month
+// Report is the report of one month or one week
 type Report struct {
-	Phase          string     `json:"phase"`
+	Phase string `json:"phase"`
+	// Granularity is month or week, and Period is 2026-09 for a month and 2026-W37 for a week
+	Granularity    string     `json:"granularity"`
 	Period         string     `json:"period"`
 	Periods        []string   `json:"periods"`
+	Weeks          []string   `json:"weeks"`
 	CollectedDays  *int       `json:"collectedDays,omitempty"`
 	NeededDays     *int       `json:"neededDays,omitempty"`
 	Through        *time.Time `json:"through,omitempty"`
@@ -107,10 +122,16 @@ func monthLabel(t time.Time) string {
 
 var monthNames = [...]string{"Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"}
 
-// Get returns the report of a month, or of the running month when period is empty. A month with no data answers 404, and a malformed
-// period answers 422.
+// Get returns the report of a month or a week, or of the running month when period is empty. A period with no data answers 404, and a
+// malformed period answers 422.
 func (s *Service) Get(ctx context.Context, businessID, period string) (Report, error) {
-	if period != "" && !periodPattern.MatchString(period) {
+	granularity := Month
+
+	switch {
+	case period == "" || periodPattern.MatchString(period):
+	case weekPattern.MatchString(period):
+		granularity = Week
+	default:
 		return Report{}, api.Validation(map[string]string{"period": "invalid"})
 	}
 
@@ -121,7 +142,7 @@ func (s *Service) Get(ctx context.Context, businessID, period string) (Report, e
 
 	now := s.now().In(ov.Location)
 	current := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, ov.Location)
-	out := Report{Phase: ov.Phase, Period: current.Format("2006-01"), Periods: []string{}, businessName: ov.BusinessName}
+	out := Report{Phase: ov.Phase, Granularity: Month, Period: current.Format("2006-01"), Periods: []string{}, Weeks: []string{}, businessName: ov.BusinessName}
 
 	if ov.Phase != tips.PhaseReady {
 		if period != "" && period != out.Period {
@@ -136,31 +157,36 @@ func (s *Service) Get(ctx context.Context, businessID, period string) (Report, e
 		return out, nil
 	}
 
-	periods, err := s.periods(ctx, businessID, current, ov)
+	first, err := s.firstData(ctx, businessID)
 	if err != nil {
 		return Report{}, err
 	}
 
-	out.Periods = periods
+	out.Periods = months(first, current, ov.Location)
+	out.Weeks = weeks(first, now, ov.Location)
 
 	if period == "" {
 		period = out.Period
 	}
 
-	if !contains(periods, period) {
+	list := out.Periods
+	if granularity == Week {
+		list = out.Weeks
+	}
+
+	if !contains(list, period) {
 		return Report{}, api.NotFound()
 	}
 
-	start, err := time.ParseInLocation("2006-01", period, ov.Location)
+	start, end, err := bounds(period, granularity, ov.Location)
 	if err != nil {
 		return Report{}, api.NotFound()
 	}
 
-	end := start.AddDate(0, 1, 0)
-	out.Period = period
+	out.Granularity, out.Period = granularity, period
 	out.Tariff = &Tariff{RpPerKwh: ov.Tariff, IsDefault: ov.TariffDefault}
 
-	running := period == current.Format("2006-01")
+	running := !now.Before(start) && now.Before(end)
 	if running {
 		out.Through = &now
 	}
@@ -222,8 +248,8 @@ func round(v float64, decimals int) float64 {
 	return math.Round(v*p) / p
 }
 
-// periods lists the months from the first data of the business up to the running month, the newest first
-func (s *Service) periods(ctx context.Context, businessID string, current time.Time, ov tips.Overview) ([]string, error) {
+// firstData is the hour of the oldest rollup of the business, or nil when it has none
+func (s *Service) firstData(ctx context.Context, businessID string) (*time.Time, error) {
 	var first *time.Time
 
 	err := s.pool.QueryRow(ctx,
@@ -235,19 +261,85 @@ func (s *Service) periods(ctx context.Context, businessID string, current time.T
 		return nil, fmt.Errorf("read the first data %w", err)
 	}
 
+	return first, nil
+}
+
+// months lists the months from the first data of the business up to the running month, the newest first
+func months(first *time.Time, current time.Time, loc *time.Location) []string {
 	out := []string{current.Format("2006-01")}
 	if first == nil {
-		return out, nil
+		return out
 	}
 
-	f := first.In(ov.Location)
-	oldest := time.Date(f.Year(), f.Month(), 1, 0, 0, 0, 0, ov.Location)
+	f := first.In(loc)
+	oldest := time.Date(f.Year(), f.Month(), 1, 0, 0, 0, 0, loc)
 
 	for m := current.AddDate(0, -1, 0); !m.Before(oldest) && len(out) < maxPeriods; m = m.AddDate(0, -1, 0) {
 		out = append(out, m.Format("2006-01"))
 	}
 
-	return out, nil
+	return out
+}
+
+// weekStart is the Monday 00:00 of the week of t in the time zone of t
+func weekStart(t time.Time) time.Time {
+	d := day(t, t.Location())
+	back := (int(d.Weekday()) + 6) % 7
+
+	return d.AddDate(0, 0, -back)
+}
+
+// weekLabel is the ISO week of a Monday, for example 2026-W37
+func weekLabel(monday time.Time) string {
+	y, w := monday.ISOWeek()
+
+	return fmt.Sprintf("%d-W%02d", y, w)
+}
+
+// weeks lists the weeks from the first data of the business up to the running week, the newest first
+func weeks(first *time.Time, now time.Time, loc *time.Location) []string {
+	current := weekStart(now.In(loc))
+	out := []string{weekLabel(current)}
+
+	if first == nil {
+		return out
+	}
+
+	oldest := weekStart(first.In(loc))
+
+	for w := current.AddDate(0, 0, -7); !w.Before(oldest) && len(out) < maxWeeks; w = w.AddDate(0, 0, -7) {
+		out = append(out, weekLabel(w))
+	}
+
+	return out
+}
+
+// bounds is the first instant of a period and the first instant after it, in the time zone of the business. A week such as 2027-W53 that
+// the year does not have gives an error, because the Monday that it names belongs to another ISO year.
+func bounds(period, granularity string, loc *time.Location) (time.Time, time.Time, error) {
+	if granularity == Month {
+		start, err := time.ParseInLocation("2006-01", period, loc)
+		if err != nil {
+			return time.Time{}, time.Time{}, fmt.Errorf("read the month %w", err)
+		}
+
+		return start, start.AddDate(0, 1, 0), nil
+	}
+
+	var year, week int
+	if _, err := fmt.Sscanf(period, "%d-W%d", &year, &week); err != nil {
+		return time.Time{}, time.Time{}, fmt.Errorf("read the week %w", err)
+	}
+
+	// the 4th of January is always in week 1, so the Monday of that week is the start of the year of weeks
+	jan4 := time.Date(year, time.January, 4, 0, 0, 0, 0, loc)
+	start := weekStart(jan4).AddDate(0, 0, (week-1)*7)
+
+	if label := weekLabel(start); label != period {
+		return time.Time{}, time.Time{}, fmt.Errorf("the year %d has no week %d", year, week)
+	}
+
+	return start, start.AddDate(0, 0, 7), nil
 }
 
 func (s *Service) energy(ctx context.Context, businessID string, start, end time.Time) (float64, error) {
