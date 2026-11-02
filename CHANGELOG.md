@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.4.0](https://github.com/aethera-deeptech/backend/compare/v0.3.0...v0.4.0) (2026-11-02)
+
+
+### Features
+
+* **monitoring:** add Grafana Alloy config, dashboards, alert rules and docs ([c3e6143](https://github.com/aethera-deeptech/backend/commit/c3e6143f2a694b66faf0d8e06141d95cf68b21d6))
+* **monitoring:** add Grafana Alloy config, dashboards, alert rules and docs ([8ee2712](https://github.com/aethera-deeptech/backend/commit/8ee2712da7d0c7a5e87b0f4b60efd367f75bdd68))
+
+
+### Bug Fixes
+
+* **auth:** refuse a change to the same address and list both 409 codes of change-email in the contract ([d241ca6](https://github.com/aethera-deeptech/backend/commit/d241ca6baf73cb7552879645986348a95cb06dc8))
+* **auth:** refuse a change to the same address and list both 409 codes of change-email in the contract ([e59db1e](https://github.com/aethera-deeptech/backend/commit/e59db1e0f9f7a1b450d2c52c1cfbedb93e6a8423))
+* **monitoring:** give Alloy its own env file and fix the review findings ([ac83dbf](https://github.com/aethera-deeptech/backend/commit/ac83dbfe9e68d8b0996ec63b47b9271b5c857d57))
+* **monitoring:** reorder the setup steps and fix two small review findings ([4badd50](https://github.com/aethera-deeptech/backend/commit/4badd50fc5335bf5e452d3f663e590cc65b602c0))
+
 ## [0.3.0](https://github.com/aethera-deeptech/backend/compare/v0.2.1...v0.3.0) (2026-11-02)
 
 
