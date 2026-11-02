@@ -1,0 +1,666 @@
+[
+  {
+    "title": "API is down",
+    "ruleGroup": "aethera",
+    "folderUID": "aethera",
+    "orgID": 1,
+    "for": "5m",
+    "condition": "C",
+    "noDataState": "Alerting",
+    "execErrState": "Error",
+    "isPaused": false,
+    "labels": {
+      "severity": "critical",
+      "service": "aethera-api"
+    },
+    "annotations": {
+      "summary": "{{ if $labels.instance }}The metrics of the copy {{ $labels.instance }} on {{ $labels.host }} have not been scraped for 5 minutes. The API or its metrics listener is not answering{{ else }}No API metrics arrived for 5 minutes. Alloy is down or no API container is running{{ end }}"
+    },
+    "data": [
+      {
+        "refId": "A",
+        "relativeTimeRange": {
+          "from": 600,
+          "to": 0
+        },
+        "datasourceUid": "__PROMETHEUS_UID__",
+        "model": {
+          "refId": "A",
+          "expr": "min by (host, instance) (up{service=\"aethera-api\"})",
+          "instant": true,
+          "intervalMs": 60000,
+          "maxDataPoints": 43200
+        }
+      },
+      {
+        "refId": "B",
+        "datasourceUid": "__expr__",
+        "relativeTimeRange": {
+          "from": 0,
+          "to": 0
+        },
+        "model": {
+          "refId": "B",
+          "type": "reduce",
+          "expression": "A",
+          "reducer": "last",
+          "settings": {
+            "mode": "dropNN"
+          },
+          "datasource": {
+            "type": "__expr__",
+            "uid": "__expr__"
+          }
+        }
+      },
+      {
+        "refId": "C",
+        "datasourceUid": "__expr__",
+        "relativeTimeRange": {
+          "from": 0,
+          "to": 0
+        },
+        "model": {
+          "refId": "C",
+          "type": "threshold",
+          "expression": "B",
+          "conditions": [
+            {
+              "evaluator": {
+                "type": "lt",
+                "params": [
+                  1
+                ]
+              }
+            }
+          ],
+          "datasource": {
+            "type": "__expr__",
+            "uid": "__expr__"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "title": "Fewer than 2 API copies are up",
+    "ruleGroup": "aethera",
+    "folderUID": "aethera",
+    "orgID": 1,
+    "for": "5m",
+    "condition": "C",
+    "noDataState": "OK",
+    "execErrState": "Error",
+    "isPaused": false,
+    "labels": {
+      "severity": "critical",
+      "service": "aethera-api"
+    },
+    "annotations": {
+      "summary": "Fewer than 2 copies of the API are reporting up. A container stopped or was removed, or Alloy stopped on a host, so check the containers and Alloy on each host. The number of copies up is on the API overview dashboard"
+    },
+    "data": [
+      {
+        "refId": "A",
+        "relativeTimeRange": {
+          "from": 600,
+          "to": 0
+        },
+        "datasourceUid": "__PROMETHEUS_UID__",
+        "model": {
+          "refId": "A",
+          "expr": "sum(up{service=\"aethera-api\"} == 1) or vector(0)",
+          "instant": true,
+          "intervalMs": 60000,
+          "maxDataPoints": 43200
+        }
+      },
+      {
+        "refId": "B",
+        "datasourceUid": "__expr__",
+        "relativeTimeRange": {
+          "from": 0,
+          "to": 0
+        },
+        "model": {
+          "refId": "B",
+          "type": "reduce",
+          "expression": "A",
+          "reducer": "last",
+          "settings": {
+            "mode": "dropNN"
+          },
+          "datasource": {
+            "type": "__expr__",
+            "uid": "__expr__"
+          }
+        }
+      },
+      {
+        "refId": "C",
+        "datasourceUid": "__expr__",
+        "relativeTimeRange": {
+          "from": 0,
+          "to": 0
+        },
+        "model": {
+          "refId": "C",
+          "type": "threshold",
+          "expression": "B",
+          "conditions": [
+            {
+              "evaluator": {
+                "type": "lt",
+                "params": [
+                  2
+                ]
+              }
+            }
+          ],
+          "datasource": {
+            "type": "__expr__",
+            "uid": "__expr__"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "title": "5xx ratio is high",
+    "ruleGroup": "aethera",
+    "folderUID": "aethera",
+    "orgID": 1,
+    "for": "10m",
+    "condition": "C",
+    "noDataState": "OK",
+    "execErrState": "Error",
+    "isPaused": false,
+    "labels": {
+      "severity": "critical",
+      "service": "aethera-api"
+    },
+    "annotations": {
+      "summary": "More than 5 percent of the requests failed with a 5xx for 10 minutes"
+    },
+    "data": [
+      {
+        "refId": "A",
+        "relativeTimeRange": {
+          "from": 600,
+          "to": 0
+        },
+        "datasourceUid": "__PROMETHEUS_UID__",
+        "model": {
+          "refId": "A",
+          "expr": "(sum(rate(aethera_http_requests_total{status=~\"5..\"}[10m])) or vector(0)) / clamp_min(sum(rate(aethera_http_requests_total[10m])), 0.001)",
+          "instant": true,
+          "intervalMs": 60000,
+          "maxDataPoints": 43200
+        }
+      },
+      {
+        "refId": "B",
+        "datasourceUid": "__expr__",
+        "relativeTimeRange": {
+          "from": 0,
+          "to": 0
+        },
+        "model": {
+          "refId": "B",
+          "type": "reduce",
+          "expression": "A",
+          "reducer": "last",
+          "settings": {
+            "mode": "dropNN"
+          },
+          "datasource": {
+            "type": "__expr__",
+            "uid": "__expr__"
+          }
+        }
+      },
+      {
+        "refId": "C",
+        "datasourceUid": "__expr__",
+        "relativeTimeRange": {
+          "from": 0,
+          "to": 0
+        },
+        "model": {
+          "refId": "C",
+          "type": "threshold",
+          "expression": "B",
+          "conditions": [
+            {
+              "evaluator": {
+                "type": "gt",
+                "params": [
+                  0.05
+                ]
+              }
+            }
+          ],
+          "datasource": {
+            "type": "__expr__",
+            "uid": "__expr__"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "title": "p95 latency is high",
+    "ruleGroup": "aethera",
+    "folderUID": "aethera",
+    "orgID": 1,
+    "for": "10m",
+    "condition": "C",
+    "noDataState": "OK",
+    "execErrState": "Error",
+    "isPaused": false,
+    "labels": {
+      "severity": "warning",
+      "service": "aethera-api"
+    },
+    "annotations": {
+      "summary": "The p95 answer time of the requests other than the health check was above one second for 10 minutes"
+    },
+    "data": [
+      {
+        "refId": "A",
+        "relativeTimeRange": {
+          "from": 600,
+          "to": 0
+        },
+        "datasourceUid": "__PROMETHEUS_UID__",
+        "model": {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(aethera_http_request_duration_seconds_bucket{route!=\"/healthz\"}[10m])))",
+          "instant": true,
+          "intervalMs": 60000,
+          "maxDataPoints": 43200
+        }
+      },
+      {
+        "refId": "B",
+        "datasourceUid": "__expr__",
+        "relativeTimeRange": {
+          "from": 0,
+          "to": 0
+        },
+        "model": {
+          "refId": "B",
+          "type": "reduce",
+          "expression": "A",
+          "reducer": "last",
+          "settings": {
+            "mode": "dropNN"
+          },
+          "datasource": {
+            "type": "__expr__",
+            "uid": "__expr__"
+          }
+        }
+      },
+      {
+        "refId": "C",
+        "datasourceUid": "__expr__",
+        "relativeTimeRange": {
+          "from": 0,
+          "to": 0
+        },
+        "model": {
+          "refId": "C",
+          "type": "threshold",
+          "expression": "B",
+          "conditions": [
+            {
+              "evaluator": {
+                "type": "gt",
+                "params": [
+                  1
+                ]
+              }
+            }
+          ],
+          "datasource": {
+            "type": "__expr__",
+            "uid": "__expr__"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "title": "Database pool is nearly full",
+    "ruleGroup": "aethera",
+    "folderUID": "aethera",
+    "orgID": 1,
+    "for": "5m",
+    "condition": "C",
+    "noDataState": "OK",
+    "execErrState": "Error",
+    "isPaused": false,
+    "labels": {
+      "severity": "warning",
+      "service": "aethera-api"
+    },
+    "annotations": {
+      "summary": "More than 90 percent of the database connections of the copy {{ $labels.instance }} on {{ $labels.host }} were in use for 5 minutes. Look for a slow query or a lock, and read the pool panel of the API overview dashboard"
+    },
+    "data": [
+      {
+        "refId": "A",
+        "relativeTimeRange": {
+          "from": 600,
+          "to": 0
+        },
+        "datasourceUid": "__PROMETHEUS_UID__",
+        "model": {
+          "refId": "A",
+          "expr": "max by (host, instance) (aethera_db_pool_connections_acquired / aethera_db_pool_connections_max)",
+          "instant": true,
+          "intervalMs": 60000,
+          "maxDataPoints": 43200
+        }
+      },
+      {
+        "refId": "B",
+        "datasourceUid": "__expr__",
+        "relativeTimeRange": {
+          "from": 0,
+          "to": 0
+        },
+        "model": {
+          "refId": "B",
+          "type": "reduce",
+          "expression": "A",
+          "reducer": "last",
+          "settings": {
+            "mode": "dropNN"
+          },
+          "datasource": {
+            "type": "__expr__",
+            "uid": "__expr__"
+          }
+        }
+      },
+      {
+        "refId": "C",
+        "datasourceUid": "__expr__",
+        "relativeTimeRange": {
+          "from": 0,
+          "to": 0
+        },
+        "model": {
+          "refId": "C",
+          "type": "threshold",
+          "expression": "B",
+          "conditions": [
+            {
+              "evaluator": {
+                "type": "gt",
+                "params": [
+                  0.9
+                ]
+              }
+            }
+          ],
+          "datasource": {
+            "type": "__expr__",
+            "uid": "__expr__"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "title": "Many requests are rate limited",
+    "ruleGroup": "aethera",
+    "folderUID": "aethera",
+    "orgID": 1,
+    "for": "0s",
+    "condition": "C",
+    "noDataState": "OK",
+    "execErrState": "Error",
+    "isPaused": false,
+    "labels": {
+      "severity": "warning",
+      "service": "aethera-api"
+    },
+    "annotations": {
+      "summary": "More than 100 requests were refused by a rate limiter in 10 minutes. Look for a client that loops or a guesser"
+    },
+    "data": [
+      {
+        "refId": "A",
+        "relativeTimeRange": {
+          "from": 600,
+          "to": 0
+        },
+        "datasourceUid": "__PROMETHEUS_UID__",
+        "model": {
+          "refId": "A",
+          "expr": "sum(increase(aethera_rate_limited_total[10m]))",
+          "instant": true,
+          "intervalMs": 60000,
+          "maxDataPoints": 43200
+        }
+      },
+      {
+        "refId": "B",
+        "datasourceUid": "__expr__",
+        "relativeTimeRange": {
+          "from": 0,
+          "to": 0
+        },
+        "model": {
+          "refId": "B",
+          "type": "reduce",
+          "expression": "A",
+          "reducer": "last",
+          "settings": {
+            "mode": "dropNN"
+          },
+          "datasource": {
+            "type": "__expr__",
+            "uid": "__expr__"
+          }
+        }
+      },
+      {
+        "refId": "C",
+        "datasourceUid": "__expr__",
+        "relativeTimeRange": {
+          "from": 0,
+          "to": 0
+        },
+        "model": {
+          "refId": "C",
+          "type": "threshold",
+          "expression": "B",
+          "conditions": [
+            {
+              "evaluator": {
+                "type": "gt",
+                "params": [
+                  100
+                ]
+              }
+            }
+          ],
+          "datasource": {
+            "type": "__expr__",
+            "uid": "__expr__"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "title": "An API copy keeps restarting",
+    "ruleGroup": "aethera",
+    "folderUID": "aethera",
+    "orgID": 1,
+    "for": "0s",
+    "condition": "C",
+    "noDataState": "OK",
+    "execErrState": "Error",
+    "isPaused": false,
+    "labels": {
+      "severity": "critical",
+      "service": "aethera-api"
+    },
+    "annotations": {
+      "summary": "{{ $labels.instance }} on {{ $labels.host }} started more than once in 30 minutes. A crash loop or an out of memory kill is the usual cause, so read the container log and the exit code of the container (docker inspect, OOMKilled)"
+    },
+    "data": [
+      {
+        "refId": "A",
+        "relativeTimeRange": {
+          "from": 600,
+          "to": 0
+        },
+        "datasourceUid": "__PROMETHEUS_UID__",
+        "model": {
+          "refId": "A",
+          "expr": "max by (host, instance) (changes(process_start_time_seconds{service=\"aethera-api\"}[30m]))",
+          "instant": true,
+          "intervalMs": 60000,
+          "maxDataPoints": 43200
+        }
+      },
+      {
+        "refId": "B",
+        "datasourceUid": "__expr__",
+        "relativeTimeRange": {
+          "from": 0,
+          "to": 0
+        },
+        "model": {
+          "refId": "B",
+          "type": "reduce",
+          "expression": "A",
+          "reducer": "last",
+          "settings": {
+            "mode": "dropNN"
+          },
+          "datasource": {
+            "type": "__expr__",
+            "uid": "__expr__"
+          }
+        }
+      },
+      {
+        "refId": "C",
+        "datasourceUid": "__expr__",
+        "relativeTimeRange": {
+          "from": 0,
+          "to": 0
+        },
+        "model": {
+          "refId": "C",
+          "type": "threshold",
+          "expression": "B",
+          "conditions": [
+            {
+              "evaluator": {
+                "type": "gt",
+                "params": [
+                  1
+                ]
+              }
+            }
+          ],
+          "datasource": {
+            "type": "__expr__",
+            "uid": "__expr__"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "title": "API memory is close to its limit",
+    "ruleGroup": "aethera",
+    "folderUID": "aethera",
+    "orgID": 1,
+    "for": "5m",
+    "condition": "C",
+    "noDataState": "OK",
+    "execErrState": "Error",
+    "isPaused": false,
+    "labels": {
+      "severity": "warning",
+      "service": "aethera-api"
+    },
+    "annotations": {
+      "summary": "{{ $labels.instance }} on {{ $labels.host }} has used more than 110 MiB of resident memory for 5 minutes. The default limit of a copy is 128 MiB and the container is killed above it, so look at the logs and at the process metrics of the copy in Explore"
+    },
+    "data": [
+      {
+        "refId": "A",
+        "relativeTimeRange": {
+          "from": 600,
+          "to": 0
+        },
+        "datasourceUid": "__PROMETHEUS_UID__",
+        "model": {
+          "refId": "A",
+          "expr": "max by (host, instance) (process_resident_memory_bytes{service=\"aethera-api\"})",
+          "instant": true,
+          "intervalMs": 60000,
+          "maxDataPoints": 43200
+        }
+      },
+      {
+        "refId": "B",
+        "datasourceUid": "__expr__",
+        "relativeTimeRange": {
+          "from": 0,
+          "to": 0
+        },
+        "model": {
+          "refId": "B",
+          "type": "reduce",
+          "expression": "A",
+          "reducer": "last",
+          "settings": {
+            "mode": "dropNN"
+          },
+          "datasource": {
+            "type": "__expr__",
+            "uid": "__expr__"
+          }
+        }
+      },
+      {
+        "refId": "C",
+        "datasourceUid": "__expr__",
+        "relativeTimeRange": {
+          "from": 0,
+          "to": 0
+        },
+        "model": {
+          "refId": "C",
+          "type": "threshold",
+          "expression": "B",
+          "conditions": [
+            {
+              "evaluator": {
+                "type": "gt",
+                "params": [
+                  115343360
+                ]
+              }
+            }
+          ],
+          "datasource": {
+            "type": "__expr__",
+            "uid": "__expr__"
+          }
+        }
+      }
+    ]
+  }
+]

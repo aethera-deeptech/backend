@@ -1,0 +1,258 @@
+{
+  "uid": "aethera-logs",
+  "title": "Aethera logs",
+  "description": "The JSON logs of the API and the slow statements of the database",
+  "tags": [
+    "aethera"
+  ],
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "timezone": "browser",
+  "refresh": "1m",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "ds_prom",
+        "label": "Metrics",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": {},
+        "hide": 0
+      },
+      {
+        "name": "ds_loki",
+        "label": "Logs",
+        "type": "datasource",
+        "query": "loki",
+        "current": {},
+        "hide": 0
+      },
+      {
+        "type": "query",
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true,
+        "allValue": ".*",
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "sort": 1,
+        "hide": 0,
+        "name": "host",
+        "label": "Host",
+        "datasource": {
+          "type": "loki",
+          "uid": "${ds_loki}"
+        },
+        "query": {
+          "label": "host",
+          "refId": "LokiVariableQueryEditor-VariableQuery",
+          "stream": "{service_name=\"aethera\"}",
+          "type": 1
+        }
+      },
+      {
+        "type": "query",
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true,
+        "allValue": ".*",
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "sort": 1,
+        "hide": 0,
+        "name": "instance",
+        "label": "API copy",
+        "datasource": {
+          "type": "loki",
+          "uid": "${ds_loki}"
+        },
+        "query": {
+          "label": "instance",
+          "refId": "LokiVariableQueryEditor-VariableQuery",
+          "stream": "{service_name=\"aethera\", role=\"api\", host=~\"$host\"}",
+          "type": 1
+        }
+      }
+    ]
+  },
+  "annotations": {
+    "list": []
+  },
+  "links": [],
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Lines by level",
+      "description": "",
+      "datasource": {
+        "type": "loki",
+        "uid": "${ds_loki}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 40,
+            "showPoints": "never",
+            "stacking": {
+              "mode": "normal"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${ds_loki}"
+          },
+          "expr": "sum by (level) (count_over_time({service_name=\"aethera\", role=\"api\", host=~\"$host\", instance=~\"$instance\"} [$__auto]))",
+          "legendFormat": "{{level}}",
+          "queryType": "range"
+        }
+      ],
+      "id": 1,
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 7
+      }
+    },
+    {
+      "type": "logs",
+      "title": "Server errors (5xx)",
+      "description": "5xx answers, panics with their stack, failed jobs",
+      "datasource": {
+        "type": "loki",
+        "uid": "${ds_loki}"
+      },
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending",
+        "enableLogDetails": true
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${ds_loki}"
+          },
+          "expr": "{service_name=\"aethera\", role=\"api\", host=~\"$host\", instance=~\"$instance\"} | json | level=\"ERROR\"",
+          "queryType": "range"
+        }
+      ],
+      "id": 3,
+      "gridPos": {
+        "x": 0,
+        "y": 7,
+        "w": 24,
+        "h": 12
+      }
+    },
+    {
+      "type": "logs",
+      "title": "Rate limited",
+      "description": "error_code and retry_after say which kind of refusal it was",
+      "datasource": {
+        "type": "loki",
+        "uid": "${ds_loki}"
+      },
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending",
+        "enableLogDetails": true
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${ds_loki}"
+          },
+          "expr": "{service_name=\"aethera\", role=\"api\", host=~\"$host\", instance=~\"$instance\"} | json | status=\"429\"",
+          "queryType": "range"
+        }
+      ],
+      "id": 4,
+      "gridPos": {
+        "x": 0,
+        "y": 19,
+        "w": 24,
+        "h": 9
+      }
+    },
+    {
+      "type": "logs",
+      "title": "Client errors",
+      "description": "",
+      "datasource": {
+        "type": "loki",
+        "uid": "${ds_loki}"
+      },
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending",
+        "enableLogDetails": true
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${ds_loki}"
+          },
+          "expr": "{service_name=\"aethera\", role=\"api\", host=~\"$host\", instance=~\"$instance\"} | json | status=~\"4..\", status!=\"429\"",
+          "queryType": "range"
+        }
+      ],
+      "id": 5,
+      "gridPos": {
+        "x": 0,
+        "y": 28,
+        "w": 24,
+        "h": 9
+      }
+    }
+  ]
+}

@@ -23,6 +23,8 @@ x-api: &api
     - database
   labels:
     aethera.role: api
+    # the port of the metrics listener, as in METRICS_ADDRESS, which Alloy reads to find the scrape address of the copy
+    aethera.metrics_port: "${METRICS_ADDRESS:-:9100}"
   read_only: true
   cap_drop:
     - ALL
@@ -48,9 +50,73 @@ services:
     ports:
       - "127.0.0.1:${API_2_HOST_PORT:-8011}:${APP_PORT:-8080}"
 
+  # Metrics and logs go to Grafana Cloud. These two services only start with the `monitoring` profile, which is set with
+  # COMPOSE_PROFILES=monitoring in .env once the GRAFANA_CLOUD_* values are filled in, see docs/monitoring.md. The copies need
+  # METRICS_ADDRESS=:9100 in .env for the metrics.
+  alloy:
+    image: grafana/alloy:v1.21.0
+    container_name: aethera-alloy
+    restart: always
+    profiles:
+      - monitoring
+    command:
+      - run
+      - --storage.path=/var/lib/alloy/data
+      - --server.http.listen-addr=127.0.0.1:12345
+      - /etc/alloy/config.alloy
+    environment:
+      GRAFANA_CLOUD_PROMETHEUS_URL: ${GRAFANA_CLOUD_PROMETHEUS_URL:-}
+      GRAFANA_CLOUD_PROMETHEUS_USER: ${GRAFANA_CLOUD_PROMETHEUS_USER:-}
+      GRAFANA_CLOUD_LOKI_URL: ${GRAFANA_CLOUD_LOKI_URL:-}
+      GRAFANA_CLOUD_LOKI_USER: ${GRAFANA_CLOUD_LOKI_USER:-}
+      GRAFANA_CLOUD_TOKEN: ${GRAFANA_CLOUD_TOKEN:-}
+      # the name of this host on every series and log line, which has to differ between hosts
+      GRAFANA_HOST: ${GRAFANA_HOST:-main}
+    deploy:
+      resources:
+        limits:
+          memory: ${ALLOY_MEMORY_LIMIT:-256m}
+    volumes:
+      - ./grafana/alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - aethera-alloy:/var/lib/alloy/data
+    depends_on:
+      - socket-proxy
+    networks:
+      - internal
+      - docker-api
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
+
+  # The only container of this stack that touches the Docker socket. It answers read requests for containers and networks and refuses
+  # everything else, so Alloy cannot start, stop or create a container even if it is compromised.
+  socket-proxy:
+    image: tecnativa/docker-socket-proxy:v0.5.0
+    container_name: aethera-socket-proxy
+    restart: always
+    profiles:
+      - monitoring
+    environment:
+      CONTAINERS: 1
+      NETWORKS: 1
+      POST: 0
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - docker-api
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
+
 networks:
   internal:
+  # no route out and shared by the socket proxy and Alloy only, so nothing else can reach the Docker API
+  docker-api:
+    internal: true
   # the network of the shared database container, which already exists on the host. Compose never creates or removes it.
   database:
     external: true
     name: ${DB_NETWORK:-postgres_postgres}
+
+volumes:
+  aethera-alloy:

@@ -1,0 +1,166 @@
+// Alloy reads the metrics endpoint and the logs of every container that carries the label `aethera.role`, and sends both to
+// Grafana Cloud. It finds them by label and not by name, so any number of copies of the API can run on this host under any
+// container name, and the same file runs on every other host. `GRAFANA_HOST` names the host on every series and every log
+// line, so the copies of two hosts never collide. It runs only with the `monitoring` profile of compose.yml, see
+// docs/monitoring.md.
+
+// ---- discovery ----
+
+// the containers are listed through the socket proxy, which only answers read requests. Only the containers that opt in with
+// the label `aethera.role` (api, db or redis) are kept, anything else on the host is left alone.
+discovery.docker "aethera" {
+  host = "tcp://socket-proxy:2375"
+
+  filter {
+    name   = "label"
+    values = ["aethera.role"]
+  }
+}
+
+// ---- metrics ----
+
+// the same containers, but with a target for every network of each. By default Alloy returns only the first network of a
+// container, which can be one that Alloy does not share, and the rule below then has to be able to pick the right one.
+discovery.docker "aethera_metrics" {
+  host                = "tcp://socket-proxy:2375"
+  match_first_network = false
+
+  filter {
+    name   = "label"
+    values = ["aethera.role"]
+  }
+}
+
+discovery.relabel "api_metrics" {
+  targets = discovery.docker.aethera_metrics.targets
+
+  rule {
+    source_labels = ["__meta_docker_container_label_aethera_role"]
+    regex         = "api"
+    action        = "keep"
+  }
+
+  // a container can be on other networks besides the one of this compose file, such as a network that it shares with a database
+  // from another stack, and Alloy only reaches the network that compose made from the `internal` entry of compose.yml. Compose
+  // labels a network with the name of that entry, so only the target on a network with that name is kept. A target on another
+  // network would be scraped at an address that Alloy cannot reach and would report the copy as down. A network of another
+  // stack that has an entry of the same name would pass as well, so do not give one to a container of this stack.
+  rule {
+    source_labels = ["__meta_docker_network_label_com_docker_compose_network"]
+    regex         = "internal"
+    action        = "keep"
+  }
+
+  // the label `aethera.metrics_port` names the port of the metrics listener, as 9100 or in the form of METRICS_ADDRESS, such as
+  // :9100, and only the digits after the last colon are kept
+  rule {
+    source_labels = ["__meta_docker_container_label_aethera_metrics_port"]
+    regex         = "(?:.*:)?([0-9]+)"
+    target_label  = "__tmp_metrics_port"
+    replacement   = "$1"
+  }
+
+  // the metrics listener of the API is on the private network and is never published on the host, so the address is the one
+  // of the container on the network that Alloy shares with it, plus that port
+  rule {
+    source_labels = ["__meta_docker_network_ip", "__tmp_metrics_port"]
+    separator     = ":"
+    regex         = "(.+):([0-9]+)"
+    target_label  = "__address__"
+    replacement   = "$1:$2"
+  }
+
+  // the name of the container identifies the copy, and unlike its address it survives a restart
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/(.*)"
+    target_label  = "instance"
+  }
+
+  rule {
+    target_label = "service"
+    replacement  = "aethera-api"
+  }
+}
+
+prometheus.scrape "api" {
+  targets         = discovery.relabel.api_metrics.output
+  metrics_path    = "/metrics"
+  scrape_interval = "60s"
+  forward_to      = [prometheus.remote_write.cloud.receiver]
+
+  // the metrics of the background jobs have a label `job` of their own, the name of the job, and so does every scrape. Without
+  // this the scrape wins and the label of the API becomes `exported_job`, which the dashboards and alerts do not read.
+  honor_labels = true
+}
+
+prometheus.remote_write "cloud" {
+  external_labels = { host = env("GRAFANA_HOST") }
+
+  endpoint {
+    url = env("GRAFANA_CLOUD_PROMETHEUS_URL")
+
+    basic_auth {
+      username = env("GRAFANA_CLOUD_PROMETHEUS_USER")
+      password = env("GRAFANA_CLOUD_TOKEN")
+    }
+  }
+}
+
+// ---- logs ----
+
+discovery.relabel "logs" {
+  targets = []
+
+  rule {
+    source_labels = ["__meta_docker_container_label_aethera_role"]
+    target_label  = "role"
+  }
+
+  // the same label as the metrics, so one `instance` variable selects a copy in both
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/(.*)"
+    target_label  = "instance"
+  }
+}
+
+loki.source.docker "aethera" {
+  host          = "tcp://socket-proxy:2375"
+  targets       = discovery.docker.aethera.targets
+  relabel_rules = discovery.relabel.logs.rules
+  labels        = { "service_name" = "aethera" }
+  forward_to    = [loki.process.aethera.receiver]
+}
+
+loki.process "aethera" {
+  // the API writes one JSON object per line, and the level is the only field that becomes a label, because a label with
+  // many values (a request id, a path) would give every line a stream of its own. The rest stays in the line, where
+  // `| json` reads it.
+  stage.match {
+    selector = "{role=\"api\"}"
+
+    stage.json {
+      expressions = { level = "level" }
+    }
+
+    stage.labels {
+      values = { level = "" }
+    }
+  }
+
+  forward_to = [loki.write.cloud.receiver]
+}
+
+loki.write "cloud" {
+  external_labels = { host = env("GRAFANA_HOST") }
+
+  endpoint {
+    url = env("GRAFANA_CLOUD_LOKI_URL")
+
+    basic_auth {
+      username = env("GRAFANA_CLOUD_LOKI_USER")
+      password = env("GRAFANA_CLOUD_TOKEN")
+    }
+  }
+}
