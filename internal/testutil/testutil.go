@@ -28,8 +28,8 @@ const Origin = "https://app.example.test"
 // CookieName is the name of the session cookie in the tests, which run as production
 const CookieName = "__Host-aethera_session"
 
-// testTimeout is how long a request of a test may take
-const testTimeout = 15 * time.Second
+// RequestTimeout is how long a request of a test may take. A test that calls a slow route on purpose raises it.
+var RequestTimeout = 15 * time.Second
 
 // Outbox keeps the links that the service would have sent by email
 type Outbox struct {
@@ -140,7 +140,7 @@ func (e *Env) Send(t *testing.T, req *http.Request) Reply {
 
 	// the default of 1 second is too short for a request on a loaded runner with the race detector, where a password hash alone can take
 	// that long, and a test that fails on it fails for no bug
-	res, err := e.App.Test(req, fiber.TestConfig{Timeout: testTimeout, FailOnTimeout: true})
+	res, err := e.App.Test(req, fiber.TestConfig{Timeout: RequestTimeout, FailOnTimeout: true})
 	if err != nil {
 		t.Fatalf("request failed %v", err)
 	}
