@@ -59,19 +59,12 @@ jobs:
             echo "No migration was added or changed, so there is nothing to lint." >> "$GITHUB_STEP_SUMMARY"
           fi
 
-      - name: Pull images through the Google mirror
-        if: ${{ steps.changes.outputs.count != '0' || steps.changes.outputs.report == 'true' }}
-        uses: ./.github/actions/pull-images
-        with:
-          username: ${{ vars.DOCKERHUB_USERNAME }}
-          token: ${{ secrets.DOCKERHUB_PULL_TOKEN }}
-
       - name: Lint the migrations of this change
         if: ${{ steps.changes.outputs.count != '0' }}
         run: |
           set -euo pipefail
           mapfile -t files < "$RUNNER_TEMP/changed.txt"
-          docker run --rm -v "$PWD:/data:ro" -w /data "$(bash ./.github/actions/pull-images/pull.sh "$(bash ./.github/tools/image.sh squawk)")" \
+          docker run --rm -v "$PWD:/data:ro" -w /data "$(bash ./.github/tools/image.sh squawk)" \
             --config .squawk.toml "${files[@]}"
 
       # Report only. The old migrations are already applied, so a finding in one of them is not a failure, but the list shows which
@@ -79,7 +72,7 @@ jobs:
       - name: Report on every migration
         if: ${{ !cancelled() && steps.changes.outputs.report == 'true' }}
         run: |
-          report="$(docker run --rm -v "$PWD:/data:ro" -w /data "$(bash ./.github/actions/pull-images/pull.sh "$(bash ./.github/tools/image.sh squawk)")" \
+          report="$(docker run --rm -v "$PWD:/data:ro" -w /data "$(bash ./.github/tools/image.sh squawk)" \
             --config .squawk.toml 'internal/database/migrations/*.up.sql' 2>&1 || true)"
           echo "$report"
           {

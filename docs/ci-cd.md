@@ -139,7 +139,7 @@ The Renovate config job runs `renovate-config-validator --strict` on every pull 
 
 A dependency update bot cannot read a tool that is named inside a `run` step, so the tools of the jobs are listed where it can.
 
-- `.github/tools/Dockerfile` has one stage for each image that a job starts with `docker run`, which are actionlint, zizmor, ShellCheck, Hadolint, dotenv-linter, Redocly and gitleaks. Nothing builds it. The workflows get the image from `.github/tools/image.sh <stage>`, so the version of a bump is the version the jobs run.
+- `.github/tools/Dockerfile` has one stage for each image that a job starts with `docker run`, which are actionlint, zizmor, ShellCheck, Hadolint, dotenv-linter, Redocly, gitleaks and squawk. Nothing builds it. The workflows get the image from `.github/tools/image.sh <stage>`, so the version of a bump is the version the jobs run.
 - The versions of ls-lint and of the Renovate validator sit in the `env` of their steps. A comment such as `# renovate: datasource=npm depName=@ls-lint/ls-lint` right above the line tells Renovate where to look, so keep the comment when you edit the line.
 
 All actions are pinned to commit SHAs with the version in a comment, and the setting "require actions to be pinned to a full-length commit SHA" is on for the repository.

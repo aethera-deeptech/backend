@@ -5,13 +5,14 @@ pg_version = "18.0"
 assume_in_transaction = true
 
 excluded_rules = [
-  # CREATE INDEX CONCURRENTLY cannot run inside a transaction, and the tables of this service are small enough for a plain index
+  # golang-migrate sends a file in one call, so a file with several statements runs in one transaction and CREATE INDEX CONCURRENTLY cannot be in it.
+  # An index on a big table (readings, readings_hourly) goes in a file of its own with one statement and a squawk-ignore line
   "require-concurrent-index-creation",
-  # the model sizes its text columns on purpose, and the counters and scores are small numbers that cannot reach the limit of a 32-bit integer
+  # the text columns have a length check of their own, and the counters are small numbers that cannot reach the limit of a 32-bit integer
   "prefer-text-field",
   "prefer-bigint-over-int",
   "prefer-bigint-over-smallint",
-  # the migrations run once at startup on small tables, before the API takes traffic, so a statement or lock timeout would only make a slow start fail
+  # a statement timeout would only make a slow migration fail at start. The lock timeout is not excluded, because the old copy keeps
+  # serving while the new one migrates, so a migration that changes an existing table starts with SET LOCAL lock_timeout (see docs/operations.md)
   "require-statement-timeout",
-  "require-lock-timeout",
 ]
