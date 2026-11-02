@@ -15,6 +15,7 @@ import (
 
 	"github.com/aethera-deeptech/backend/internal/home"
 	"github.com/aethera-deeptech/backend/internal/production"
+	"github.com/aethera-deeptech/backend/internal/relay"
 	"github.com/aethera-deeptech/backend/internal/report"
 	"github.com/aethera-deeptech/backend/internal/server"
 	"github.com/aethera-deeptech/backend/internal/tips"
@@ -74,6 +75,7 @@ func New(d Deps) *fiber.App {
 	gateways.RegisterApp(v1, require)
 	gateways.RegisterDevice(app.Group("/device/v1"))
 	device.NewHandlers(device.NewPairings(d.Pool, limiter)).Register(v1, require)
+	relay.NewHandlers(relay.NewService(d.Pool, limiter)).Register(v1, require)
 
 	views, tipService := device.NewViews(d.Pool), tips.NewService(d.Pool)
 	device.NewViewHandlers(views).Register(v1, require)
