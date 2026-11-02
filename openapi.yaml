@@ -1029,7 +1029,7 @@ components:
         name: {type: string}
         status: {$ref: "#/components/schemas/DeviceStatus"}
         room: {type: string}
-        kindLabel: {type: string, examples: [Colokan pintar]}
+        kindLabel: {type: string, examples: [WATTLINK Plug]}
         currentPowerW: {type: [number, "null"]}
         todayKwh: {type: [number, "null"]}
         monthKwh: {type: [number, "null"], description: "Stays set while the device is offline, because the month is still true"}

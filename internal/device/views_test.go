@@ -58,7 +58,7 @@ func TestAFreshDeviceIsOnAndShowsItsPattern(t *testing.T) {
 		t.Fatalf("the detail answered %d %v", d.Status, d.Body)
 	}
 
-	if d.Body["room"] != "Ruang jahit" || d.Body["kindLabel"] != "Colokan pintar" || d.Body["signal"] != "baik" || d.Body["status"] != "nyala" {
+	if d.Body["room"] != "Ruang jahit" || d.Body["kindLabel"] != "WATTLINK Plug" || d.Body["signal"] != "baik" || d.Body["status"] != "nyala" {
 		t.Fatalf("the detail is %v", d.Body)
 	}
 
