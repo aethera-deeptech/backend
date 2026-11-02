@@ -31,8 +31,8 @@
 | `config.yaml` | Hadolint | The `Dockerfile` against the rules of Hadolint, which also lints the shell commands in it |
 | `config.yaml` | Dotenv lint | The names and the form of the settings in `.env.example`, with dotenv-linter. The order of the keys is not checked, because the file is grouped by topic |
 | `config.yaml` | Compose config | `docker compose config` on `compose.production.example.yml` and on `compose.yml` with `compose.ci.yml`, with the settings of `.env.example`. It builds and starts nothing, so it keeps the example from drifting away from the settings |
-| `config.yaml` | File names | The names of the files and folders against `.ls-lint.yml`, with ls-lint |
 | `config.yaml` | Python lint | The Python scripts, with ruff and the naming rules of `ruff.toml` |
+| `config.yaml` | File names | The names of the files and folders against `.ls-lint.yml`, with ls-lint |
 | `config.yaml` | Renovate config | `renovate.json` against the schema of Renovate, in strict mode, so a renamed or removed option fails |
 | `ci.yaml` | Lint | `gofmt`, that `go.mod` and `go.sum` are tidy, `go vet`, and golangci-lint with the linters of `.golangci.yml` |
 | `ci.yaml` | Tests | `go build`, then every test with the race detector in a random order, and the coverage upload |
@@ -164,7 +164,7 @@ All actions are pinned to commit SHAs with the version in a comment, and the set
 
 ## Pulling images
 
-Docker Hub limits anonymous pulls per IP address, and every GitHub runner shares its addresses with many other users. The jobs that start a Docker Hub tool image therefore pull it through `.github/actions/pull-images`. The Zizmor image comes from ghcr.io, which has no such limit, so that job pulls it as it is.
+Docker Hub limits anonymous pulls per IP address, and every GitHub runner shares its addresses with many other users. The jobs that start a Docker Hub tool image therefore pull it through `.github/actions/pull-images`. The Zizmor, squawk and ruff images come from ghcr.io, which has no such limit, so those jobs pull them as they are.
 
 - The action adds `mirror.gcr.io` to the registry mirrors of the Docker daemon, which serves the popular Docker Hub images without the limit.
 - It then logs in to Docker Hub with a read-only token, so an image that the mirror does not have is pulled as a known account. A login that fails does not fail the job.
