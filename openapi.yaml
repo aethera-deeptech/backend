@@ -150,6 +150,7 @@ paths:
         "409": {$ref: "#/components/responses/EmailTaken"}
         "422": {$ref: "#/components/responses/Validation"}
         "429": {$ref: "#/components/responses/RateLimited"}
+        "503": {$ref: "#/components/responses/Busy"}
         "4XX": {$ref: "#/components/responses/Error"}
   /v1/auth/login:
     post:
@@ -180,6 +181,7 @@ paths:
         "403": {$ref: "#/components/responses/EmailNotVerified"}
         "422": {$ref: "#/components/responses/Validation"}
         "429": {$ref: "#/components/responses/RateLimited"}
+        "503": {$ref: "#/components/responses/Busy"}
         "4XX": {$ref: "#/components/responses/Error"}
   /v1/auth/google:
     post:
@@ -326,6 +328,7 @@ paths:
               schema: {$ref: "#/components/schemas/Error"}
         "422": {$ref: "#/components/responses/Validation"}
         "429": {$ref: "#/components/responses/RateLimited"}
+        "503": {$ref: "#/components/responses/Busy"}
         "4XX": {$ref: "#/components/responses/Error"}
   /v1/auth/forgot-password:
     post:
@@ -375,6 +378,7 @@ paths:
         "410": {$ref: "#/components/responses/TokenInvalid"}
         "422": {$ref: "#/components/responses/Validation"}
         "429": {$ref: "#/components/responses/RateLimited"}
+        "503": {$ref: "#/components/responses/Busy"}
         "4XX": {$ref: "#/components/responses/Error"}
 
   /v1/settings:
@@ -501,6 +505,11 @@ paths:
         "401": {$ref: "#/components/responses/Unauthorized"}
         "404":
           description: The code is unknown, used or expired (code `claim_code_unknown`)
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+        "409":
+          description: The gateway belongs to another business (code `gateway_claimed_elsewhere`), the business has the most gateways that it can have (code `too_many_gateways`), or the key belongs to another gateway (code `key_in_use`)
           content:
             application/json:
               schema: {$ref: "#/components/schemas/Error"}
@@ -1511,6 +1520,13 @@ components:
           schema: {$ref: "#/components/schemas/Error"}
     RateLimited:
       description: Too many requests. `retryAfterSeconds` and the header `Retry-After` say when to try again (code `rate_limited`, or `resend_too_soon` for a resend).
+      headers:
+        Retry-After: {schema: {type: integer}}
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+    Busy:
+      description: Every slot of the password check is taken, so the service sheds the request (code `busy`). `retryAfterSeconds` and the header `Retry-After` say when to try again, which is 2 seconds.
       headers:
         Retry-After: {schema: {type: integer}}
       content:
