@@ -2,6 +2,7 @@ package report_test
 
 import (
 	"bytes"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -114,5 +115,47 @@ func TestThePdfIsOnePageWithTheNameOfTheMonth(t *testing.T) {
 
 	if bad := e.Call(t, http.MethodGet, "/v1/reports/not-a-month/pdf", "", g.Session); bad.Status != http.StatusNotFound {
 		t.Fatalf("a bad month answered %d", bad.Status)
+	}
+}
+
+func TestTheRunningWeekHasItsOwnReportAndPdf(t *testing.T) {
+	e := testutil.New(t)
+	g := e.SeedDevice(t, "budi@example.com", "ESP32-AABBCC")
+	g.Hours(t, 8*24, 1, 100, 0.1)
+
+	year, week := time.Now().In(time.FixedZone("WIB", 7*3600)).ISOWeek()
+	period := fmt.Sprintf("%d-W%02d", year, week)
+
+	r := e.Call(t, http.MethodGet, "/v1/reports?period="+period, "", g.Session)
+	weeks, _ := r.Body["weeks"].([]any)
+	months, _ := r.Body["periods"].([]any)
+
+	if r.Status != http.StatusOK || r.Body["granularity"] != "week" || r.Body["period"] != period || r.Body["through"] == nil || r.Body["billRp"] == nil ||
+		len(weeks) < 2 || weeks[0] != period || len(months) == 0 {
+		t.Fatalf("the weekly report is %d %v", r.Status, r.Body)
+	}
+
+	if m := e.Call(t, http.MethodGet, "/v1/reports", "", g.Session); m.Body["granularity"] != "month" {
+		t.Fatalf("the default report is %v", m.Body["granularity"])
+	}
+
+	p := e.Call(t, http.MethodGet, "/v1/reports/"+period+"/pdf", "", g.Session)
+	if p.Status != http.StatusOK || !bytes.HasPrefix(p.Raw, []byte("%PDF-")) || !strings.Contains(p.Header.Get("Content-Disposition"), "Laporan-Minggu-"+period+".pdf") {
+		t.Fatalf("the weekly pdf answered %d %q", p.Status, p.Header.Get("Content-Disposition"))
+	}
+
+	// a week that is shaped right but is not in the list, and a week that the year does not have
+	if old := e.Call(t, http.MethodGet, "/v1/reports?period=2019-W10", "", g.Session); old.Status != http.StatusNotFound {
+		t.Fatalf("an old week answered %d", old.Status)
+	}
+
+	if none := e.Call(t, http.MethodGet, "/v1/reports?period=2027-W53", "", g.Session); none.Status != http.StatusNotFound {
+		t.Fatalf("a week that does not exist answered %d", none.Status)
+	}
+
+	for _, bad := range []string{"2026-W00", "2026-W54", "2026-w10", "2026-W1", "W10"} {
+		if r := e.Call(t, http.MethodGet, "/v1/reports?period="+bad, "", g.Session); r.Status != http.StatusUnprocessableEntity {
+			t.Fatalf("%s answered %d", bad, r.Status)
+		}
 	}
 }

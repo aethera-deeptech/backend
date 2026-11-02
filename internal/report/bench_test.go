@@ -13,7 +13,7 @@ func BenchmarkRender(b *testing.B) {
 
 	for b.Loop() {
 		var buf bytes.Buffer
-		if err := render(&buf, r, start); err != nil {
+		if err := render(&buf, r, monthLabel(start)); err != nil {
 			b.Fatal(err)
 		}
 	}

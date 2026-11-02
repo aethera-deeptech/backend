@@ -26,7 +26,7 @@ func sample() Report {
 
 func TestTheReportIsOneA4Page(t *testing.T) {
 	var buf bytes.Buffer
-	if err := render(&buf, sample(), time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)); err != nil {
+	if err := render(&buf, sample(), monthLabel(time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC))); err != nil {
 		t.Fatal(err)
 	}
 
@@ -53,7 +53,7 @@ func TestThePdfSurvivesOddInput(t *testing.T) {
 	r.TopDevices = &empty
 
 	var buf bytes.Buffer
-	if err := render(&buf, r, time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)); err != nil {
+	if err := render(&buf, r, monthLabel(time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC))); err != nil {
 		t.Fatal(err)
 	}
 
