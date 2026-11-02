@@ -1,0 +1,73 @@
+name: Fuzz
+
+# The fuzz tests of the code that reads untrusted input (the body of a batch of a gateway, names, dates and the text of an error report) only run their seed
+# cases in the normal test job. This searches for new cases for a few minutes on each target once a week. A case that crashes a
+# target is uploaded as an artifact, and the file is meant to be added to testdata/fuzz of the package as a regression test.
+on:
+  schedule:
+    - cron: "17 20 * * 6"
+  workflow_dispatch:
+    inputs:
+      fuzztime:
+        description: How long each target runs, for example 30s or 5m, and keep it under 30m because the job stops after 45 minutes
+        required: false
+        default: 3m
+        type: string
+
+concurrency:
+  group: fuzz-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  fuzz:
+    name: Fuzz ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: FuzzScrubText
+            package: ./internal/errorreport
+          - target: FuzzCleanName
+            package: ./internal/business
+          - target: FuzzParseDay
+            package: ./internal/production
+          - target: FuzzBatch
+            package: ./internal/gateway
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - name: Fuzz the target
+        env:
+          FUZZTIME: ${{ inputs.fuzztime || '3m' }}
+          TARGET: ${{ matrix.target }}
+          PACKAGE: ${{ matrix.package }}
+        run: |
+          if ! [[ "$FUZZTIME" =~ ^[0-9]+[smh]$ ]]; then
+            echo "fuzztime must be a number followed by s, m or h, for example 90s or 5m" >&2
+            exit 1
+          fi
+
+          go test "$PACKAGE" -run '^$' -fuzz "^${TARGET}$" -fuzztime "$FUZZTIME"
+
+      # Go writes the input that failed under testdata/fuzz of the package of the target
+      - name: Keep the input that failed
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: fuzz-${{ matrix.target }}
+          path: "**/testdata/fuzz/${{ matrix.target }}/*"
+          if-no-files-found: ignore
