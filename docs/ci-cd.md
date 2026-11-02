@@ -8,6 +8,7 @@
 | `prformat.yaml` | pull requests | Checks that the branch is named `type/short-description` with a type of Conventional Commits, that the pull request has a label and an assignee, and that the body is only hyphen bullets with text. A pull request that a bot opened (Renovate, Dependabot or Release Please) from its own branch is skipped. It never cancels a run and reads the pull request when it runs, so a rerun checks what the pull request looks like now. Adding or removing a label or an assignee starts a new run, and the newest run of the check is the one that counts |
 | `release-please.yaml` | push to main, manual | Keeps one release pull request with the next version and `CHANGELOG.md`. Merging that pull request creates the tag and the GitHub release. It runs in the `release` environment, which only `main` can use, and it creates its token from the GitHub App `syafa-bot`. It is not a required check |
 | `config.yaml` | push to main, pull requests, manual | Lints the configuration of the repository with the nine jobs below |
+| `migrations.yaml` | pull requests, manual | squawk lints the `.up.sql` migrations that a pull request adds or changes, with the settings of `.squawk.toml`, for the operations that lock a table or break the copy that still runs during a rolling update. Any other pull request ends the job at once with a green result, so `Migration lint` is a required check. A change of the workflow, of the settings or of the squawk image in `.github/tools/Dockerfile`, and a run by hand, also print the findings for every migration in the summary, for information. On such a change the job also fails when squawk rejects `.squawk.toml` |
 | `links.yaml` | weekly on Monday at 02:00 UTC, manual | Checks every link of the Markdown files in the root and in `docs` with lychee, and fails on a dead link. It never runs on pull requests, so a site that is down for a day cannot block a merge, and it is not a required check. A status of 429 counts as alive, and lychee skips code blocks |
 | `ci.yaml` | push to main, pull requests, manual | Checks and tests the Go code with the two jobs below, and uploads the coverage to Codecov |
 | `security.yaml` | push to main, pull requests, daily at 20:00 UTC, manual | Runs CodeQL, the Go vulnerability check, the Go license check, dependency review, the secret scan, the Trivy filesystem scan and OSSF Scorecard. The daily run catches a CVE that is published for code that did not change. Scorecard never runs on pull requests |
@@ -63,6 +64,7 @@ Every check below is required and is reported by GitHub Actions.
 | Compose config | GitHub Actions | yes |
 | File names | GitHub Actions | yes |
 | Renovate config | GitHub Actions | yes |
+| Migration lint | GitHub Actions | yes |
 | Lint | GitHub Actions | yes |
 | Tests | GitHub Actions | yes |
 | Go vulnerability check | GitHub Actions | yes |
@@ -138,7 +140,7 @@ The Renovate config job runs `renovate-config-validator --strict` on every pull 
 
 A dependency update bot cannot read a tool that is named inside a `run` step, so the tools of the jobs are listed where it can.
 
-- `.github/tools/Dockerfile` has one stage for each image that a job starts with `docker run`, which are actionlint, zizmor, ShellCheck, Hadolint, dotenv-linter, Redocly and gitleaks. Nothing builds it. The workflows get the image from `.github/tools/image.sh <stage>`, so the version of a bump is the version the jobs run.
+- `.github/tools/Dockerfile` has one stage for each image that a job starts with `docker run`, which are actionlint, zizmor, ShellCheck, Hadolint, dotenv-linter, Redocly, gitleaks and squawk. Nothing builds it. The workflows get the image from `.github/tools/image.sh <stage>`, so the version of a bump is the version the jobs run.
 - The versions of ls-lint and of the Renovate validator sit in the `env` of their steps. A comment such as `# renovate: datasource=npm depName=@ls-lint/ls-lint` right above the line tells Renovate where to look, so keep the comment when you edit the line.
 
 All actions are pinned to commit SHAs with the version in a comment, and the setting "require actions to be pinned to a full-length commit SHA" is on for the repository.
