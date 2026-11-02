@@ -90,3 +90,13 @@ func TestNiceCeiling(t *testing.T) {
 		}
 	}
 }
+
+func TestKindLabel(t *testing.T) {
+	if got := KindLabel("plug"); got != "WATTLINK Plug" {
+		t.Errorf("plug label is %q", got)
+	}
+
+	if got := KindLabel("clamp"); got != "WATTLINK Clamp (dijepit di kabel)" {
+		t.Errorf("clamp label is %q", got)
+	}
+}

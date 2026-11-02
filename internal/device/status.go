@@ -83,10 +83,10 @@ func Signal(now time.Time, lastAt *time.Time, hops int) string {
 // KindLabel is the text that the detail screen shows for a kind
 func KindLabel(kind string) string {
 	if kind == "clamp" {
-		return "Penjepit arus (dijepit di kabel)"
+		return "WATTLINK Clamp (dijepit di kabel)"
 	}
 
-	return "Colokan pintar"
+	return "WATTLINK Plug"
 }
 
 // niceCeiling returns the smallest round value of the form 1, 2 or 5 times a power of ten that is at least v, for the top of a chart
