@@ -27,6 +27,7 @@ type stored struct {
 	t         time.Time
 	watts     float64
 	energy    *float64
+	pf        *float64
 	nodeState *int32
 }
 
