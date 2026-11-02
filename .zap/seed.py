@@ -81,7 +81,7 @@ def call(method, path, body=None, cookie="", bearer="", app=True):
 
 
 def need(label, answer, status):
-    """Stops the run when a step of the set up does not answer as expected, because k6 would only fail later and with less to read"""
+    """Stops the run when a step of the set up does not answer as expected, because the scan would only fail later and with less to read"""
     if answer[0] != status:
         sys.exit(f"{label} answered {answer[0]} and not {status}")
 

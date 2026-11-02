@@ -92,7 +92,7 @@ jobs:
           jq -c 'select(.msg == "request")' zap-out/api.jsonl > zap-out/requests.jsonl || true
           {
             echo
-            echo "Requests the API answered during the run, $(jq -s 'length' zap-out/requests.jsonl)"
+            echo "Requests the API answered from the setup of the accounts to the end of the run, $(jq -s 'length' zap-out/requests.jsonl)"
             echo
             echo "| Status | Requests |"
             echo "|:---|---:|"
@@ -112,9 +112,10 @@ jobs:
             jq -r 'select(.level == "ERROR") | .msg' zap-out/api.jsonl | sort | uniq -c | sort -rn | head -15
             echo '```'
           } | tee -a "$GITHUB_STEP_SUMMARY"
-          errors="$(jq -s '[.[] | select(.status >= 500)] | length' zap-out/requests.jsonl)"
+          # a 503 with the code busy is the limiter of password hashing shedding load, which a login attack is meant to cause
+          errors="$(jq -s '[.[] | select(.status >= 500) | select((.status == 503 and .code == "busy") | not)] | length' zap-out/requests.jsonl)"
           if [ "${errors:-0}" -gt 0 ]; then
-            echo "::warning title=ZAP active scan::The API answered $errors request(s) with a server error, see the summary"
+            echo "::warning title=ZAP active scan::The API answered $errors request(s) with a server error other than a busy 503, see the summary"
           fi
 
       # plan.yaml and requests.json hold the tokens of the throwaway accounts, so only the reports are uploaded
@@ -123,6 +124,7 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: zap-active-reports
+          retention-days: 14
           path: |
             zap-out/active-report.html
             zap-out/active-report.json

@@ -77,6 +77,7 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: zap-reports
+          retention-days: 14
           path: |
             zap-out/report.html
             zap-out/report.md

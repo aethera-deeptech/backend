@@ -1,5 +1,5 @@
 # ZAP Automation Framework plan for the weekly active scan, see https://www.zaproxy.org/docs/desktop/addons/automation-framework/
-# The workflow replaces the placeholder line with the requests that seed.sh recorded, so the scan attacks real routes with real tokens.
+# The workflow replaces the placeholder line with the requests that seed.py recorded, so the scan attacks real routes with real tokens.
 # Only throwaway accounts on a throwaway stack are attacked here, never run this against a system you do not own.
 ---
 env:
