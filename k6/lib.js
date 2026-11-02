@@ -69,6 +69,11 @@ export function gateway() {
     'ingest accepts every sample': (r) => r.status !== 200 || r.json('accepted') === nodes.length * 3,
   });
 
+  // the answer of a batch that was not taken in full goes to the log, because the check alone does not say what the service answered
+  if (res.status !== 200 || res.json('accepted') !== nodes.length * 3) {
+    console.error(`gateway ${__ENV.GW} seq ${seq} answered ${res.status} ${res.body}`);
+  }
+
   sleep(batchEvery);
 }
 
