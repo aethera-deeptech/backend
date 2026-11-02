@@ -21,7 +21,7 @@ The ruleset does not require an approving review. Review from another person is 
 
 ## Releases
 
-Releases are automated. Release Please opens a release pull request from the commit messages that reach `main`, and the maintainer merges it when the release is ready. Merging creates the tag and the GitHub release through the release GitHub App, which is the only account allowed to create a `v*` tag. Nobody can delete, move or update a release tag. The release App key and the Docker Hub token are secrets of environments that accept no branch, only `main` (and `v*.*.*` tags for the Docker Hub one), so a workflow on a branch cannot read them. A merge only publishes the image. The deployment to the server is a separate step that the maintainer runs.
+Releases are automated. Release Please opens a release pull request from the commit messages that reach `main`, and the maintainer merges it when the release is ready. Merging creates the tag and the GitHub release through the release GitHub App, which is the only account allowed to create a `v*` tag. Nobody can delete, move or update a release tag. The release App key is a secret of the `release` environment, which accepts only the `main` branch. The Docker Hub token is a secret of the `docker-hub` environment, which accepts only the `main` branch and `v*.*.*` tags. A workflow on any other branch cannot read either secret. A merge only publishes the image. The deployment to the server is a separate step that the maintainer runs.
 
 ## Becoming a collaborator
 

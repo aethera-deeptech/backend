@@ -4,7 +4,7 @@ This is the roadmap of the backend. It shows what the API offers today and what 
 
 ## Done
 
-- Accounts for one business each, with registration, email verification, login with a session cookie, password reset and change of email. Every row carries a tenant id, so more people can join a business later.
+- Accounts for one business each, with registration, email verification, login with a session cookie, password reset and change of email. Every table points to one business, so more people can join a business later.
 - Gateways that enroll themselves, are claimed by the owner and send readings in numbered batches. The [firmware guide](docs/firmware-guide.md) explains the protocol.
 - Pairing of plugs and clamps on a gateway, rooms, and the status of every device.
 - Tips that the service works out from the readings, with states from pending to verified and a saving that is checked against the energy per piece.
@@ -16,6 +16,6 @@ This is the roadmap of the backend. It shows what the API offers today and what 
 
 ## Planned, not started
 
-- Sign in with Google.
+- Sign in with Google. The contract in `openapi.yaml` already describes the route, but the service does not serve it yet.
 - A log archive in an object store, which keeps the logs longer than the host does.
 - More documentation pages, such as the data model and the error codes.

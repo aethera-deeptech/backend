@@ -10,7 +10,7 @@ This file lists who looks after the backend and what each person can do. [GOVERN
 
 The maintainer decides what is merged and released. Only the maintainer changes repository settings, rulesets, secrets and the production deployment, and the maintainer merges the release pull request.
 
-A person who contributes opens pull requests like anyone else. Nobody can push to `main`, because the ruleset on `main` requires a pull request for everyone. Nobody can create a release tag by hand, because only the release GitHub App can create a `v*` tag. The release App key is a secret of the `release` environment, which accepts only `main`. The Docker Hub token is a secret of the `docker-hub` environment, which accepts `main` and `v*.*.*` tags and no branch.
+A person who contributes opens pull requests like anyone else. Nobody can push to `main`, because the ruleset on `main` requires a pull request for everyone. Nobody can create a release tag by hand, because only the release GitHub App can create a `v*` tag. The release App key is a secret of the `release` environment, which accepts only the `main` branch. The Docker Hub token is a secret of the `docker-hub` environment, which accepts only the `main` branch and `v*.*.*` tags.
 
 ## Reaching a maintainer
 

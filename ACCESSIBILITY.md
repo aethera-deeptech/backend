@@ -5,10 +5,10 @@ The backend is the API behind the energy audit dashboard for small businesses. I
 ## Commitment
 
 - Every failure has a stable `code` and a plain English `message`, and a field that failed validation is named in `fields` with a code. The dashboard can show its own text, in the form that works for the person, and never has to read out a code.
-- A response carries data and text and never layout, color or markup, so the dashboard decides how everything is presented.
+- Every JSON response carries data and text and never layout, color or markup, so the dashboard decides how everything is presented.
 - A response of 429 has a `Retry-After` header and `retryAfterSeconds`, so the dashboard can tell the person when to try again.
 - The report PDF writes every number as text next to its bar, so the figures are never only a drawing.
-- Documentation changes are checked by CI, including a prose linter for the writing style.
+- The links in the Markdown pages are checked by CI every week.
 
 ## Supported environments
 
