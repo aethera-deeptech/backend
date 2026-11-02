@@ -23,6 +23,7 @@
 | `security.yaml` | push to main, pull requests, daily at 20:00 UTC, manual | Runs CodeQL, the Go vulnerability check, the Go license check, dependency review, the secret scan, the Trivy filesystem scan and OSSF Scorecard. The daily run catches a CVE that is published for code that did not change. Scorecard never runs on pull requests |
 | `docker.yaml` | push to main, tags, pull requests, manual | Builds the image for `linux/amd64` and `linux/arm64`, pushes it to GitHub Container Registry only, scans both platforms with Trivy, attaches an SBOM, signs it with cosign and verifies the signature right away. Only `main` writes the build cache. A pull request and a tag read it and never write one. It never logs in to Docker Hub, because a pull request can change this workflow. A pull request from a fork, a run of Dependabot and a manual run from a ref other than `main` only build the image, and the job still reports success because it had nothing to publish. A pull request from a branch of this repository, such as one of Renovate, publishes the image as `pr-<number>`. This workflow never gets a `workflow_call` trigger, because a workflow that called it would get signatures with the identity of this file |
 | `docker-hub-mirror.yaml` | after `docker.yaml` finishes | Copies the image that `docker.yaml` built from GitHub Container Registry to Docker Hub by digest, as `<DOCKERHUB_USERNAME>/aethera-backend`. It runs from `main` with the `docker-hub` environment and never checks out the repository. It copies an image only when the cosign signature on it was made by `docker.yaml` at the ref and with the trigger of the run that started the mirror, and it copies that signature and verifies it again on Docker Hub before `latest` or a floating version tag moves. It is not a required check |
+| `resign.yaml` | manual, from main only | Signs an image that is already published again in the classic format, without building anything. It checks that both registries hold the same digest and that the build attestation kept by GitHub shows `docker.yaml` built that digest from the tag of that version, and only then signs and verifies each signature right away. The Docker Hub token comes from the `docker-hub` environment |
 
 ### Jobs
 
@@ -111,12 +112,12 @@ The Hadolint job lints the `Dockerfile`, and `docker.yaml` builds, scans and pub
 
 Image tags are `latest` for `main`, `sha-<commit>` for builds of `main` and of pull requests, `pr-<number>` for pull requests, and `1.2.3`, `1.2` and `1` for version tags, where `1` is only set from a major version of 1 or higher. A release commit is built twice, once for `main` and once for its tag, so only the build of `main` sets `latest` and the `sha-` tag, and the build of the tag only adds the version tags. The image is published as `ghcr.io/aethera-deeptech/backend` with the built-in token. GitHub creates the package as private on the first push, so the owner sets it to public in the package settings before anyone can pull it or run `cosign verify` without a login. Every tag is one image for both platforms, and the signature covers the index of both. Trivy scans each platform and reports it in its own code scanning category. The SBOM is made for the amd64 image only.
 
-Verify an image with cosign by checking the identity of the workflow that signed it.
+Verify an image with cosign by checking the identity of the workflow that signed it. A normal build is signed by `docker.yaml` and an image signed again by hand is signed by `resign.yaml`, so the identity pattern accepts both.
 
 ```sh
 cosign verify \
   --new-bundle-format=false \
-  --certificate-identity-regexp '^https://github\.com/aethera-deeptech/backend/\.github/workflows/docker\.yaml@refs/(heads/main|tags/v[0-9]+\.[0-9]+\.[0-9]+)$' \
+  --certificate-identity-regexp '^https://github\.com/aethera-deeptech/backend/\.github/workflows/(docker\.yaml@refs/(heads/main|tags/v[0-9]+\.[0-9]+\.[0-9]+)|resign\.yaml@refs/heads/main)$' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   ghcr.io/aethera-deeptech/backend:latest
 ```
