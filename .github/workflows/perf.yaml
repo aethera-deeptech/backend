@@ -94,12 +94,14 @@ jobs:
         run: |
           docker stats --no-stream --format 'table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}' | tee stats.txt
           failed=0
-          for id in $(docker compose -f compose.yml -f compose.ci.yml ps -q); do
+          # -a lists a container that exited, which is what a container killed for memory is, because the stack has no restart policy
+          for id in $(docker compose -f compose.yml -f compose.ci.yml ps -a -q); do
             name="$(docker inspect -f '{{.Name}}' "$id")"
+            state="$(docker inspect -f '{{.State.Status}}' "$id")"
             oom="$(docker inspect -f '{{.State.OOMKilled}}' "$id")"
             restarts="$(docker inspect -f '{{.RestartCount}}' "$id")"
-            if [ "$oom" != "false" ] || [ "$restarts" != "0" ]; then
-              echo "::error::${name} was killed or restarted (OOMKilled=$oom, restarts=$restarts)"
+            if [ "$state" != "running" ] || [ "$oom" != "false" ] || [ "$restarts" != "0" ]; then
+              echo "::error::${name} is not running or was killed or restarted (state=$state, OOMKilled=$oom, restarts=$restarts)"
               failed=1
             fi
           done
@@ -148,6 +150,7 @@ jobs:
             memory-timeline.txt
             compose.log
           if-no-files-found: ignore
+          retention-days: 14
 
       - name: Stop the stack
         if: ${{ always() }}

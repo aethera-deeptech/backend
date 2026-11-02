@@ -150,6 +150,11 @@ for g in range(GATEWAYS):
 
     gateways.append({"key": key, "seq": seq, "nodes": nodes})
 
+# The first read of the home screen and of the tips works the tips out and writes them, which is slower than every later read. One read
+# of each screen here keeps that cold start out of the numbers of k6.
+for screen in ("/v1/beranda", "/v1/devices", "/v1/recommendations", "/v1/production", "/v1/reports", "/v1/settings", "/v1/devices/" + devices[0]):
+    need("warm up " + screen, call("GET", screen, cookie=cookie), 200)
+
 with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "setup.json"), "w", encoding="utf-8") as handle:
     json.dump({"cookie": cookie, "devices": devices, "gateways": gateways}, handle)
 
