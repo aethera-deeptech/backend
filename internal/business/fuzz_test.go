@@ -11,7 +11,7 @@ import (
 // FuzzCleanName feeds the name check with any text. A name that passes is trimmed, has 1 to the most characters and holds no control
 // character, and a name that fails answers with a code and no name.
 func FuzzCleanName(f *testing.F) {
-	for _, seed := range []string{"", " ", "Ruang jahit", "  Mesin jahit 1  ", "a\u0000b", "tab\there", "‮evil", strings.Repeat("x", 41), "\xff"} {
+	for _, seed := range []string{"", " ", "Ruang jahit", "  Mesin jahit 1  ", "a\u0000b", "tab\there", "\u202eevil", strings.Repeat("x", 41), "\xff"} {
 		f.Add(seed)
 	}
 
