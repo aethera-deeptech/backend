@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.3.0](https://github.com/aethera-deeptech/backend/compare/v0.2.1...v0.3.0) (2026-11-02)
+
+
+### ⚠ BREAKING CHANGES
+
+* **report:** add the report and the PDF of an ISO week next to the monthly ones
+
+### Features
+
+* **anomaly:** raise a degradation for a loaded motor with a poor power factor and show the kind of the anomaly ([e303401](https://github.com/aethera-deeptech/backend/commit/e30340138c9a8e61560e182836fe7f19bf663dd2))
+* **anomaly:** raise a degradation for a loaded motor with a poor power factor and show the kind of the anomaly ([d932ace](https://github.com/aethera-deeptech/backend/commit/d932ace70671347c47b7ad8de075a5364daab3da))
+* **health:** report the database, the pool and the uptime in /healthz and answer 503 when the database is down ([c726a3c](https://github.com/aethera-deeptech/backend/commit/c726a3c20655418d6dcb4a4cee5e9dd558b2201b))
+* **health:** report the database, the pool and the uptime in /healthz and answer 503 when the database is down ([7e2586a](https://github.com/aethera-deeptech/backend/commit/7e2586a1616fe2c69ed31b8c70c059a936e261fb))
+* **relay:** switch the relay of a plug on a command or a schedule of the owner through the answer to the gateway ([c3ed117](https://github.com/aethera-deeptech/backend/commit/c3ed117beb3435250fe3d2c139026db0e4c8feb8))
+* **relay:** switch the relay of a plug on a command or a schedule of the owner through the answer to the gateway ([eec009a](https://github.com/aethera-deeptech/backend/commit/eec009afb072c9efff31b4911d17239ccad437a8))
+* **report:** add the report and the PDF of an ISO week next to the monthly ones ([2a241b7](https://github.com/aethera-deeptech/backend/commit/2a241b7ce9e441d25bbbafc0200662e563e654f2))
+
+
+### Bug Fixes
+
+* **anomaly:** quote the power factor description, keep no power factor for a reported degradation and reuse round2 ([8ff16c4](https://github.com/aethera-deeptech/backend/commit/8ff16c4a356a90401710b6a32c36378228282843))
+* **anomaly:** use plain constraints in the degradation migration and ignore the squawk rules for the small table ([0c3eec6](https://github.com/aethera-deeptech/backend/commit/0c3eec631950d5d345ff42204ef2c90b0ddfe894))
+* **relay:** pass the parsed id to the queries and keep a newer sample over a command result ([26ee9de](https://github.com/aethera-deeptech/backend/commit/26ee9de128fbeb2a33adafdfdb8e973a6fa393f3))
+* **relay:** use the canonical device id in every query of a route ([171b273](https://github.com/aethera-deeptech/backend/commit/171b27358686b23ff42a336ad33786144887c0e7))
+* **report:** name both years of a week at the new year and keep the period pattern for months and weeks ([0c26fd3](https://github.com/aethera-deeptech/backend/commit/0c26fd3900f71d6d8ad85acea6eaa5176818da15))
+
 ## [0.2.1](https://github.com/aethera-deeptech/backend/compare/v0.2.0...v0.2.1) (2026-11-02)
 
 
