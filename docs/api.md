@@ -38,4 +38,25 @@ An amount is a whole number of rupiah. A tip shows its saving rounded to the nea
 3. From then on the gateway sends its key as a bearer token. The service keeps only the hash of the key, so a copy of the database cannot act as a gateway. TLS protects the key in transit, and the sequence number of a batch makes a retry safe. A signature on every request would add nothing over TLS here, because a party that sees the plain request also sees the key.
 4. The owner starts a pairing in the app. The next unclaimed node of that kind that the gateway reports becomes the device.
 
-Raw readings are kept 30 days. Hourly and daily rollups keep the average and the maximum of each period for 400 days, so a short spike stays visible after the raw rows are gone.
+Raw readings are kept 30 days. Hourly sums keep the number of samples, the sum, the highest and the lowest power and the energy of each node for 400 days, so a short spike stays visible after the raw rows are gone. The energy of an hour comes from the counter of the node when the gap to the last sample is at most one hour and the step is plausible. Otherwise it is the power times the time, with a gap of at most 5 minutes counted for each sample. A time zone with an offset that is not a whole number of hours is refused in the settings, because the hourly sums would not line up with a local day.
+
+## The status of a device
+
+- A device is `offline` when it has no reading or its newest reading is older than 15 minutes, and offline wins over every other status. A device with an anomaly in the last 24 hours is `anomali`. Otherwise the power decides. Below 1,2 W it is `mati`, below its working level it is `siaga`, and from there it is `nyala`.
+- The working level is 20 percent of the usual high power of the device, which is the 95th percentile of its highest power of each hour in the last 7 days, and never below 8,5 W.
+- The detail of a device draws the last 24 hours in 96 points of 15 minutes. The expected band is the mean of the same hour of the day on earlier days plus or minus a multiple of the standard deviation. The multiple is 4, 3 or 2 for the sensitivity `rendah`, `sedang` and `tinggi`. The band is left out when any of the 24 UTC hours has fewer than 3 earlier days of data, so a device with a short history shows the chart without a band.
+
+## Anomalies
+
+- A surge is a sample above 100 W that is over the usual high power of its UTC hour plus the larger of 100 W and 30 percent of that high power. This usual high power is not the 95th percentile of the working level. It is the mean of the highest power of that UTC hour on the last 15 days, plus the sensitivity multiple of the business times their standard deviation. It needs at least 7 days of history for that hour. An overload is the code 3 that the node reports. The service checks both when it stores a batch, only for a node that a business claimed and only for samples that are at most 2 hours old.
+- The same node raises one anomaly of each kind in 6 hours. A failure of the check is logged and rolled back in a savepoint, so it does not lose the readings. When the savepoint itself fails, the batch fails and the gateway sends it again, which the sequence number makes safe.
+
+## Tips and the check
+
+- A tip is made for a device that has at least 24 hours of data outside the work hours in the last 7 days and drew on average at least 1,2 W in them. At 8,5 W or more it is an after-hours tip, and below that it is a standby tip. The saving is the average energy of a day outside the work hours over the last 7 days, times 30 days and the tariff, rounded to 1000 rupiah. The smallest tip is 5000 rupiah, and a device has at most one tip of each kind. A tip that nobody decided on goes away when its device no longer qualifies.
+- The tips are worked out again when the app reads them, at most every 10 minutes for a business. The tips of the last run are served when the work fails.
+- The owner can apply, defer, reject or cancel a tip, and the service allows only these changes. Apply and reject work from pending and deferred, defer works from pending, and cancel brings an applied tip back to pending. A verified or rejected tip is final. An applied tip is checked after 14 days against the 7 days before it. The check compares the energy for each piece of the whole business, and it counts only the days that have a production record. A tip with no records stays applied. The check says nothing about which tip caused a change, because the measure covers the whole business.
+
+## Home and report
+
+The home screen has the phases `no-devices`, `collecting` and `ready`. The bill comes from the measured energy only, so the load that no device measures is not in it. The report of a month sums the energy, the bill and the measured saving, lists the top devices and gives the same page as one A4 PDF. The saving has three groups, the verified ones, the ones under check and, for the running month, the ones that wait for a decision. Every month is priced with the tariff of today, because the service keeps no tariff history.
