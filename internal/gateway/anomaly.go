@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"slices"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -69,8 +70,10 @@ func watchNode(ctx context.Context, tx pgx.Tx, gatewayID, nodeID string, samples
 // that raised an anomaly in the last hours does not raise another.
 func detectAnomaly(ctx context.Context, tx pgx.Tx, gatewayID, nodeID string, samples []stored, now time.Time) error {
 	var (
-		peak     *stored
 		overload *stored
+		// peaks holds the highest sample of each UTC hour, because the usual power belongs to an hour of the day
+		peaks    = map[time.Time]*stored{}
+		anySurge bool
 	)
 
 	for i := range samples {
@@ -83,13 +86,18 @@ func detectAnomaly(ctx context.Context, tx pgx.Tx, gatewayID, nodeID string, sam
 			overload = s
 		}
 
-		if peak == nil || s.watts > peak.watts {
-			peak = s
+		hour := s.t.UTC().Truncate(time.Hour)
+		if p := peaks[hour]; p == nil || s.watts > p.watts {
+			peaks[hour] = s
+		}
+
+		if s.watts > surgeMinExcessW {
+			anySurge = true
 		}
 	}
 
 	// the cheap checks come first, because most batches have nothing to report
-	if overload == nil && (peak == nil || peak.watts <= surgeMinExcessW) {
+	if overload == nil && !anySurge {
 		return nil
 	}
 
@@ -113,8 +121,20 @@ func detectAnomaly(ctx context.Context, tx pgx.Tx, gatewayID, nodeID string, sam
 		}
 	}
 
-	if peak != nil && peak.watts > surgeMinExcessW {
-		return raise(ctx, tx, gatewayID, nodeID, "surge", peak, level)
+	// the oldest hour comes first, and the debounce of the first surge that is written holds back the rest
+	hours := make([]time.Time, 0, len(peaks))
+	for h := range peaks {
+		hours = append(hours, h)
+	}
+
+	slices.SortFunc(hours, func(a, b time.Time) int { return a.Compare(b) })
+
+	for _, h := range hours {
+		if p := peaks[h]; p.watts > surgeMinExcessW {
+			if err := raise(ctx, tx, gatewayID, nodeID, "surge", p, level); err != nil {
+				return err
+			}
+		}
 	}
 
 	return nil

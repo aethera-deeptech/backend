@@ -170,3 +170,28 @@ func TestABatchWithAnOverloadAndASurgeRaisesBoth(t *testing.T) {
 		t.Fatalf("the anomalies hold %d kinds (%v)", kinds, err)
 	}
 }
+
+func TestASurgeInAnEarlierHourOfTheBatchIsNotMissedBehindABiggerNormalPeak(t *testing.T) {
+	g := business(t, testutil.New(t), "budi@example.com", "ESP32-AABBCC", "a")
+	g.pair(t, "PLUG-0001", "Mesin jahit 1")
+
+	// 500 W is normal now, and 250 W is far above the usual power of the hour of 70 minutes ago
+	g.usual(t, 8, 1000)
+	g.e.Exec(t, "INSERT INTO readings_hourly (gateway_id, node_id, hour, samples, sum_watts, max_watts, min_watts) "+
+		"SELECT n.gateway_id, n.node_id, date_trunc('hour', now() - interval '70 minutes') - make_interval(days => d), 10, 1000, 100, 1 "+
+		"FROM nodes n, generate_series(1, 8) d ON CONFLICT DO NOTHING")
+
+	earlier := time.Now().Add(-70 * time.Minute).Unix()
+	now := time.Now().Add(-5 * time.Second).Unix()
+	g.seq++
+	body := fmt.Sprintf(`{"seq":%d,"sentAt":%d,"nodes":[{"nodeId":"PLUG-0001","kind":"plug","samples":[{"t":%d,"p":250},{"t":%d,"p":500}]}]}`,
+		g.seq, time.Now().Unix(), earlier, now)
+
+	if r := g.e.CallWith(t, http.MethodPost, "/device/v1/readings", body, map[string]string{"Authorization": "Bearer " + g.key}); r.Status != http.StatusOK {
+		t.Fatalf("readings answered %d %v", r.Status, r.Body)
+	}
+
+	if n := g.anomalies(t); n != 1 {
+		t.Fatalf("the batch raised %d anomalies", n)
+	}
+}
