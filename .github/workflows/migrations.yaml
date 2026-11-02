@@ -67,6 +67,13 @@ jobs:
           docker run --rm -v "$PWD:/data:ro" -w /data "$(bash ./.github/tools/image.sh squawk)" \
             --config .squawk.toml "${files[@]}"
 
+      # A settings file that squawk rejects must fail the job. The empty statement has no findings, so only a broken config can fail it.
+      - name: Check the settings
+        if: ${{ steps.changes.outputs.report == 'true' }}
+        run: |
+          set -euo pipefail
+          echo 'SELECT 1;' | docker run --rm -i -v "$PWD:/data:ro" -w /data "$(bash ./.github/tools/image.sh squawk)" --config .squawk.toml
+
       # Report only. The old migrations are already applied, so a finding in one of them is not a failure, but the list shows which
       # rules the settings have to relax for the next migration to follow the same style.
       - name: Report on every migration
