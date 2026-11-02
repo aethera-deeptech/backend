@@ -17,7 +17,7 @@ The contract is `openapi.yaml` in the root of the repository. The job `OpenAPI l
 
 ## Errors
 
-Every error is JSON with `code` and `message`. The app reads the `code` and writes its own text. A field that failed validation is named in `fields` with a code. A response of 429 has `Retry-After` and `retryAfterSeconds`. The codes of the account screens are `invalid_credentials`, `email_not_verified`, `google_failed`, `email_taken`, `token_invalid_or_expired`, `resend_too_soon` and `rate_limited`.
+Every error is JSON with `code` and `message`, and [Error codes](errors.md) lists them all. The app reads the `code` and writes its own text. A field that failed validation is named in `fields` with a code. A response of 429 has `Retry-After` and `retryAfterSeconds`. The codes of the account screens are `invalid_credentials`, `email_not_verified`, `google_failed`, `email_taken`, `token_invalid_or_expired`, `resend_too_soon` and `rate_limited`.
 
 ## The account and the enumeration trade-off
 

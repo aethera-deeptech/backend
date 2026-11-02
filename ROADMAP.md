@@ -18,4 +18,4 @@ This is the roadmap of the backend. It shows what the API offers today and what 
 
 - Sign in with Google. The contract in `openapi.yaml` already describes the route, but the service does not serve it yet.
 - A log archive in an object store, which keeps the logs longer than the host does.
-- More documentation pages, such as the data model and the error codes.
+- More documentation pages, such as the data model and the architecture.
