@@ -56,7 +56,14 @@ func (s *Service) PDF(ctx context.Context, businessID, period string) ([]byte, s
 	if granularity == Week {
 		_, week := start.ISOWeek()
 		last := end.AddDate(0, 0, -1)
-		label = fmt.Sprintf("minggu ke-%d, %s sampai %s %d", week, throughLabel(start), throughLabel(last), last.Year())
+		from := throughLabel(start)
+
+		// a week that crosses the new year names the year of its first day too
+		if start.Year() != last.Year() {
+			from = fmt.Sprintf("%s %d", from, start.Year())
+		}
+
+		label = fmt.Sprintf("minggu ke-%d, %s sampai %s %d", week, from, throughLabel(last), last.Year())
 		name = fmt.Sprintf("Laporan-Minggu-%s.pdf", period)
 	}
 

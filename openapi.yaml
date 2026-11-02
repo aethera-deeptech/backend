@@ -814,7 +814,7 @@ paths:
       parameters:
         - name: period
           in: query
-          schema: {type: string, examples: ["2026-09", "2026-W37"]}
+          schema: {type: string, pattern: "^[0-9]{4}-(0[1-9]|1[0-2]|W(0[1-9]|[1-4][0-9]|5[0-3]))$", examples: ["2026-09", "2026-W37"]}
       responses:
         "200":
           description: The report
@@ -1254,7 +1254,7 @@ components:
       properties:
         phase: {type: string, enum: [no-devices, collecting, ready]}
         granularity: {type: string, enum: [month, week], description: month for a period such as 2026-09 and week for a period such as 2026-W37}
-        period: {type: string, description: "A month such as 2026-09 or an ISO week such as 2026-W37, as granularity says", examples: ["2026-09", "2026-W37"]}
+        period: {type: string, pattern: "^[0-9]{4}-(0[1-9]|1[0-2]|W(0[1-9]|[1-4][0-9]|5[0-3]))$", description: "A month such as 2026-09 or an ISO week such as 2026-W37, as granularity says", examples: ["2026-09", "2026-W37"]}
         periods:
           type: array
           description: The months that have a report, newest first
