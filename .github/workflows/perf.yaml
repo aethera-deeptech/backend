@@ -126,7 +126,7 @@ jobs:
               echo
               echo "| Container | First sample | Last sample |"
               echo "|:---|---:|---:|"
-              for name in $(awk '{print $2}' memory-timeline.txt | sort -u); do
+              awk '{print $2}' memory-timeline.txt | sort -u | while read -r name; do
                 first="$(grep " ${name} " memory-timeline.txt | head -1 | awk '{print $3}')"
                 last="$(grep " ${name} " memory-timeline.txt | tail -1 | awk '{print $3}')"
                 echo "| ${name} | ${first} | ${last} |"
