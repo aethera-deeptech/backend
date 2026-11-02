@@ -63,6 +63,8 @@ def call(method, path, body=None, cookie=""):
     data = json.dumps(body).encode() if body is not None else None
     req = urllib.request.Request(BASE + path, data=data, method=method)
     req.add_header("Content-Type", "application/json")
+    # Cloudflare answers 403 (error 1010) to the default user agent of Python, so the run names itself
+    req.add_header("User-Agent", "aethera-smoke/1")
     req.add_header("X-Requested-With", "aethera")
     req.add_header("Origin", ORIGIN)
 
