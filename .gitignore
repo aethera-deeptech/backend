@@ -26,6 +26,10 @@ go.work.sum
 compose.override.y*ml
 docker-compose.override.y*ml
 
+# Python bytecode
+__pycache__/
+*.pyc
+
 # The data that k6/prepare.py makes for a run, with a session and gateway keys of a throwaway stack
 k6/setup.json
 
