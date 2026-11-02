@@ -44,7 +44,7 @@ Raw readings are kept 30 days. Hourly sums keep the number of samples, the sum, 
 
 - A device is `offline` when it has no reading or its newest reading is older than 15 minutes, and offline wins over every other status. A device with an anomaly in the last 24 hours is `anomali`. Otherwise the power decides. Below 1,2 W it is `mati`, below its working level it is `siaga`, and from there it is `nyala`.
 - The working level is 20 percent of the usual high power of the device, which is the 95th percentile of its highest power of each hour in the last 7 days, and never below 8,5 W.
-- The detail of a device draws the last 24 hours in 96 points of 15 minutes. The expected band is the mean of the same hour of the day on earlier days plus or minus a multiple of the standard deviation. The multiple is 4, 3 or 2 for the sensitivity `rendah`, `sedang` and `tinggi`.
+- The detail of a device draws the last 24 hours in 96 points of 15 minutes. The expected band is the mean of the same hour of the day on earlier days plus or minus a multiple of the standard deviation. The multiple is 4, 3 or 2 for the sensitivity `rendah`, `sedang` and `tinggi`. The band is left out when any of the 24 UTC hours has fewer than 3 earlier days of data, so a device with a short history shows the chart without a band.
 
 ## Anomalies
 
