@@ -7,6 +7,7 @@
 package explain
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"net/http"
@@ -44,10 +45,29 @@ func (r *recorder) TraceQueryStart(ctx context.Context, _ *pgx.Conn, data pgx.Tr
 
 	if r.on && !r.seen[data.SQL] {
 		r.seen[data.SQL] = true
-		r.list = append(r.list, statement{sql: data.SQL, args: append([]any(nil), data.Args...)})
+		r.list = append(r.list, statement{sql: strings.Clone(data.SQL), args: copyArgs(data.Args)})
 	}
 
 	return ctx
+}
+
+// copyArgs copies the arguments of a statement. Fiber hands out the strings of a request as views of buffers that the next request
+// writes over, and the plans are made after every call, so a string or a byte slice that is kept as it is would hold the wrong text.
+func copyArgs(args []any) []any {
+	out := make([]any, len(args))
+
+	for i, a := range args {
+		switch v := a.(type) {
+		case string:
+			out[i] = strings.Clone(v)
+		case []byte:
+			out[i] = bytes.Clone(v)
+		default:
+			out[i] = a
+		}
+	}
+
+	return out
 }
 
 func (*recorder) TraceQueryEnd(context.Context, *pgx.Conn, pgx.TraceQueryEndData) {}
