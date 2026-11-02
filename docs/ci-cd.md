@@ -79,6 +79,7 @@ Every check below is required and is reported by GitHub Actions.
 | OpenAPI breaking changes | GitHub Actions | yes |
 | Vale prose lint | GitHub Actions | yes |
 | Smoke test on a throwaway stack | GitHub Actions | yes |
+| k6 performance test | GitHub Actions | yes |
 | Query plans | GitHub Actions | yes |
 | Lint | GitHub Actions | yes |
 | Tests | GitHub Actions | yes |
