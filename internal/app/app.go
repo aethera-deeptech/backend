@@ -15,6 +15,7 @@ import (
 
 	"github.com/aethera-deeptech/backend/internal/home"
 	"github.com/aethera-deeptech/backend/internal/production"
+	"github.com/aethera-deeptech/backend/internal/report"
 	"github.com/aethera-deeptech/backend/internal/server"
 	"github.com/aethera-deeptech/backend/internal/tips"
 )
@@ -65,6 +66,7 @@ func New(d Deps) *fiber.App {
 	device.NewViewHandlers(views).Register(v1, require)
 	tips.NewHandlers(tipService).Register(v1, require)
 	home.NewHandlers(home.NewService(d.Pool, tipService, views)).Register(v1, require)
+	report.NewHandlers(report.NewService(d.Pool, tipService)).Register(v1, require)
 
 	// the labels of the metrics are the routes that exist now, so a path that a client made up is counted as one series
 	if d.Metrics != nil {
