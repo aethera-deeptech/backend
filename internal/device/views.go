@@ -419,10 +419,13 @@ func (v *Views) pattern(ctx context.Context, gatewayID, nodeID string, c clock, 
 // expected is the usual range of the power at each point, from the same hour of the day on the days before the window. It needs
 // minDays days for every hour of the day, or it is left out.
 func (v *Views) expected(ctx context.Context, gatewayID, nodeID string, c clock, since time.Time) (*Band, error) {
+	// the hour that holds the start of the chart also holds readings of the chart, so the history ends at the hour before it
+	historyEnd := since.UTC().Truncate(time.Hour)
+
 	rows, err := v.pool.Query(ctx,
 		`SELECT extract(hour FROM hour AT TIME ZONE 'UTC')::int, avg(max_watts), COALESCE(stddev_samp(max_watts), 0), count(*)
 		 FROM readings_hourly WHERE gateway_id = $1 AND node_id = $2 AND hour >= $3 AND hour < $4 GROUP BY 1`,
-		gatewayID, nodeID, since.Add(-historyDays*24*time.Hour), since)
+		gatewayID, nodeID, historyEnd.Add(-historyDays*24*time.Hour), historyEnd)
 	if err != nil {
 		return nil, fmt.Errorf("read the usual power %w", err)
 	}
