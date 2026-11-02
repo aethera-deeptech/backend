@@ -192,7 +192,7 @@ func (s *Service) Refresh(ctx context.Context, businessID string) error {
 	}
 
 	var locked *time.Time
-	if err := tx.QueryRow(ctx, "SELECT tips_refreshed_at FROM businesses WHERE id = $1 FOR UPDATE", businessID).Scan(&locked); err != nil {
+	if err := tx.QueryRow(ctx, "SELECT tips_refreshed_at FROM businesses WHERE id = $1 FOR NO KEY UPDATE", businessID).Scan(&locked); err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == lockNotAvailable {
 			return nil
