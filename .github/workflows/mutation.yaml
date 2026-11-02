@@ -1,0 +1,112 @@
+name: Mutation testing
+
+# A mutation tool changes the code of a package a little at a time (a `<` becomes `<=`, a `+` becomes `-`) and runs the tests of the
+# package. A change that no test notices shows a line that the tests run without checking. It only reports in the summary of the run
+# and never gates a merge, because a surviving mutant is a question for a person and not a defect. It runs on the packages whose logic is
+# tested by their own unit tests. The tool runs the tests of the package without a database, so the code that only the database tests
+# of a package reach shows survivors that are not real, and the survivors in the pure rules (the status of a device, the rules of a
+# tip, the scrub of an error report, the checks of a batch) are the ones to read.
+on:
+  schedule:
+    - cron: "47 19 * * 0"
+  workflow_dispatch:
+    inputs:
+      packages:
+        description: The packages to mutate, separated by spaces, for example "./internal/errorreport ./internal/tips", empty for the usual list
+        required: false
+        default: ""
+        type: string
+
+concurrency:
+  group: mutation-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  list:
+    name: List the packages
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    outputs:
+      packages: ${{ steps.list.outputs.packages }}
+    steps:
+      - name: Work out the packages
+        id: list
+        env:
+          REQUESTED: ${{ inputs.packages }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "$REQUESTED" ]; then
+            REQUESTED="./internal/errorreport ./internal/tips ./internal/device ./internal/gateway"
+          fi
+
+          list="[]"
+
+          for package in $REQUESTED; do
+            if ! [[ "$package" =~ ^\./internal(/[a-z0-9]+)+$ ]]; then
+              echo "a package has to look like ./internal/name, got $package" >&2
+              exit 1
+            fi
+
+            list="$(jq -c --arg package "$package" '. + [$package]' <<<"$list")"
+          done
+
+          echo "packages=$list" >> "$GITHUB_OUTPUT"
+
+  mutate:
+    name: Mutate ${{ matrix.package }}
+    needs: list
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        package: ${{ fromJSON(needs.list.outputs.packages) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - name: Mutate the package
+        env:
+          PACKAGE: ${{ matrix.package }}
+          # the tests that need a database skip themselves when CI is empty, and there is no database here
+          CI: ""
+          # renovate: datasource=github-releases depName=go-gremlins/gremlins
+          GREMLINS_VERSION: v0.6.0
+        run: |
+          set -euo pipefail
+
+          go install "github.com/go-gremlins/gremlins/cmd/gremlins@${GREMLINS_VERSION}"
+
+          # the tool exits with a failure code only for a threshold, and none is set, so a failure here is a real error of the run
+          "$(go env GOPATH)/bin/gremlins" unleash --output "$RUNNER_TEMP/mutants.json" "$PACKAGE" | tee "$RUNNER_TEMP/mutants.txt"
+
+          {
+            echo "### Mutation testing of $PACKAGE"
+            echo
+            echo '```'
+            grep -E 'LIVED|TIMED OUT' "$RUNNER_TEMP/mutants.txt" || echo "no mutant lived or timed out"
+            tail -n 8 "$RUNNER_TEMP/mutants.txt"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Keep the result
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: mutants-${{ strategy.job-index }}
+          path: ${{ runner.temp }}/mutants.json
+          if-no-files-found: ignore
+          retention-days: 14
