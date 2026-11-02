@@ -1,0 +1,63 @@
+name: Smoke stack
+
+# Builds the image of the pull request, starts it with a throwaway database, and runs a script that signs a business up, pairs a
+# gateway and a plug, sends a reading and reads every screen of the app. It tests the routes of a branch end to end before they are
+# merged. The stack has no mail server, so the script reads the verification link from the log of the API.
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: smoke-stack-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  smoke:
+    name: Smoke test on a throwaway stack
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Pull images through the Google mirror
+        uses: ./.github/actions/pull-images
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          token: ${{ secrets.DOCKERHUB_PULL_TOKEN }}
+
+      # The settings that the example does not fix are made up for this run, and the password never leaves the job
+      - name: Create the environment file
+        run: |
+          cp .env.example .env
+          go_image="$(grep -oE 'golang:[0-9][^ "]*@sha256:[0-9a-f]{64}' Dockerfile | head -1)"
+          test -n "$go_image" || { echo "no pinned golang image in the Dockerfile" >&2; exit 1; }
+          {
+            echo "APP_ENV=development"
+            echo "DB_PASSWORD=$(openssl rand -hex 16)"
+            echo "GO_IMAGE=${go_image}"
+          } >> .env
+
+      - name: Start the stack
+        run: docker compose -f compose.yml -f compose.ci.yml up -d --build --wait --wait-timeout 240
+
+      - name: Run the smoke test
+        run: python3 -I smoke/smoke.py
+        env:
+          BASE_URL: http://127.0.0.1:8080
+          SMOKE_LOG_CMD: docker compose -f compose.yml -f compose.ci.yml logs --no-color --no-log-prefix api
+
+      - name: Collect container logs
+        if: ${{ failure() }}
+        run: docker compose -f compose.yml -f compose.ci.yml logs --no-color --tail 200
+
+      - name: Stop the stack
+        if: ${{ always() }}
+        run: docker compose -f compose.yml -f compose.ci.yml down -v

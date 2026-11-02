@@ -1,0 +1,25 @@
+# Used with compose.yml by the Smoke stack workflow. It builds the image from the pull request, takes the base images from the Google
+# mirror because Docker Hub rejects or times out many pulls from the shared runners, and caps every service so a memory problem shows
+# up as a killed container.
+services:
+  api:
+    image: aethera-backend:ci
+    build:
+      context: .
+      # GO_IMAGE is the Go image that the Dockerfile names, with its digest, so a new digest only has to be changed in the Dockerfile
+      additional_contexts:
+        - "${GO_IMAGE:?set GO_IMAGE to the Go image of the Dockerfile}=docker-image://mirror.gcr.io/library/${GO_IMAGE}"
+    pull_policy: never
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.5"
+
+  db:
+    image: mirror.gcr.io/library/postgres:18-alpine
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.5"
