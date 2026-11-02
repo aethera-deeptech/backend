@@ -1,0 +1,66 @@
+name: OpenAPI diff
+
+# The web app and the gateway firmware are written against openapi.yaml, so a change that breaks the contract has to be on purpose. This compares the
+# file of the pull request with the file of its base and fails on a breaking change, such as a removed route, a removed or
+# renamed field, a removed parameter, a field that changes type or a new required request field. A pull request that has a
+# commit marked as breaking (type(scope)!: summary, or a BREAKING CHANGE footer) only prints the changes. That is the same
+# mark that Release Please reads from the commits to bump the version, because the title of the pull request never reaches main
+# when the pull request is merged with a merge commit. It runs on every pull request and has nothing to report when the file did
+# not change, so it can be a required check.
+on:
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: openapi-diff-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  breaking:
+    name: OpenAPI breaking changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      # The whole history is fetched because the commits of the pull request are read, and the repository is small
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Pull images through the Google mirror
+        uses: ./.github/actions/pull-images
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          token: ${{ secrets.DOCKERHUB_PULL_TOKEN }}
+
+      # The checkout is the merge of the pull request into main, so its first parent is the base that the file is compared with,
+      # and its second parent is the last commit of the pull request. Both sides come from the same merge, even when main moved
+      # after the event was sent, which a run that is started again would otherwise see
+      - name: Compare the two files
+        run: |
+          set -euo pipefail
+          if git diff --quiet HEAD^1 HEAD -- openapi.yaml; then
+            echo "openapi.yaml is the same as on main, so there is nothing to compare"
+            exit 0
+          fi
+          mkdir "$RUNNER_TEMP/base"
+          git show HEAD^1:openapi.yaml > "$RUNNER_TEMP/base/openapi.yaml"
+          image="$(bash ./.github/actions/pull-images/pull.sh "$(bash ./.github/tools/image.sh oasdiff)")"
+          # no network, because a $ref in a file of the pull request could make the tool fetch any address
+          run_oasdiff() {
+            docker run --rm --network none -v "$RUNNER_TEMP/base:/base:ro" -v "$PWD:/repo:ro" "$image" "$@"
+          }
+          echo "Every change that touches a client, for the record"
+          run_oasdiff changelog /base/openapi.yaml /repo/openapi.yaml --flatten-allof
+          echo
+          if git log --no-merges --format='%s%n%b' HEAD^1..HEAD^2 | grep -Eq '^([a-z]+(\([^)]*\))?!:|BREAKING[ -]CHANGE:)'; then
+            echo "A commit of this pull request is marked as breaking, so the breaking changes below are on purpose"
+            run_oasdiff breaking /base/openapi.yaml /repo/openapi.yaml --flatten-allof
+          else
+            run_oasdiff breaking /base/openapi.yaml /repo/openapi.yaml --flatten-allof --fail-on WARN
+          fi
