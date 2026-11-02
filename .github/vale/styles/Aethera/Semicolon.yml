@@ -1,5 +1,5 @@
 extends: existence
-message: "If this semicolon joins two independent clauses, split them into two sentences or use a connector like 'and' or 'because'. If it separates list items, leave it."
+message: "Don't use a semicolon. Split the sentence in two, or use a connector like 'and' or 'because'. For a list, use commas or bullet points."
 level: error
 nonword: true
 raw:

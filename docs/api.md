@@ -48,7 +48,7 @@ Raw readings are kept 30 days. Hourly sums keep the number of samples, the sum, 
 
 ## Anomalies
 
-- A surge is a sample above 100 W that is over the usual high power of its UTC hour plus the larger of 100 W and 30 percent of that high power. This usual high power is not the `p95` of the working level. It is the mean of the highest power of that UTC hour on the last 15 days, plus the sensitivity multiple of the business times their standard deviation. It needs at least 7 days of history for that hour. An overload is the code 3 that the node reports. The service checks both when it stores a batch, only for a node that a business claimed and only for samples that are at most 2 hours old.
+- A surge is a sample above 100 W that is over the usual high power of its UTC hour plus the larger of 100 W and 30 percent of that high power. This usual high power is not the `p95` that sets the working level. It is the mean of the highest power of that UTC hour on the last 15 days, plus the sensitivity multiple of the business times their standard deviation. It needs at least 7 days of history for that hour. An overload is the code 3 that the node reports. The service checks both when it stores a batch, only for a node that a business claimed and only for samples that are at most 2 hours old.
 - The same node raises one anomaly of each kind in 6 hours. A failure of the check is logged and rolled back in a savepoint, so it does not lose the readings. When the savepoint itself fails, the batch fails and the gateway sends it again, which the sequence number makes safe.
 
 ## Tips and the check
