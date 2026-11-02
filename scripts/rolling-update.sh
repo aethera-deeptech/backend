@@ -196,6 +196,10 @@ half_done() {
     rest+=("$later")
   done
   echo "$failed was recreated on $version and is not healthy." >&2
+  # a database that does not answer makes every copy unhealthy, so going back to the old version would not help
+  if [[ "${answer:-}" == *'"database":"down"'* ]]; then
+    echo "The last answer says the database does not answer, so the new version may not be at fault. Check the database before going back." >&2
+  fi
   echo "Already healthy on $version ${updated[*]:-none}. Still on ${previous:-the old version} ${rest[*]:-none}." >&2
   echo "IMAGE_TAG in $env_file names $version now, so do not run docker compose up -d before the copies are checked, because it would recreate every copy on $version." >&2
   echo "Nothing was rolled back. To go back run $(go_back), and read the logs with docker compose logs $failed first." >&2

@@ -45,6 +45,19 @@ func New(d Deps) *fiber.App {
 		opts.Observe = d.Metrics.Middleware()
 	}
 
+	if d.Pool != nil {
+		opts.Pool = func() server.PoolStats {
+			st := d.Pool.Stat()
+
+			return server.PoolStats{Acquired: st.AcquiredConns(), Idle: st.IdleConns(), Max: st.MaxConns()}
+		}
+	}
+
+	opts.Mail = "log"
+	if cfg.SMTPHost != "" {
+		opts.Mail = "smtp"
+	}
+
 	app := server.New(opts)
 
 	limiter := auth.NewLimiter(d.Pool)
