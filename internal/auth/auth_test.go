@@ -296,6 +296,26 @@ func TestChangeEmailOnlyBeforeVerification(t *testing.T) {
 	}
 }
 
+func TestChangeEmailToTheSameAddressIsRefusedAfterTheCredentialsAreChecked(t *testing.T) {
+	e := testutil.New(t)
+	e.Register(t, "budi@example.com")
+
+	same := `{"email":"budi@example.com","password":"kata sandi baik","newEmail":"Budi@Example.com"}`
+
+	r := e.Call(t, http.MethodPost, "/v1/auth/change-email", same, "")
+	fields, _ := r.Body["fields"].(map[string]any)
+
+	if r.Status != http.StatusUnprocessableEntity || fields["newEmail"] != "invalid" {
+		t.Fatalf("the same address answered %d %v", r.Status, r.Body)
+	}
+
+	// a wrong password still answers 401, so the answer never says whether an address has an account
+	wrong := `{"email":"budi@example.com","password":"salah","newEmail":"budi@example.com"}`
+	if r := e.Call(t, http.MethodPost, "/v1/auth/change-email", wrong, ""); r.Status != http.StatusUnauthorized {
+		t.Fatalf("a wrong password with the same address answered %d", r.Status)
+	}
+}
+
 func TestTooManySignInsAreStopped(t *testing.T) {
 	e := testutil.New(t)
 	e.SignUp(t, "budi@example.com")

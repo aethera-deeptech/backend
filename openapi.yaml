@@ -299,7 +299,7 @@ paths:
       tags: [Account]
       operationId: changeEmail
       summary: Change the email of an account that is not verified yet
-      description: This is the "Ganti email" link of the verification screen. It needs the current email and password, because the user is not signed in. It sends a new verification email to the new address, and the older tokens stop working. A verified account cannot use it.
+      description: This is the "Ganti email" link of the verification screen. It needs the current email and password, because the user is not signed in. It sends a new verification email to the new address, and the older tokens stop working. A verified account cannot use it, and a new address that equals the current one answers 422 with `newEmail` invalid, also for a verified account, because that check comes first.
       security: []
       requestBody:
         required: true
@@ -319,7 +319,11 @@ paths:
             application/json:
               schema: {$ref: "#/components/schemas/VerificationSent"}
         "401": {$ref: "#/components/responses/InvalidCredentials"}
-        "409": {$ref: "#/components/responses/EmailTaken"}
+        "409":
+          description: The new address has an account (code `email_taken`), or the account is verified already and cannot change its address here (code `already_verified`)
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
         "422": {$ref: "#/components/responses/Validation"}
         "429": {$ref: "#/components/responses/RateLimited"}
         "4XX": {$ref: "#/components/responses/Error"}
@@ -943,7 +947,7 @@ paths:
       tags: [Gateway]
       operationId: enrollGateway
       summary: Ask for a claim code
-      description: "A gateway that has no key makes a random key of its own and calls this route with the SHA-256 of the 43 characters of the key text (not of the decoded bytes), written in lower case hex. The service never sees the key itself. The answer holds the claim code that the gateway shows and a poll id. The route has a limit for each address of the client and for each hardware id. The code and the poll id are random and work once."
+      description: "A gateway that has no key makes a random key of its own and calls this route with the SHA-256 of the key text exactly as it will send it in the bearer header (not of decoded bytes), written in lower case hex. The service accepts a key of 32 to 128 bytes of ASCII text, and 43 characters of base64url text from 32 random bytes is the recommendation. The service never sees the key itself. The answer holds the claim code that the gateway shows and a poll id. The route has a limit for each address of the client and for each hardware id. The code and the poll id are random and work once."
       security: []
       requestBody:
         required: true
@@ -1060,7 +1064,7 @@ components:
     gatewayKey:
       type: http
       scheme: bearer
-      description: "The key that the gateway made when it enrolled, sent as `Authorization: Bearer <key>`. The key is 32 random bytes in base64url (43 characters). The service stores only its SHA-256, so a copy of the database cannot act as a gateway. TLS protects the key in transit, and the sequence number makes a retry safe."
+      description: "The key that the gateway made when it enrolled, sent as `Authorization: Bearer <key>`. The key is 32 to 128 bytes of ASCII text, and 32 random bytes in base64url (43 characters) is the recommendation. The service stores only its SHA-256, so a copy of the database cannot act as a gateway. TLS protects the key in transit, and the sequence number makes a retry safe."
   headers:
     SessionCookie:
       description: The session cookie
