@@ -33,7 +33,7 @@ jobs:
     steps:
       - name: Check the version
         run: |
-          if ! printf '%s' "$TAG" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+          if ! [[ "$TAG" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "The tag must be a full version such as 0.4.0" >&2
             exit 1
           fi
@@ -65,6 +65,10 @@ jobs:
               echo "The two registries hold different images for ${TAG}, so nothing was signed" >&2
               exit 1
             fi
+          fi
+          if ! [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "The digest of ${TAG} does not look like a digest, so nothing was signed" >&2
+            exit 1
           fi
           echo "digest=${digest}" >> "$GITHUB_OUTPUT"
 
