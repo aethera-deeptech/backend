@@ -296,3 +296,15 @@ func (s *Store) zoneKnown(ctx context.Context, zone string) (bool, error) {
 
 	return known, nil
 }
+
+// SensitivityK is how many standard deviations the usual band of a device is wide. A business that wants more alerts has a narrower band.
+func SensitivityK(level string) float64 {
+	switch level {
+	case "tinggi":
+		return 2
+	case "rendah":
+		return 4
+	default:
+		return 3
+	}
+}

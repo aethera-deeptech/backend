@@ -108,3 +108,9 @@ func TestAGapOverAnHourIsNotCreditedFromTheCounter(t *testing.T) {
 	// the same counter over a normal gap is trusted
 	near(t, "short gap", energyBetween(prevAt, f(5), stored{t: prevAt.Add(time.Minute), watts: 600, energy: f(5.01)}), 0.01)
 }
+
+func TestSurgeLimit(t *testing.T) {
+	near(t, "small node", surgeLimit(100, 0, 3), 200)
+	near(t, "big node", surgeLimit(3000, 0, 3), 3900)
+	near(t, "spread counts", surgeLimit(100, 10, 3), 130+100)
+}
