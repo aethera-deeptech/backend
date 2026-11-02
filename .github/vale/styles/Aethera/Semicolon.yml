@@ -1,0 +1,6 @@
+extends: existence
+message: "If this semicolon joins two independent clauses, split them into two sentences or use a connector like 'and' or 'because'. If it separates list items, leave it."
+level: error
+nonword: true
+raw:
+  - ";"

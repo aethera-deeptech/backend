@@ -15,3 +15,4 @@ renovate.json
 .ls-lint.yml
 .node-version
 .shellcheckrc
+.vale.ini

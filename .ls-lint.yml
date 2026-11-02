@@ -65,8 +65,9 @@ ignore:
   - node_modules
   - dist
   - coverage
-  # GitHub names the issue forms by what the person sees
+  # GitHub names the issue forms by what the person sees, and Vale names a style after its folder
   - .github/ISSUE_TEMPLATE
+  - .github/vale/styles
   # kept as .yaml, openapi.yaml is the name that the OpenAPI specification recommends and redocly.yaml is the name that Redocly reads
   - openapi.yaml
   - redocly.yaml
