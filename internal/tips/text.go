@@ -103,6 +103,11 @@ func (f facts) whatToDo() string {
 	case "applied":
 		return "Lanjutkan kebiasaan baru sampai masa verifikasi selesai, supaya hasilnya bisa dibandingkan dengan benar. Catat produksi tiap hari."
 	case "verified":
+		// a check that found no drop, or a rise, gives no reason to keep the habit or to copy it
+		if f.hasResult && f.measuredKwh <= 0 {
+			return "Pemakaian energi per potong tidak turun setelah saran ini diterapkan. Hasil ini bisa dipengaruhi hal lain, misalnya jumlah produksi atau cuaca. Periksa lagi apakah alat benar-benar dimatikan di luar jam kerja."
+		}
+
 		return "Pertahankan kebiasaan ini. Anda bisa menerapkan cara yang sama pada alat lain."
 	case "rejected":
 		return "Anda menolak saran ini, jadi sistem tidak akan menyarankannya lagi untuk alat ini."
