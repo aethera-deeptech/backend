@@ -51,7 +51,7 @@ func TestTheFirstTipComesAfterSevenDaysOfData(t *testing.T) {
 	g.hours(t, 3*24, 1, 100, 0.1)
 
 	r := g.list(t)
-	if r.Body["phase"] != "collecting" || r.Body["neededDays"] != 7.0 || r.Body["items"] != nil || r.Body["businessName"] != "Usaha saya" {
+	if r.Body["phase"] != "collecting" || r.Body["neededDays"] != 7.0 || r.Body["items"] != nil || r.Body["businessName"] != "Toko Maju" {
 		t.Fatalf("three days gave %v", r.Body)
 	}
 

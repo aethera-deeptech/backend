@@ -1,6 +1,7 @@
 package home_test
 
 import (
+	"math"
 	"net/http"
 	"testing"
 	"time"
@@ -27,7 +28,7 @@ func TestTheShapeFollowsThePhase(t *testing.T) {
 	empty := e.SignUp(t, "kosong@example.com")
 	r := screen(t, e, empty)
 
-	if r.Body["phase"] != "no-devices" || r.Body["businessName"] != "Usaha saya" || r.Body["asOf"] == nil {
+	if r.Body["phase"] != "no-devices" || r.Body["businessName"] != "Toko Maju" || r.Body["asOf"] == nil {
 		t.Fatalf("no device gave %v", r.Body)
 	}
 
@@ -43,7 +44,24 @@ func TestTheShapeFollowsThePhase(t *testing.T) {
 	r = screen(t, e, g.Session)
 	top, _ := r.Body["topDevices"].([]any)
 
-	if r.Body["phase"] != "collecting" || r.Body["neededDays"] != 7.0 || r.Body["collectedDays"] != 3.0 || len(top) != 1 {
+	// the top devices count the month so far, so the hours of the last 3 days that fall in an earlier month are left out
+	wib, _ := time.LoadLocation("Asia/Jakarta")
+	nowHour := time.Now().Truncate(time.Hour)
+	monthStart := time.Date(nowHour.In(wib).Year(), nowHour.In(wib).Month(), 1, 0, 0, 0, 0, wib)
+	inMonth := 0
+
+	for h := 1; h <= 3*24; h++ {
+		if !nowHour.Add(-time.Duration(h) * time.Hour).Before(monthStart) {
+			inMonth++
+		}
+	}
+
+	wantTop := 1
+	if inMonth == 0 {
+		wantTop = 0
+	}
+
+	if r.Body["phase"] != "collecting" || r.Body["neededDays"] != 7.0 || r.Body["collectedDays"] != 3.0 || len(top) != wantTop {
 		t.Fatalf("three days gave %v", r.Body)
 	}
 
@@ -51,8 +69,10 @@ func TestTheShapeFollowsThePhase(t *testing.T) {
 		t.Fatal("a business that collects data has a bill")
 	}
 
-	if first, _ := top[0].(map[string]any); first["name"] != "Mesin jahit 1" || first["kwh"] != 7.2 {
-		t.Fatalf("the top device is %v", first)
+	if wantTop == 1 {
+		if first, _ := top[0].(map[string]any); first["name"] != "Mesin jahit 1" || first["kwh"] != math.Round(float64(inMonth)*0.1*10)/10 {
+			t.Fatalf("the top device is %v", first)
+		}
 	}
 }
 

@@ -52,7 +52,6 @@ type facts struct {
 	tariff                         int
 	tariffDefault                  bool
 	// the check of an applied tip
-	appliedOn            string
 	beforeKwh, afterKwh  float64
 	hasResult            bool
 	percent, measuredKwh float64
