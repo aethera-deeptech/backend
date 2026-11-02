@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-The project has no release yet. Only the `main` branch receives security fixes.
+Only the latest release and the `main` branch receive security fixes.
 
 ## Reporting a vulnerability
 
