@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       fuzztime:
-        description: How long each target runs, for example 30s or 5m, and at most 30m because the job stops after 45 minutes
+        description: How long each target runs, for example 30s or 5m, and keep it under 30m because the job stops after 45 minutes
         required: false
         default: 3m
         type: string
@@ -65,7 +65,7 @@ jobs:
 
       # Go writes the input that failed under testdata/fuzz of the package of the target
       - name: Keep the input that failed
-        if: ${{ !cancelled() }}
+        if: ${{ failure() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: fuzz-${{ matrix.target }}
