@@ -40,7 +40,7 @@ Set `METRICS_ADDRESS` (for example `:9100`) to serve the Prometheus text format 
 
 ## Clean up
 
-One copy at a time deletes what no rule needs any more, once an hour, and takes an advisory lock of PostgreSQL so the other copy skips the round. It removes sessions past their lifetime, used and expired email tokens, rate limit events older than two hours, and businesses whose email was not verified within 7 days together with their users. The table of the rate limits is UNLOGGED, so a count is not written to the log of the shared database, and a crash of the database empties it.
+One copy at a time deletes what no rule needs any more, once an hour, and takes an advisory lock of PostgreSQL so the other copy skips the round. It removes sessions past their lifetime, used and expired email tokens, rate limit events older than two hours, businesses whose email was not verified within 7 days together with their users, raw readings older than 30 days and hourly sums older than 400 days. The readings are removed in batches of 1000 rows, at most 100 batches in a round, and the log warns when a round reaches that cap. The table of anomalies has no clean up yet. The table of the rate limits is UNLOGGED, so a count is not written to the log of the shared database, and a crash of the database empties it.
 
 The `.env` file of a host holds only the values of this service. Do not copy values from another project onto the host.
 
@@ -55,7 +55,7 @@ Run `./rolling-update.sh <version>` on the host, in tmux or screen so a dropped 
 
 When a copy does not become healthy, the script stops and says which copies run the new version and which still run the old one, and it warns that a plain `docker compose up -d` would now recreate every copy on the new version. It rolls nothing back by itself. `DRY_RUN=1` prints the steps and changes nothing, and `TIMEOUT` sets how many seconds a copy gets to become healthy, 120 by default.
 
-To go back to an older version, run `ROLLBACK_OK=<version> ./rolling-update.sh <version>`. The extra word is a confirmation, because a newer version may have changed the database in a way that the older one cannot run on. The service has no migrations yet. Read the changelog before going back once it has.
+To go back to an older version, run `ROLLBACK_OK=<version> ./rolling-update.sh <version>`. The extra word is a confirmation, because a newer version may have changed the database in a way that the older one cannot run on. Read the changelog before going back, because a newer version may have added migrations.
 
 ## Check a copy
 
