@@ -1,6 +1,6 @@
 # Error codes
 
-A failed response of a route under `/v1` or `/device/v1` has one JSON form, so an app reads the `code` and the HTTP status and ignores the rest of the text. The routes `/healthz` and `/readyz` answer 503 with a small status body of their own. A proxy in front of the API can answer with another body or none, so an app checks the HTTP status first.
+A failed response of a route under `/v1` or `/device/v1` has one JSON form, so an app reads the `code` and the HTTP status and ignores the rest of the text. The routes `/healthz` and `/readyz` have a small status body of their own, and they answer 503 when the service is not healthy. A proxy in front of the API can answer with another body or none, so an app checks the HTTP status first.
 
 ```json
 {
