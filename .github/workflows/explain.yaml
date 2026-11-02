@@ -1,0 +1,134 @@
+name: Explain plans
+
+# Seeds a throwaway PostgreSQL 18 on the runner with a business that has many devices and a long history, calls every read route of
+# the app and the intake of readings, and writes the EXPLAIN plans of the statements that ran. The database is a container of the job
+# and never the one of the VPS, and nothing here touches production.
+#
+# A pull request that changes code that talks to the database runs it on a seed of 100 devices and 400 days with a time cap of a few
+# seconds for every call, so a query that grows with the data fails the pull request. Any other pull request ends the job at once
+# with a green result, which is why the job runs on every pull request and is a required check. A larger run is started by hand.
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      devices:
+        description: How many devices to seed, 100 by default and at most 2000
+        required: false
+        default: "100"
+        type: string
+
+concurrency:
+  group: explain-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  explain:
+    name: Query plans
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ github.event_name == 'pull_request' && 20 || 90 }}
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: mirror.gcr.io/library/postgres:18-alpine
+        env:
+          POSTGRES_USER: aethera
+          POSTGRES_PASSWORD: aethera
+          POSTGRES_DB: aethera_explain
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U aethera -d aethera_explain"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # the list of changed files is the difference with the base branch
+          fetch-depth: 0
+
+      # A run by hand always goes on. A pull request goes on only when it changes code that talks to the database, which is the
+      # repositories, the packages with queries of their own, the migrations, the database setup and this check itself.
+      - name: Find out whether the change touches the database
+        id: changes
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+
+          if [ "$EVENT" != "pull_request" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          pattern='^(go\.(mod|sum)$|cmd/|internal/(app|business|device|gateway|tips|home|report|production|auth|janitor|database|explain|testutil)/|\.github/workflows/explain\.yaml$)'
+
+          # the list is read first, because grep that stops at the first match would end a pipe early and git would fail under pipefail
+          changed="$(git diff --name-only "origin/${BASE_REF}...HEAD")"
+
+          if grep -E -q "$pattern" <<<"$changed"; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "No file that talks to the database changed, so the query plans are not checked." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Set up Go
+        if: ${{ steps.changes.outputs.run == 'true' }}
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - name: Seed the database and explain the queries
+        if: ${{ steps.changes.outputs.run == 'true' }}
+        env:
+          DEVICES: ${{ inputs.devices || '100' }}
+          QUERY_SECONDS: ${{ github.event_name == 'pull_request' && '10' || '60' }}
+          TEST_TIMEOUT: ${{ github.event_name == 'pull_request' && '15m' || '60m' }}
+          TEST_DB_HOST: 127.0.0.1
+          TEST_DB_PORT: "5432"
+          TEST_DB_USER: aethera
+          TEST_DB_PASSWORD: aethera
+        run: |
+          set -euo pipefail
+
+          if ! [[ "$DEVICES" =~ ^[0-9]{1,4}$ ]] || [ "$DEVICES" -lt 10 ] || [ "$DEVICES" -gt 2000 ]; then
+            echo "devices has to be a number from 10 to 2000" >&2
+            exit 1
+          fi
+
+          export EXPLAIN_DEVICES="$DEVICES"
+          export EXPLAIN_QUERY_TIMEOUT_SECONDS="$QUERY_SECONDS"
+          export EXPLAIN_OUT="$RUNNER_TEMP/explain-plans.txt"
+
+          # the summary is written even when the test failed, because the plans that exist are the point of the run
+          status=0
+          go test -tags explain -run TestExplainThePlansOfTheQueriesToWatch -count=1 -timeout "$TEST_TIMEOUT" -v ./internal/explain/ | tee "$RUNNER_TEMP/explain-log.txt" || status=$?
+
+          {
+            echo "### Plans of the queries to watch, $DEVICES devices and 400 days"
+            echo
+            echo '```'
+            grep -E '^(====|Execution Time|Planning Time|!! )' "$EXPLAIN_OUT" | cut -c1-200 || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          exit "$status"
+
+      - name: Keep the plans
+        if: ${{ !cancelled() && steps.changes.outputs.run == 'true' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: explain-plans
+          path: |
+            ${{ runner.temp }}/explain-plans.txt
+            ${{ runner.temp }}/explain-log.txt
+          if-no-files-found: ignore
+          retention-days: 14
