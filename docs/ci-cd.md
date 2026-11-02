@@ -7,7 +7,7 @@
 | `commits.yaml` | pull requests | Lints the commits of the pull request with commitlint and its Conventional Commits rules, which are set in `commitlint.config.mjs`, and checks the pull request title against the same types. It never cancels a run, runs the whole job on every edit, including an edit of the body only, and reads the title from the pull request when it runs, so editing the body of a pull request cannot leave a cancelled required check behind and a rerun checks the current title. Only the `Merge branch 'main' into <branch>` message of the Update branch button is skipped, so a `fixup!`, `squash!` or `Revert` message fails like any other, and the line lengths of the body and footer are not limited because Renovate writes long ones |
 | `prformat.yaml` | pull requests | Checks that the branch is named `type/short-description` with a type of Conventional Commits, that the pull request has a label and an assignee, and that the body is only hyphen bullets with text. A pull request that a bot opened (Renovate, Dependabot or Release Please) from its own branch is skipped. It never cancels a run and reads the pull request when it runs, so a rerun checks what the pull request looks like now. Adding or removing a label or an assignee starts a new run, and the newest run of the check is the one that counts |
 | `release-please.yaml` | push to main, manual | Keeps one release pull request with the next version and `CHANGELOG.md`. Merging that pull request creates the tag and the GitHub release. It runs in the `release` environment, which only `main` can use, and it creates its token from the GitHub App `syafa-bot`. It is not a required check |
-| `config.yaml` | push to main, pull requests, manual | Lints the configuration of the repository with the nine jobs below |
+| `config.yaml` | push to main, pull requests, manual | Lints the configuration of the repository with the ten jobs below |
 | `migrations.yaml` | pull requests, manual | squawk lints the `.up.sql` migrations that a pull request adds or changes, with the settings of `.squawk.toml`, for the operations that lock a table or break the copy that still runs during a rolling update. Any other pull request ends the job at once with a green result, so `Migration lint` is a required check. A change of the workflow, of the settings or of the squawk image in `.github/tools/Dockerfile`, and a run by hand, also print the findings for every migration in the summary, for information. On such a change the job also fails when squawk rejects `.squawk.toml` |
 | `links.yaml` | weekly on Monday at 02:00 UTC, manual | Checks every link of the Markdown files in the root and in `docs` with lychee, and fails on a dead link. It never runs on pull requests, so a site that is down for a day cannot block a merge, and it is not a required check. A status of 429 counts as alive, and lychee skips code blocks |
 | `openapi-diff.yaml` | pull requests | Compares `openapi.yaml` of the pull request with the one on `main` with oasdiff and fails on a breaking change or a warning of oasdiff, such as a removed route, a removed or renamed field, a removed parameter, a field that changes type or a new required request field. A pull request that has a commit marked as breaking (`type(scope)!: summary` or a `BREAKING CHANGE:` footer) only prints the changes. That is the mark that Release Please reads for the version bump. A pull request that leaves the file alone ends the job at once with a green result, so `OpenAPI breaking changes` is a required check. The job runs oasdiff with no network |
@@ -31,6 +31,7 @@
 | `config.yaml` | Hadolint | The `Dockerfile` against the rules of Hadolint, which also lints the shell commands in it |
 | `config.yaml` | Dotenv lint | The names and the form of the settings in `.env.example`, with dotenv-linter. The order of the keys is not checked, because the file is grouped by topic |
 | `config.yaml` | Compose config | `docker compose config` on `compose.production.example.yml` and on `compose.yml` with `compose.ci.yml`, with the settings of `.env.example`. It builds and starts nothing, so it keeps the example from drifting away from the settings |
+| `config.yaml` | Python lint | The Python scripts, with ruff and the naming rules of `ruff.toml` |
 | `config.yaml` | File names | The names of the files and folders against `.ls-lint.yml`, with ls-lint |
 | `config.yaml` | Renovate config | `renovate.json` against the schema of Renovate, in strict mode, so a renamed or removed option fails |
 | `ci.yaml` | Lint | `gofmt`, that `go.mod` and `go.sum` are tidy, `go vet`, and golangci-lint with the linters of `.golangci.yml` |
@@ -67,6 +68,7 @@ Every check below is required and is reported by GitHub Actions.
 | Compose config | GitHub Actions | yes |
 | File names | GitHub Actions | yes |
 | Renovate config | GitHub Actions | yes |
+| Python lint | GitHub Actions | yes |
 | Migration lint | GitHub Actions | yes |
 | OpenAPI breaking changes | GitHub Actions | yes |
 | Vale prose lint | GitHub Actions | yes |
@@ -155,14 +157,14 @@ The Renovate config job runs `renovate-config-validator --strict` on every pull 
 
 A dependency update bot cannot read a tool that is named inside a `run` step, so the tools of the jobs are listed where it can.
 
-- `.github/tools/Dockerfile` has one stage for each image that a job starts with `docker run`, which are actionlint, zizmor, ShellCheck, Hadolint, dotenv-linter, Redocly, gitleaks, squawk and oasdiff. Nothing builds it. The workflows get the image from `.github/tools/image.sh <stage>`, so the version of a bump is the version the jobs run.
+- `.github/tools/Dockerfile` has one stage for each image that a job starts with `docker run`, which are actionlint, zizmor, ShellCheck, Hadolint, dotenv-linter, Redocly, gitleaks, squawk, oasdiff and ruff. Nothing builds it. The workflows get the image from `.github/tools/image.sh <stage>`, so the version of a bump is the version the jobs run.
 - The versions of ls-lint and of the Renovate validator sit in the `env` of their steps. A comment such as `# renovate: datasource=npm depName=@ls-lint/ls-lint` right above the line tells Renovate where to look, so keep the comment when you edit the line.
 
 All actions are pinned to commit SHAs with the version in a comment, and the setting "require actions to be pinned to a full-length commit SHA" is on for the repository.
 
 ## Pulling images
 
-Docker Hub limits anonymous pulls per IP address, and every GitHub runner shares its addresses with many other users. The jobs that start a Docker Hub tool image therefore pull it through `.github/actions/pull-images`. The Zizmor image comes from ghcr.io, which has no such limit, so that job pulls it as it is.
+Docker Hub limits anonymous pulls per IP address, and every GitHub runner shares its addresses with many other users. The jobs that start a Docker Hub tool image therefore pull it through `.github/actions/pull-images`. The Zizmor, squawk and ruff images come from ghcr.io, which has no such limit, so those jobs pull them as they are.
 
 - The action adds `mirror.gcr.io` to the registry mirrors of the Docker daemon, which serves the popular Docker Hub images without the limit.
 - It then logs in to Docker Hub with a read-only token, so an image that the mirror does not have is pulled as a known account. A login that fails does not fail the job.
