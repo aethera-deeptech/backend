@@ -16,7 +16,7 @@
 # and which are still old, and prints the command that goes back. Nothing is rolled back by itself.
 #
 # Going back to an older version is allowed only when ROLLBACK_OK is set to that version, because a newer version may have applied
-# a database migration that the older version cannot run on. The service has no migrations yet. Read the changelog first once it has.
+# a database migration that the older version cannot run on. Read the changelog first, because a newer version may have added migrations.
 #
 # Settings, all optional, given as environment variables
 #   COMPOSE_DIR   the folder with the compose file and the env file, default the folder of this script
