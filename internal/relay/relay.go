@@ -105,13 +105,15 @@ func noRelay() *api.Error {
 
 // plug finds a device of the business and says that it is a plug. A device of another business is not found.
 func (s *Service) plug(ctx context.Context, q querier, businessID, deviceID string) (gatewayID, nodeID string, err error) {
-	if _, err := uuid.Parse(deviceID); err != nil {
+	// the parsed value goes to the query, because uuid.Parse also accepts the urn:uuid: form that PostgreSQL does not
+	id, err := uuid.Parse(deviceID)
+	if err != nil {
 		return "", "", api.NotFound()
 	}
 
 	var kind string
 
-	err = q.QueryRow(ctx, "SELECT gateway_id, node_id, kind FROM devices WHERE id = $1 AND business_id = $2", deviceID, businessID).Scan(&gatewayID, &nodeID, &kind)
+	err = q.QueryRow(ctx, "SELECT gateway_id, node_id, kind FROM devices WHERE id = $1 AND business_id = $2", id.String(), businessID).Scan(&gatewayID, &nodeID, &kind)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", "", api.NotFound()
 	}

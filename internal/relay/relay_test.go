@@ -400,3 +400,20 @@ func TestTooManyResultsAreRefused(t *testing.T) {
 		t.Fatalf("65 results answered %d", got.Status)
 	}
 }
+
+func TestAnIdInUrnFormIsIgnoredAndDoesNotBreakTheBatch(t *testing.T) {
+	r := newRig(t)
+
+	r.command(t, "off")
+
+	// the urn form parses as a uuid, but PostgreSQL does not take it, so it must not reach a query
+	r.batch(t, nil, `[{"id":"urn:uuid:6ba7b810-9dad-11d1-80b4-00c04fd430c8","ok":true}]`)
+
+	if got := r.e.Call(t, http.MethodGet, "/v1/devices/urn:uuid:6ba7b810-9dad-11d1-80b4-00c04fd430c8/relay", "", r.g.Session); got.Status != http.StatusNotFound {
+		t.Fatalf("a device id in urn form answered %d", got.Status)
+	}
+
+	if v := r.relayView(t); v["pending"] == nil {
+		t.Fatalf("the batch lost the command %v", v)
+	}
+}

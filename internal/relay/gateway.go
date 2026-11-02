@@ -70,7 +70,10 @@ func Complete(ctx context.Context, q Querier, gatewayID string, results []Result
 			break
 		}
 
-		if _, err := uuid.Parse(r.ID); err != nil {
+		// the parsed value goes to the query, because uuid.Parse also accepts the urn:uuid: form that PostgreSQL does not, and a query
+		// that fails would fail the whole batch for ever
+		id, err := uuid.Parse(r.ID)
+		if err != nil {
 			ignored++
 
 			continue
@@ -78,7 +81,7 @@ func Complete(ctx context.Context, q Querier, gatewayID string, results []Result
 
 		tag, err := q.Exec(ctx,
 			"UPDATE relay_commands SET status = CASE WHEN $3 THEN 'applied' ELSE 'failed' END, done_at = now() WHERE id = $1 AND gateway_id = $2 AND status IN ('pending', 'sent')",
-			r.ID, gatewayID, r.OK)
+			id.String(), gatewayID, r.OK)
 		if err != nil {
 			return ignored, fmt.Errorf("store a result %w", err)
 		}
@@ -89,11 +92,12 @@ func Complete(ctx context.Context, q Querier, gatewayID string, results []Result
 			continue
 		}
 
-		// a switch that worked moves the state of the node at once, and a sample that the plug sends later moves it again
+		// a switch that worked moves the state of the node at once, unless a sample of the same batch is newer, and a sample that the plug
+		// sends later moves it again
 		if r.OK {
 			if _, err := q.Exec(ctx,
-				"UPDATE nodes n SET relay_on = (c.action = 'on'), relay_at = now() FROM relay_commands c WHERE c.id = $1 AND n.gateway_id = c.gateway_id AND n.node_id = c.node_id",
-				r.ID); err != nil {
+				"UPDATE nodes n SET relay_on = (c.action = 'on'), relay_at = now() FROM relay_commands c WHERE c.id = $1 AND n.gateway_id = c.gateway_id AND n.node_id = c.node_id AND (n.relay_at IS NULL OR n.relay_at < now())",
+				id.String()); err != nil {
 				return ignored, fmt.Errorf("move the state of the relay %w", err)
 			}
 		}
