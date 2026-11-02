@@ -222,6 +222,7 @@ func plans(t *testing.T, pool *pgxpool.Pool, list []statement, out string) {
 		rows, err := tx.Query(t.Context(), "EXPLAIN (ANALYZE, BUFFERS) "+s.sql, s.args...)
 		if err != nil {
 			fmt.Fprintf(&b, "!! EXPLAIN of this statement failed %v\n", err)
+			t.Errorf("explain %q %v", s.sql[:min(len(s.sql), 80)], err)
 			_ = tx.Rollback(t.Context())
 
 			continue
@@ -231,6 +232,7 @@ func plans(t *testing.T, pool *pgxpool.Pool, list []statement, out string) {
 			var line string
 			if err := rows.Scan(&line); err != nil {
 				fmt.Fprintf(&b, "!! reading the plan failed %v\n", err)
+				t.Errorf("read a plan %v", err)
 
 				break
 			}
@@ -240,6 +242,7 @@ func plans(t *testing.T, pool *pgxpool.Pool, list []statement, out string) {
 
 		if err := rows.Err(); err != nil {
 			fmt.Fprintf(&b, "!! reading the plan failed %v\n", err)
+			t.Errorf("read a plan %v", err)
 		}
 
 		rows.Close()
