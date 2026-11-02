@@ -25,9 +25,15 @@ const (
 
 var shortMonths = [...]string{"Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"}
 
-// PDF returns the report of a month as one A4 page with the name that the app saves it under
+// PDF returns the report of a month or a week as one A4 page with the name that the app saves it under
 func (s *Service) PDF(ctx context.Context, businessID, period string) ([]byte, string, error) {
-	if !periodPattern.MatchString(period) {
+	granularity := Month
+
+	switch {
+	case periodPattern.MatchString(period):
+	case weekPattern.MatchString(period):
+		granularity = Week
+	default:
 		return nil, "", api.NotFound()
 	}
 
@@ -40,17 +46,33 @@ func (s *Service) PDF(ctx context.Context, businessID, period string) ([]byte, s
 		return nil, "", api.NotFound()
 	}
 
-	start, err := time.Parse("2006-01", period)
+	// only the dates are drawn, so the time zone of the business does not matter here
+	start, end, err := bounds(period, granularity, time.UTC)
 	if err != nil {
 		return nil, "", api.NotFound()
 	}
 
+	label, name := monthLabel(start), fmt.Sprintf("Laporan-%s-%d.pdf", monthNames[start.Month()-1], start.Year())
+	if granularity == Week {
+		_, week := start.ISOWeek()
+		last := end.AddDate(0, 0, -1)
+		from := throughLabel(start)
+
+		// a week that crosses the new year names the year of its first day too
+		if start.Year() != last.Year() {
+			from = fmt.Sprintf("%s %d", from, start.Year())
+		}
+
+		label = fmt.Sprintf("minggu ke-%d, %s sampai %s %d", week, from, throughLabel(last), last.Year())
+		name = fmt.Sprintf("Laporan-Minggu-%s.pdf", period)
+	}
+
 	var buf bytes.Buffer
-	if err := render(&buf, r, start); err != nil {
+	if err := render(&buf, r, label); err != nil {
 		return nil, "", err
 	}
 
-	return buf.Bytes(), fmt.Sprintf("Laporan-%s-%d.pdf", monthNames[start.Month()-1], start.Year()), nil
+	return buf.Bytes(), name, nil
 }
 
 func throughLabel(t time.Time) string {
@@ -67,7 +89,7 @@ func countLine(n int, none, some string) string {
 
 // render draws the page. It uses the built in Helvetica, so the file needs no font files, and the text is cut to the Windows Latin
 // alphabet, which holds every letter of Indonesian. A letter outside it, in the name of a business, is drawn as a dot.
-func render(buf *bytes.Buffer, r Report, start time.Time) error {
+func render(buf *bytes.Buffer, r Report, label string) error {
 	pdf := fpdf.NewCustom(&fpdf.InitType{UnitStr: "pt", Size: fpdf.SizeType{Wd: pageW, Ht: pageH}})
 	pdf.SetMargins(marginX, marginY, marginX)
 	pdf.SetAutoPageBreak(false, 0)
@@ -76,10 +98,13 @@ func render(buf *bytes.Buffer, r Report, start time.Time) error {
 
 	tr := pdf.UnicodeTranslatorFromDescriptor("")
 	width := pageW - 2*marginX
-	label := monthLabel(start)
-
+	// the label of a week already names its seven days, so the date of the data comes after it in other words
 	if r.Through != nil {
-		label += ", sampai " + throughLabel(*r.Through)
+		if r.Granularity == Week {
+			label += ", data sampai " + throughLabel(*r.Through)
+		} else {
+			label += ", sampai " + throughLabel(*r.Through)
+		}
 	}
 
 	pdf.SetFont("Helvetica", "B", 20)
@@ -157,6 +182,9 @@ func render(buf *bytes.Buffer, r Report, start time.Time) error {
 	title := "Energi per alat, 4 teratas (kWh)"
 	if r.Through != nil {
 		title = "Energi per alat bulan ini, 4 teratas (kWh)"
+		if r.Granularity == Week {
+			title = "Energi per alat minggu ini, 4 teratas (kWh)"
+		}
 	}
 
 	top := sortedTop(*r.TopDevices)

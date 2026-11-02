@@ -905,12 +905,12 @@ paths:
     get:
       tags: [Laporan]
       operationId: getReport
-      summary: Read the report of a month
-      description: Without `period` the answer is the running month. A month that has no report answers 404.
+      summary: Read the report of a month or a week
+      description: Without `period` the answer is the running month. A period is a month such as `2026-09` or an ISO week such as `2026-W37`, which runs from Monday to Sunday in the time zone of the business. A period that has no report answers 404, and a period that is not shaped like either answers 422.
       parameters:
         - name: period
           in: query
-          schema: {type: string, pattern: "^[0-9]{4}-(0[1-9]|1[0-2])$", examples: ["2026-09"]}
+          schema: {type: string, pattern: "^[0-9]{4}-(0[1-9]|1[0-2]|W(0[1-9]|[1-4][0-9]|5[0-3]))$", examples: ["2026-09", "2026-W37"]}
       responses:
         "200":
           description: The report
@@ -923,11 +923,11 @@ paths:
         "4XX": {$ref: "#/components/responses/Error"}
   /v1/reports/{period}/pdf:
     parameters:
-      - {name: period, in: path, required: true, schema: {type: string, pattern: "^[0-9]{4}-(0[1-9]|1[0-2])$"}}
+      - {name: period, in: path, required: true, schema: {type: string, pattern: "^[0-9]{4}-(0[1-9]|1[0-2]|W(0[1-9]|[1-4][0-9]|5[0-3]))$"}}
     get:
       tags: [Laporan]
       operationId: getReportPdf
-      summary: Download the report of a month as one A4 page
+      summary: Download the report of a month or a week as one A4 page
       responses:
         "200":
           description: The PDF
@@ -1352,17 +1352,22 @@ components:
           items: {$ref: "#/components/schemas/ProductionRecord"}
     Report:
       type: object
-      required: [phase, period, periods]
+      required: [phase, granularity, period, periods, weeks]
       properties:
         phase: {type: string, enum: [no-devices, collecting, ready]}
-        period: {type: string, pattern: "^[0-9]{4}-(0[1-9]|1[0-2])$"}
+        granularity: {type: string, enum: [month, week], description: month for a period such as 2026-09 and week for a period such as 2026-W37}
+        period: {type: string, pattern: "^[0-9]{4}-(0[1-9]|1[0-2]|W(0[1-9]|[1-4][0-9]|5[0-3]))$", description: "A month such as 2026-09 or an ISO week such as 2026-W37, as granularity says", examples: ["2026-09", "2026-W37"]}
         periods:
           type: array
           description: The months that have a report, newest first
           items: {type: string, pattern: "^[0-9]{4}-(0[1-9]|1[0-2])$"}
+        weeks:
+          type: array
+          description: The ISO weeks that have a report, newest first, as many as the 400 days that the hourly sums are kept
+          items: {type: string, pattern: "^[0-9]{4}-W(0[1-9]|[1-4][0-9]|5[0-3])$"}
         collectedDays: {type: integer, minimum: 0, description: Only with collecting}
         neededDays: {type: integer, minimum: 0, description: Only with collecting}
-        through: {type: string, format: date-time, description: Only for the running month}
+        through: {type: string, format: date-time, description: Only for the running month or the running week}
         tariff:
           type: object
           description: The tariff of the report, so the text can say that the default was used
