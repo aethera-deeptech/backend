@@ -153,7 +153,7 @@ jobs:
       - name: Lint the example env file
         run: |
           docker run --rm -v "$PWD:/app:ro" -w /app "$(bash ./.github/actions/pull-images/pull.sh "$(bash ./.github/tools/image.sh dotenv-linter)")" \
-            check --skip-updates --plain --ignore-checks UnorderedKey .env.example
+            check --skip-updates --plain --ignore-checks UnorderedKey .env.example grafana/alloy/.env.example
 
   compose:
     name: Compose config
@@ -172,6 +172,7 @@ jobs:
       - name: Check the compose file
         run: |
           cp .env.example .env
+          cp grafana/alloy/.env.example grafana/alloy/.env
           IMAGE_TAG=ci docker compose -f compose.production.example.yml config --quiet
           GO_IMAGE=golang:ci docker compose -f compose.yml -f compose.ci.yml config --quiet
 
