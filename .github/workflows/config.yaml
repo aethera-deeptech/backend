@@ -175,6 +175,24 @@ jobs:
           IMAGE_TAG=ci docker compose -f compose.production.example.yml config --quiet
           GO_IMAGE=golang:ci docker compose -f compose.yml -f compose.ci.yml config --quiet
 
+  python:
+    name: Python lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # the image comes from ghcr.io, which has no pull limit like Docker Hub, so there is no mirror step
+      # the rules are in ruff.toml, and the folder is mounted read only, so the cache of ruff is off
+      - name: Check the names in the Python scripts
+        run: |
+          docker run --rm -v "$PWD:/io:ro" -w /io "$(bash ./.github/tools/image.sh ruff)" check --no-cache --output-format github .
+
   names:
     name: File names
     runs-on: ubuntu-latest
