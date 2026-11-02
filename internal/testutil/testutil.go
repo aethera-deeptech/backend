@@ -97,7 +97,13 @@ type Env struct {
 func New(t *testing.T) *Env {
 	t.Helper()
 
-	pool := dbtest.New(t)
+	return NewOn(t, dbtest.New(t))
+}
+
+// NewOn builds the application on a pool that the caller made, for a test that needs to watch the queries of the pool
+func NewOn(t *testing.T, pool *pgxpool.Pool) *Env {
+	t.Helper()
+
 	mail := &Outbox{verify: map[string]string{}, reset: map[string]string{}}
 
 	cfg := config.Config{AppEnv: config.EnvProduction, AppOrigin: Origin}
