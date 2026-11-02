@@ -15,8 +15,9 @@ func (g *rig) send(t *testing.T, node string, watts float64, age time.Duration, 
 
 	g.seq++
 
-	// readings are unique for each second of a node, so every call goes back a second more than the one before and never meets the pairing reading
-	at := time.Now().Add(-age - time.Duration(g.seq)*time.Second).Unix()
+	// readings are unique for each second of a node, so every call goes back 10 seconds more than the one before, which a slow call
+	// cannot bridge, and never meets the pairing reading
+	at := time.Now().Add(-age - time.Duration(g.seq)*10*time.Second).Unix()
 	extra := ""
 
 	if state != nil {
@@ -46,12 +47,12 @@ func (g *rig) anomalies(t *testing.T) int {
 func (g *rig) usual(t *testing.T, days int, high float64) {
 	t.Helper()
 
-	// the samples of a test go back a few seconds, so the hour that was 15 seconds ago is seeded as well, and a test that runs across the
+	// the samples of a test go back a few seconds, so the hour that was 90 seconds ago is seeded as well, and a test that runs across the
 	// turn of an hour still finds its history
 	g.e.Exec(t, "INSERT INTO readings_hourly (gateway_id, node_id, hour, samples, sum_watts, max_watts, min_watts) "+
 		"SELECT n.gateway_id, n.node_id, h - make_interval(days => d), 10, $2::float8 * 10, $2, 1 "+
 		"FROM nodes n, generate_series(1, $1) d, "+
-		"(SELECT date_trunc('hour', now()) AS h UNION SELECT date_trunc('hour', now() - interval '15 seconds')) hours "+
+		"(SELECT date_trunc('hour', now()) AS h UNION SELECT date_trunc('hour', now() - interval '90 seconds')) hours "+
 		"ON CONFLICT DO NOTHING", days, high)
 }
 
