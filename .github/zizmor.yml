@@ -4,5 +4,6 @@ rules:
     ignore:
       - config.yaml
       - openapi-diff.yaml
+      - perf.yaml
       - security.yaml
       - smoke-stack.yaml

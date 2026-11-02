@@ -1,0 +1,154 @@
+name: Performance
+
+# Builds the image, starts it with a throwaway database, makes a business with gateways and plugs with k6/prepare.py, and runs a k6
+# script against it. A pull request gets the 30 second smoke script, the nightly run and a manual run get the load script.
+on:
+  pull_request:
+    branches: [main]
+  schedule:
+    # Daily at 21:00 UTC (04:00 WIB). GitHub often starts scheduled runs a few hours late.
+    - cron: "0 21 * * *"
+  workflow_dispatch:
+    inputs:
+      script:
+        description: Which k6 script to run
+        type: choice
+        options: [smoke, load]
+        default: load
+
+concurrency:
+  group: perf-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  k6:
+    name: k6 performance test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    env:
+      SCRIPT: ${{ github.event_name == 'workflow_dispatch' && inputs.script || (github.event_name == 'schedule' && 'load' || 'smoke') }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Pull images through the Google mirror
+        uses: ./.github/actions/pull-images
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          token: ${{ secrets.DOCKERHUB_PULL_TOKEN }}
+
+      - name: Create the environment file
+        run: |
+          cp .env.example .env
+          go_image="$(grep -oE 'golang:[0-9][^ "]*@sha256:[0-9a-f]{64}' Dockerfile | head -1)"
+          test -n "$go_image" || { echo "no pinned golang image in the Dockerfile" >&2; exit 1; }
+          {
+            echo "APP_ENV=development"
+            echo "DB_PASSWORD=$(openssl rand -hex 16)"
+            echo "GO_IMAGE=${go_image}"
+          } >> .env
+
+      # compose.ci.yml builds the image from this pull request and caps the memory of every container
+      - name: Start the stack
+        run: docker compose -f compose.yml -f compose.ci.yml up -d --build --wait --wait-timeout 240
+
+      - name: Make the data for the test
+        run: python3 -I k6/prepare.py
+        env:
+          BASE_URL: http://127.0.0.1:8080
+          SMOKE_LOG_CMD: docker compose -f compose.yml -f compose.ci.yml logs --no-color --no-log-prefix api
+
+      - name: Set up k6
+        uses: grafana/setup-k6-action@43b9fc21641a76002687994433dd586f56e791b1 # v1.2.2
+        with:
+          # renovate: datasource=github-releases depName=grafana/k6
+          k6-version: "2.3.0"
+
+      - name: Run k6
+        env:
+          BASE_URL: http://127.0.0.1:8080
+        run: |
+          # one sample of the container memory every 30 seconds, so the summary can show whether it keeps growing
+          (
+            while true; do
+              docker stats --no-stream --format '{{.Name}} {{.MemUsage}}' | sed "s/^/$(date +%s) /"
+              sleep 30
+            done
+          ) > memory-timeline.txt &
+          sampler=$!
+
+          status=0
+          k6 run --summary-export=k6-summary.json "k6/${SCRIPT}.js" || status=$?
+
+          kill "$sampler" 2>/dev/null || true
+          exit "$status"
+
+      - name: Check that no container was killed or restarted
+        if: ${{ !cancelled() }}
+        run: |
+          docker stats --no-stream --format 'table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}' | tee stats.txt
+          failed=0
+          for id in $(docker compose -f compose.yml -f compose.ci.yml ps -q); do
+            name="$(docker inspect -f '{{.Name}}' "$id")"
+            oom="$(docker inspect -f '{{.State.OOMKilled}}' "$id")"
+            restarts="$(docker inspect -f '{{.RestartCount}}' "$id")"
+            if [ "$oom" != "false" ] || [ "$restarts" != "0" ]; then
+              echo "::error::${name} was killed or restarted (OOMKilled=$oom, restarts=$restarts)"
+              failed=1
+            fi
+          done
+          exit "$failed"
+
+      - name: Write the summary
+        if: ${{ !cancelled() && hashFiles('k6-summary.json') != '' }}
+        run: |
+          {
+            echo "### k6 ${SCRIPT} results"
+            echo
+            echo "| Endpoint | p95 |"
+            echo "|:---|---:|"
+            jq -r '.metrics | to_entries[] | select(.key | test("^http_req_duration\\{endpoint:")) | "| \(.key | capture("endpoint:(?<name>[a-z_]+)").name) | \(.value["p(95)"] | floor) ms |"' k6-summary.json
+            echo
+            jq -r '"Failed requests \(.metrics.http_req_failed.value * 100 | . * 100 | round / 100) percent, checks passed \(.metrics.checks.value * 100 | . * 100 | round / 100) percent."' k6-summary.json
+            echo
+            echo '```'
+            cat stats.txt
+            echo '```'
+            if [ -s memory-timeline.txt ]; then
+              echo
+              echo "| Container | First sample | Last sample |"
+              echo "|:---|---:|---:|"
+              for name in $(awk '{print $2}' memory-timeline.txt | sort -u); do
+                first="$(grep " ${name} " memory-timeline.txt | head -1 | awk '{print $3}')"
+                last="$(grep " ${name} " memory-timeline.txt | tail -1 | awk '{print $3}')"
+                echo "| ${name} | ${first} | ${last} |"
+              done
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Collect container logs
+        if: ${{ !cancelled() }}
+        run: docker compose -f compose.yml -f compose.ci.yml logs --no-color > compose.log
+
+      # k6/setup.json holds the session and the gateway keys of the throwaway stack, so it is not in the list
+      - name: Upload the results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: k6-results
+          path: |
+            k6-summary.json
+            stats.txt
+            memory-timeline.txt
+            compose.log
+          if-no-files-found: ignore
+
+      - name: Stop the stack
+        if: ${{ always() }}
+        run: docker compose -f compose.yml -f compose.ci.yml down -v
