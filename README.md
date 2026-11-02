@@ -4,19 +4,16 @@ Backend of an energy audit dashboard for small businesses (UMKM) in Indonesia, b
 
 ## Status
 
-This repository holds the repository baseline and the first piece of the service, a Go program with a health route, a readiness route, a loader for its settings and a PostgreSQL layer with embedded migrations. It has no API routes yet. The routes that the frontend reads are listed in `docs/api-assumptions.md` of the frontend repository. This repository will publish its own API description when the routes exist.
+The service is built and runs in production. It is a Go program with a PostgreSQL database that serves a JSON API under `/v1` for the dashboard and a device API under `/device/v1` for the gateways. The contract is [openapi.yaml](openapi.yaml), and [docs/api.md](docs/api.md) explains the decisions behind it. [ROADMAP.md](ROADMAP.md) lists what is done and what is planned.
 
-## Plan
+## How it fits together
 
-These choices are made and not built yet.
-
-- A service written in Go with a PostgreSQL database
-- A JSON REST API under `/v1` that the dashboard calls with a session cookie
-- One business for each account, with a tenant id on every row so that more people can join a business later
-- Readings from the devices of a business, which reach the service through one hub over HTTPS
-- Tips, forecasts and monthly reports that the service calculates from those readings
-- A Docker image published signed to GitHub Container Registry and mirrored to Docker Hub
-- Release Please for the version and the changelog
+- Each account has one business, and every table points to the business, so more people can join a business later.
+- The dashboard calls the API with a session cookie.
+- The devices of a business reach the service through one gateway over HTTPS, see the [firmware guide](docs/firmware-guide.md).
+- The service works out the tips, the anomalies, the bill so far and the monthly and weekly reports from the readings.
+- A Docker image is published signed to GitHub Container Registry and mirrored to Docker Hub. [Operations](docs/operations.md) explains how to run it.
+- Release Please makes the version and the changelog.
 
 ## Contributing
 

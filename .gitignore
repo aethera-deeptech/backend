@@ -32,6 +32,7 @@ __pycache__/
 
 # The data that k6/prepare.py makes for a run, with a session and gateway keys of a throwaway stack
 k6/setup.json
+zap-out/
 
 # Keys and certificates
 *.pem

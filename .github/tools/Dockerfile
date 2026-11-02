@@ -9,4 +9,5 @@ FROM redocly/cli:2.70.0@sha256:f09828706881234790394d0f4032b2956c902f093e80ef08a
 FROM zricethezav/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f AS gitleaks
 FROM ghcr.io/sbdchd/squawk:2.70.0@sha256:95707f5660dfadbc61cf9d9565384b54d157dcb4e8d3c30db78dd7056be293e9 AS squawk
 FROM tufin/oasdiff:v1.34.0@sha256:dd742562c1f3146f6e2a80bc01951cc87d15a249ac2aca05665339e30cf03620 AS oasdiff
+FROM ghcr.io/zaproxy/zaproxy:stable@sha256:5ccfff9a411743ab2615136a2edd7416bec9ce41572fa94e935df38c14adb2b6 AS zaproxy
 FROM ghcr.io/astral-sh/ruff:0.17.2@sha256:d69a8c8d529a866a6aaea0dfda672693d68671a08827db765514abc1571a78a0 AS ruff
