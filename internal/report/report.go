@@ -342,7 +342,11 @@ func (s *Service) saving(ctx context.Context, businessID string, ov tips.Overvie
 			upTo = end.Add(-time.Second)
 		}
 
-		days := int(day(upTo, ov.Location).Sub(day(*newestApplied, ov.Location))/(24*time.Hour)) + 1
+		// the days are counted between calendar dates, because two local midnights can be 23 or 25 hours apart where the clock changes
+		appliedDay, upToDay := day(*newestApplied, ov.Location), day(upTo, ov.Location)
+		appliedDate := time.Date(appliedDay.Year(), appliedDay.Month(), appliedDay.Day(), 0, 0, 0, 0, time.UTC)
+		upToDate := time.Date(upToDay.Year(), upToDay.Month(), upToDay.Day(), 0, 0, 0, 0, time.UTC)
+		days := int(upToDate.Sub(appliedDate)/(24*time.Hour)) + 1
 		out.Applied.Day = min(max(days, 1), tips.VerifyDays)
 	}
 
