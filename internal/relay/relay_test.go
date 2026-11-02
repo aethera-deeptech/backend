@@ -417,3 +417,24 @@ func TestAnIdInUrnFormIsIgnoredAndDoesNotBreakTheBatch(t *testing.T) {
 		t.Fatalf("the batch lost the command %v", v)
 	}
 }
+
+func TestARealDeviceAddressedInUrnFormWorksOnEveryRoute(t *testing.T) {
+	r := newRig(t)
+	base := "/v1/devices/urn:uuid:" + r.g.Device
+
+	if got := r.e.Call(t, http.MethodPost, base+"/relay", `{"state":"off"}`, r.g.Session); got.Status != http.StatusAccepted {
+		t.Fatalf("the command answered %d %v", got.Status, got.Body)
+	}
+
+	if got := r.e.Call(t, http.MethodGet, base+"/relay", "", r.g.Session); got.Status != http.StatusOK || got.Body["pending"] == nil {
+		t.Fatalf("the relay answered %d %v", got.Status, got.Body)
+	}
+
+	if got := r.e.Call(t, http.MethodPut, base+"/schedule", `{"offAt":"17:00","days":"daily"}`, r.g.Session); got.Status != http.StatusOK {
+		t.Fatalf("the schedule answered %d %v", got.Status, got.Body)
+	}
+
+	if got := r.e.Call(t, http.MethodDelete, base+"/schedule", "", r.g.Session); got.Status != http.StatusNoContent {
+		t.Fatalf("delete answered %d", got.Status)
+	}
+}

@@ -104,29 +104,31 @@ func noRelay() *api.Error {
 }
 
 // plug finds a device of the business and says that it is a plug. A device of another business is not found.
-func (s *Service) plug(ctx context.Context, q querier, businessID, deviceID string) (gatewayID, nodeID string, err error) {
+func (s *Service) plug(ctx context.Context, q querier, businessID, deviceID string) (id, gatewayID, nodeID string, err error) {
 	// the parsed value goes to the query, because uuid.Parse also accepts the urn:uuid: form that PostgreSQL does not
-	id, err := uuid.Parse(deviceID)
+	parsed, err := uuid.Parse(deviceID)
 	if err != nil {
-		return "", "", api.NotFound()
+		return "", "", "", api.NotFound()
 	}
+
+	id = parsed.String()
 
 	var kind string
 
-	err = q.QueryRow(ctx, "SELECT gateway_id, node_id, kind FROM devices WHERE id = $1 AND business_id = $2", id.String(), businessID).Scan(&gatewayID, &nodeID, &kind)
+	err = q.QueryRow(ctx, "SELECT gateway_id, node_id, kind FROM devices WHERE id = $1 AND business_id = $2", id, businessID).Scan(&gatewayID, &nodeID, &kind)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return "", "", api.NotFound()
+		return "", "", "", api.NotFound()
 	}
 
 	if err != nil {
-		return "", "", fmt.Errorf("read the device %w", err)
+		return "", "", "", fmt.Errorf("read the device %w", err)
 	}
 
 	if kind != "plug" {
-		return "", "", noRelay()
+		return "", "", "", noRelay()
 	}
 
-	return gatewayID, nodeID, nil
+	return id, gatewayID, nodeID, nil
 }
 
 // querier is what both the pool and a transaction can do
@@ -159,12 +161,12 @@ func (s *Service) Send(ctx context.Context, businessID, deviceID, state string) 
 
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	gatewayID, nodeID, err := s.plug(ctx, tx, businessID, deviceID)
+	id, gatewayID, nodeID, err := s.plug(ctx, tx, businessID, deviceID)
 	if err != nil {
 		return Pending{}, err
 	}
 
-	out, err := enqueue(ctx, tx, deviceID, gatewayID, nodeID, state, "owner", time.Now().Add(CommandTTL))
+	out, err := enqueue(ctx, tx, id, gatewayID, nodeID, state, "owner", time.Now().Add(CommandTTL))
 	if err != nil {
 		return Pending{}, err
 	}
@@ -202,7 +204,7 @@ func enqueue(ctx context.Context, q querier, deviceID, gatewayID, nodeID, action
 
 // Get reads the relay of a plug, the schedule of it included
 func (s *Service) Get(ctx context.Context, businessID, deviceID string) (View, error) {
-	gatewayID, nodeID, err := s.plug(ctx, s.pool, businessID, deviceID)
+	deviceID, gatewayID, nodeID, err := s.plug(ctx, s.pool, businessID, deviceID)
 	if err != nil {
 		return View{}, err
 	}
@@ -292,7 +294,8 @@ type SchedulePatch struct {
 // SetSchedule writes the schedule of a plug. The service starts to look for a time that passed from now on, so a schedule never
 // switches the plug for a time before it was set.
 func (s *Service) SetSchedule(ctx context.Context, businessID, deviceID string, p SchedulePatch) (Schedule, error) {
-	if _, _, err := s.plug(ctx, s.pool, businessID, deviceID); err != nil {
+	deviceID, _, _, err := s.plug(ctx, s.pool, businessID, deviceID)
+	if err != nil {
 		return Schedule{}, err
 	}
 
@@ -332,7 +335,8 @@ func (s *Service) SetSchedule(ctx context.Context, businessID, deviceID string, 
 
 // DeleteSchedule removes the schedule of a plug, and a plug with none is not an error
 func (s *Service) DeleteSchedule(ctx context.Context, businessID, deviceID string) error {
-	if _, _, err := s.plug(ctx, s.pool, businessID, deviceID); err != nil {
+	deviceID, _, _, err := s.plug(ctx, s.pool, businessID, deviceID)
+	if err != nil {
 		return err
 	}
 
