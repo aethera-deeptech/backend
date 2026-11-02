@@ -299,7 +299,7 @@ paths:
       tags: [Account]
       operationId: changeEmail
       summary: Change the email of an account that is not verified yet
-      description: This is the "Ganti email" link of the verification screen. It needs the current email and password, because the user is not signed in. It sends a new verification email to the new address, and the older tokens stop working. A verified account cannot use it, and a new address that equals the current one answers 422 with `newEmail` invalid.
+      description: This is the "Ganti email" link of the verification screen. It needs the current email and password, because the user is not signed in. It sends a new verification email to the new address, and the older tokens stop working. A verified account cannot use it, and a new address that equals the current one answers 422 with `newEmail` invalid, also for a verified account, because that check comes first.
       security: []
       requestBody:
         required: true
