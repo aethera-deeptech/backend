@@ -4,7 +4,7 @@ name: Mutation testing
 # package. A change that no test notices shows a line that the tests run without checking. It only reports in the summary of the run
 # and never gates a merge, because a surviving mutant is a question for a person and not a defect. It runs on the packages whose logic is
 # tested by their own unit tests. The tool runs the tests of the package without a database, so the code that only the database tests
-# of a package reach shows survivors that are not real, and the survivors in the pure rules (the status of a device, the rules of a
+# of a package reach is reported as not covered and never as a survivor, and the survivors in the pure rules (the status of a device, the rules of a
 # tip, the scrub of an error report, the checks of a batch) are the ones to read.
 on:
   schedule:
