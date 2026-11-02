@@ -42,6 +42,9 @@ type ListItem struct {
 type Anomaly struct {
 	At    time.Time `json:"at"`
 	PeakW float64   `json:"peakW"`
+	// Kind is surge, overload or degradation, and PowerFactor is only there for a degradation
+	Kind        string   `json:"kind"`
+	PowerFactor *float64 `json:"powerFactor,omitempty"`
 }
 
 // Band is the usual range of the power at each point of the pattern
@@ -306,9 +309,16 @@ func (v *Views) newestAnomaly(ctx context.Context, gatewayID, nodeID string, now
 	var a Anomaly
 
 	err := v.pool.QueryRow(ctx,
-		"SELECT at, peak_watts FROM anomalies WHERE gateway_id = $1 AND node_id = $2 AND at >= $3 ORDER BY at DESC LIMIT 1",
-		gatewayID, nodeID, now.Add(-AnomalyFor)).Scan(&a.At, &a.PeakW)
+		"SELECT at, peak_watts, kind, power_factor FROM anomalies WHERE gateway_id = $1 AND node_id = $2 AND at >= $3 ORDER BY at DESC LIMIT 1",
+		gatewayID, nodeID, now.Add(-AnomalyFor)).Scan(&a.At, &a.PeakW, &a.Kind, &a.PowerFactor)
 	a.PeakW = round1(a.PeakW)
+
+	if a.PowerFactor != nil {
+		// the column is a 32-bit float, so 0.45 comes back as 0.4499999
+		rounded := round2(*a.PowerFactor)
+		a.PowerFactor = &rounded
+	}
+
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil //nolint:nilnil // no anomaly is a normal answer
 	}
