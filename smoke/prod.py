@@ -1,7 +1,9 @@
 """Smoke test of the deployed API, started by hand from the Smoke workflow after a deploy.
 
-It only reads. It signs in as the keeper account, opens every screen of the app once, and signs out. It creates nothing and changes
-nothing, so it is safe to run against production. The keeper account is made once by hand and verified by email.
+It signs in as the keeper account, opens every screen of the app once, and signs out. It sends no write request, but the tips screen
+works out the tips of the keeper business again when it is read, which can change the tips of that business and the time of the last
+refresh. So the keeper must be a dedicated account with no real business data. The keeper account is made once by hand and verified by
+email.
 
 Settings come from the environment
   BASE_URL               address of the API without a path, https only
@@ -22,7 +24,7 @@ from urllib.parse import urlsplit
 BASE = os.environ.get("BASE_URL", "").rstrip("/")
 ORIGIN = os.environ.get("APP_ORIGIN", "")
 EXPECTED = os.environ.get("EXPECTED_VERSION", "")
-EMAIL = os.environ.get("SMOKE_KEEPER_EMAIL", "")
+EMAIL = os.environ.get("SMOKE_KEEPER_EMAIL", "").strip().lower()
 PASSWORD = os.environ.get("SMOKE_KEEPER_PASSWORD", "")
 
 # The address is parsed and not matched by its start, so a name such as https://api.example@other.example cannot pass
@@ -108,26 +110,36 @@ def main():
     cookie = header.split(";", 1)[0] if "=" in header else ""
     check("signing in sets a session", cookie.startswith("__Host-aethera_session="))
 
-    me = expect("who am I", call("GET", "/v1/auth/me", cookie=cookie), 200)
-    check("the account is the keeper", me.get("email") == EMAIL, "another account answered")
+    try:
+        me = expect("who am I", call("GET", "/v1/auth/me", cookie=cookie), 200)
+        check("the account is the keeper", str(me.get("email", "")).strip().lower() == EMAIL, "another account answered")
 
-    for name, path in [
-        ("settings", "/v1/settings"),
-        ("rooms", "/v1/rooms"),
-        ("gateways", "/v1/gateways"),
-        ("devices", "/v1/devices"),
-        ("the home screen", "/v1/beranda"),
-        ("the tips", "/v1/recommendations"),
-        ("the production list", "/v1/production"),
-    ]:
-        expect(name, call("GET", path, cookie=cookie), 200)
+        def screen(name, path):
+            body = expect(name, call("GET", path, cookie=cookie), 200)
+            check(f"{name} has a body", isinstance(body, dict) and bool(body), "the answer is empty or is not a JSON object")
 
-    report = expect("the report", call("GET", "/v1/reports", cookie=cookie), 200)
-    period = str(report.get("period", ""))
-    check("the report has a period", re.fullmatch(r"[0-9]{4}-(0[1-9]|1[0-2])", period) is not None, period)
+            return body
 
-    expect("sign out", call("POST", "/v1/auth/logout", cookie=cookie), 204)
-    expect("the session is gone", call("GET", "/v1/auth/me", cookie=cookie), 401)
+        for name, path in [
+            ("settings", "/v1/settings"),
+            ("rooms", "/v1/rooms"),
+            ("gateways", "/v1/gateways"),
+            ("devices", "/v1/devices"),
+            ("the home screen", "/v1/beranda"),
+            ("the tips", "/v1/recommendations"),
+            ("the production list", "/v1/production"),
+        ]:
+            screen(name, path)
+
+        report = screen("the report", "/v1/reports")
+        period = str(report.get("period", ""))
+        check("the report has a period", re.fullmatch(r"[0-9]{4}-(0[1-9]|1[0-2])", period) is not None, period)
+
+    finally:
+        # the session is ended even when a screen failed, so a failed run leaves no session behind
+        if cookie:
+            expect("sign out", call("POST", "/v1/auth/logout", cookie=cookie), 204)
+            expect("the session is gone", call("GET", "/v1/auth/me", cookie=cookie), 401)
 
 
 try:
