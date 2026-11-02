@@ -1,0 +1,4 @@
+# Only the naming rules of PEP 8 (the N rules), because the Python script of the repository is a test helper and the
+# naming is the part that the repository sets as a rule. A wider set can be added when it is wanted.
+[lint]
+select = ["N"]
