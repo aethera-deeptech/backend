@@ -103,7 +103,15 @@ func TestExplainThePlansOfTheQueriesToWatch(t *testing.T) {
 	}
 
 	key := strings.Repeat("a", 43)
-	seed(t, pool, business, key, devices, days)
+	// the seed runs on a connection with no time limit, because the pool has the statement timeout of production
+	plain, err := pgx.Connect(t.Context(), dbURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer func() { _ = plain.Close(context.Background()) }()
+
+	seed(t, plain, business, key, devices, days)
 
 	rec.mu.Lock()
 	rec.on = true
@@ -171,7 +179,7 @@ func TestExplainThePlansOfTheQueriesToWatch(t *testing.T) {
 
 // seed writes one business with the number of devices and the days of hourly sums, about 30 days of raw readings every 10 minutes,
 // and a production record for every day
-func seed(t *testing.T, pool *pgxpool.Pool, business, key string, devices, days int) {
+func seed(t *testing.T, conn *pgx.Conn, business, key string, devices, days int) {
 	t.Helper()
 
 	ctx := t.Context()
@@ -196,7 +204,7 @@ func seed(t *testing.T, pool *pgxpool.Pool, business, key string, devices, days 
 	}
 
 	for _, s := range steps {
-		if _, err := pool.Exec(ctx, s.sql, s.args...); err != nil {
+		if _, err := conn.Exec(ctx, s.sql, s.args...); err != nil {
 			t.Fatalf("seed %q %v", s.sql[:min(len(s.sql), 60)], err)
 		}
 	}
