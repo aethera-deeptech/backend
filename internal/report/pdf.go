@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/go-pdf/fpdf"
@@ -65,12 +66,11 @@ func countLine(n int, none, some string) string {
 }
 
 // render draws the page. It uses the built in Helvetica, so the file needs no font files, and the text is cut to the Windows Latin
-// alphabet, which holds every letter of Indonesian. A letter outside it, in the name of a business, shows as a question mark.
+// alphabet, which holds every letter of Indonesian. A letter outside it, in the name of a business, is drawn as a dot.
 func render(buf *bytes.Buffer, r Report, start time.Time) error {
 	pdf := fpdf.NewCustom(&fpdf.InitType{UnitStr: "pt", Size: fpdf.SizeType{Wd: pageW, Ht: pageH}})
 	pdf.SetMargins(marginX, marginY, marginX)
 	pdf.SetAutoPageBreak(false, 0)
-	pdf.SetCreationDate(time.Time{})
 	pdf.SetTitle("Laporan penghematan energi", true)
 	pdf.AddPage()
 
@@ -123,7 +123,7 @@ func render(buf *bytes.Buffer, r Report, start time.Time) error {
 	sv := r.Saving
 
 	card("Hemat per bulan", 130, func(x, y float64) {
-		row(x, y, "Terverifikasi", countLine(sv.Verified.Count, "Belum ada saran yang dicek", "Sudah dicek 14 hari, %d saran"), sv.Verified.Rp)
+		row(x, y, "Terverifikasi", countLine(sv.Verified.Count, "Belum ada saran yang dicek", fmt.Sprintf("Sudah dicek %d hari, %%d saran", tips.VerifyDays)), sv.Verified.Rp)
 		row(x, y+22, "Diterapkan", countLine(sv.Applied.Count, "Belum ada saran yang diterapkan",
 			fmt.Sprintf("Sedang dicek, hari ke-%d dari %d, %%d saran", sv.Applied.Day, sv.Applied.NeededDays)), sv.Applied.Rp)
 		row(x, y+44, "Perkiraan", countLine(sv.Estimate.Count, "Belum ada saran pada periode ini", "Menunggu keputusan Anda, %d saran"), sv.Estimate.Rp)
@@ -143,8 +143,11 @@ func render(buf *bytes.Buffer, r Report, start time.Time) error {
 			pdf.SetXY(x, y+46)
 
 			text := "kWh per " + r.unit
-			if e.BeforeKwh > 0 {
+			switch {
+			case e.BeforeKwh > 0 && e.AfterKwh < e.BeforeKwh:
 				text += fmt.Sprintf(". Hemat %s%%", tips.Num((e.BeforeKwh-e.AfterKwh)/e.BeforeKwh*100, 1))
+			case e.BeforeKwh > 0:
+				text += ". Tidak ada penurunan"
 			}
 
 			pdf.CellFormat(width-28, 14, tr(text), "", 0, "L", false, 0, "")
@@ -172,7 +175,7 @@ func render(buf *bytes.Buffer, r Report, start time.Time) error {
 				name = string(r[:24])
 			}
 
-			bar(pdf, tr, x, y+22*float64(i), width-28, name, d.Kwh, top[0].Kwh, 0)
+			bar(pdf, tr, x, y+22*float64(i), width-28, name, d.Kwh, top[0].Kwh, 1)
 		}
 	})
 
@@ -206,7 +209,18 @@ func bar(pdf *fpdf.Fpdf, tr func(string) string, x, y, width float64, label stri
 	pdf.SetFont("Helvetica", "", 10)
 	pdf.SetTextColor(40, 40, 40)
 	pdf.SetXY(x, y)
-	pdf.CellFormat(labelW, 14, tr(label), "", 0, "L", false, 0, "")
+
+	// a name is cut by its width on the page and not by its length, because capitals are wider than small letters
+	text := tr(label)
+	if pdf.GetStringWidth(text) > labelW-6 {
+		for len(text) > 1 && pdf.GetStringWidth(text+"...") > labelW-6 {
+			text = text[:len(text)-1]
+		}
+
+		text = strings.TrimSpace(text) + "..."
+	}
+
+	pdf.CellFormat(labelW, 14, text, "", 0, "L", false, 0, "")
 
 	room := width - labelW - valueW
 	if largest > 0 && value > 0 {

@@ -227,7 +227,9 @@ func (s *Service) periods(ctx context.Context, businessID string, current time.T
 	var first *time.Time
 
 	err := s.pool.QueryRow(ctx,
-		`SELECT min(h.hour) FROM devices d JOIN readings_hourly h ON h.gateway_id = d.gateway_id AND h.node_id = d.node_id WHERE d.business_id = $1`,
+		`SELECT min(f.hour) FROM devices d CROSS JOIN LATERAL
+		   (SELECT h.hour FROM readings_hourly h WHERE h.gateway_id = d.gateway_id AND h.node_id = d.node_id ORDER BY h.hour LIMIT 1) f
+		 WHERE d.business_id = $1`,
 		businessID).Scan(&first)
 	if err != nil {
 		return nil, fmt.Errorf("read the first data %w", err)
