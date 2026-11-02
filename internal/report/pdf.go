@@ -170,12 +170,7 @@ func render(buf *bytes.Buffer, r Report, start time.Time) error {
 		}
 
 		for i, d := range top {
-			name := d.Name
-			if r := []rune(name); len(r) > 24 {
-				name = string(r[:24])
-			}
-
-			bar(pdf, tr, x, y+22*float64(i), width-28, name, d.Kwh, top[0].Kwh, 1)
+			bar(pdf, tr, x, y+22*float64(i), width-28, d.Name, d.Kwh, top[0].Kwh, 1)
 		}
 	})
 
