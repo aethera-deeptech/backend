@@ -48,15 +48,15 @@ Raw readings are kept 30 days. Hourly sums keep the samples, the sum, the highes
 
 ## Anomalies
 
-- A surge is a sample that is far above the usual high power of its UTC hour, which needs at least 7 days of history for that hour. An overload is the code 3 that the node reports. The service checks both when it stores a batch, only for a node that a business claimed and only for samples that are less than 2 hours old.
-- The same node raises one anomaly of each kind in 6 hours. A failure of the check is logged and never loses the readings of the gateway.
+- A surge is a sample above 100 W that is over the usual high power of its UTC hour plus the larger of 100 W and 30 percent of that high power. It needs at least 7 days of history for that hour. An overload is the code 3 that the node reports. The service checks both when it stores a batch, only for a node that a business claimed and only for samples that are less than 2 hours old.
+- The same node raises one anomaly of each kind in 6 hours. A failure of the check is logged and rolled back in a savepoint, so it does not lose the readings. When the savepoint itself fails, the batch fails and the gateway sends it again, which the sequence number makes safe.
 
 ## Tips and the check
 
-- A tip is made for a device that uses power outside the work hours. The saving is the energy of the last 7 days outside the work hours, times 30 days and the tariff, rounded to 1000 rupiah. The smallest tip is 5000 rupiah, and a device has at most one tip of each kind. A tip that nobody decided on goes away when its device no longer qualifies.
+- A tip is made for a device that uses power outside the work hours. The saving is the average energy of a day outside the work hours over the last 7 days, times 30 days and the tariff, rounded to 1000 rupiah. The smallest tip is 5000 rupiah, and a device has at most one tip of each kind. A tip that nobody decided on goes away when its device no longer qualifies.
 - The tips are worked out again when the app reads them, at most every 10 minutes for a business. The tips of the last run are served when the work fails.
 - The owner can apply, defer, reject or cancel a tip, and the service allows only these changes. Apply and reject work from pending and deferred, defer works from pending, and cancel brings an applied tip back to pending. A verified or rejected tip is final. An applied tip is checked after 14 days against the 7 days before it. The check compares the energy for each piece of the whole business, and it counts only the days that have a production record. A tip with no records stays applied. The check says nothing about which tip caused a change, because the measure covers the whole business.
 
 ## Home and report
 
-The home screen has the phases `no-devices`, `collecting` and `ready`. The bill comes from the measured energy only, so the load that no device measures is not in it. The report of a month sums the energy, the bill and the measured saving, lists the top devices and gives the same page as one A4 PDF. Every month is priced with the tariff of today, because the service keeps no tariff history.
+The home screen has the phases `no-devices`, `collecting` and `ready`. The bill comes from the measured energy only, so the load that no device measures is not in it. The report of a month sums the energy, the bill and the measured saving, lists the top devices and gives the same page as one A4 PDF. The saving has three groups, the verified ones, the ones under check and, for the running month, the ones that wait for a decision. Every month is priced with the tariff of today, because the service keeps no tariff history.
