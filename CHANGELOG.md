@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.1](https://github.com/aethera-deeptech/backend/compare/v0.2.0...v0.2.1) (2026-11-02)
+
+
+### Bug Fixes
+
+* **device:** name the plug and the clamp WATTLINK Plug and WATTLINK Clamp in the kind label ([7919ff0](https://github.com/aethera-deeptech/backend/commit/7919ff00b5554404d10d3dc92f0e9789d8183f80))
+* **device:** name the plug and the clamp WATTLINK Plug and WATTLINK Clamp in the kind label ([814d191](https://github.com/aethera-deeptech/backend/commit/814d1911aff9423af3a52b5b4f8bbfc0ed92732c))
+
 ## [0.2.0](https://github.com/aethera-deeptech/backend/compare/v0.1.0...v0.2.0) (2026-11-02)
 
 
