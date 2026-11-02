@@ -46,6 +46,9 @@ export function gateway() {
 
   if (seq === 0) {
     seq = g.seq;
+
+    // real gateways are not in step, so each one starts at its own point of the interval and the first batches do not arrive together
+    sleep((Number(__ENV.GW) / data.gateways.length) * batchEvery);
   }
 
   seq += 1;
