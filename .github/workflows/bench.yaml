@@ -49,7 +49,7 @@ jobs:
 
           base="$BASE_INPUT"
           if [ -z "$base" ]; then
-            base="$(git rev-list -n 1 --before='7 days ago' HEAD)"
+            base="$(git rev-list --first-parent -n 1 --before='7 days ago' HEAD)"
           fi
 
           if [ -z "$base" ]; then
@@ -82,9 +82,11 @@ jobs:
           run "$RUNNER_TEMP/base" "$RUNNER_TEMP/old.txt" || true
           run "$PWD" "$RUNNER_TEMP/new.txt"
 
-          # benchstat fails when the base has no number at all, and the summary still has to say so
-          if ! comparison="$(go run "golang.org/x/perf/cmd/benchstat@${BENCHSTAT_VERSION}" "$RUNNER_TEMP/old.txt" "$RUNNER_TEMP/new.txt" 2>&1)"; then
-            comparison="$comparison"$'\n'"benchstat found nothing to compare, the base has no benchmark that builds"
+          # benchstat fails when the base has no number at all, and the summary says so. Any other failure of benchstat fails the step.
+          if grep -q '^Benchmark' "$RUNNER_TEMP/old.txt" 2>/dev/null; then
+            comparison="$(go run "golang.org/x/perf/cmd/benchstat@${BENCHSTAT_VERSION}" "$RUNNER_TEMP/old.txt" "$RUNNER_TEMP/new.txt" 2>&1)"
+          else
+            comparison="benchstat found nothing to compare, the base has no benchmark that builds"
           fi
 
           {
