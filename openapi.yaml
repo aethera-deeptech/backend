@@ -1077,10 +1077,12 @@ components:
         anomaly:
           type: object
           description: Only while the status is anomali
-          required: [at, peakW]
+          required: [at, peakW, kind]
           properties:
             at: {type: string, format: date-time}
             peakW: {type: number}
+            kind: {type: string, enum: [surge, overload, degradation], description: "surge is far above the usual power of that hour, overload is the condition that the node reports, and degradation is a loaded motor with a poor power factor, or the condition that the node reports for it"}
+            powerFactor: {type: number, minimum: 0, maximum: 1, description: "Only for a degradation that the service found in the readings, the mean power factor of the poor samples"}
         powerPattern:
           type: [object, "null"]
           description: Null while there is no recent data. The points cover the 24 hours that end now, spread evenly.
