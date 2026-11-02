@@ -68,7 +68,7 @@ jobs:
             exit 0
           fi
 
-          pattern='^(internal/(business|device|gateway|tips|home|report|production|auth|janitor|database|explain|testutil)/|\.github/workflows/explain\.yaml$)'
+          pattern='^(internal/(app|business|device|gateway|tips|home|report|production|auth|janitor|database|explain|testutil)/|\.github/workflows/explain\.yaml$)'
 
           if git diff --name-only "origin/${BASE_REF}...HEAD" | grep -E -q "$pattern"; then
             echo "run=true" >> "$GITHUB_OUTPUT"

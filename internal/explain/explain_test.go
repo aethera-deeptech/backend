@@ -66,6 +66,9 @@ func TestExplainThePlansOfTheQueriesToWatch(t *testing.T) {
 	capSeconds := number("EXPLAIN_QUERY_TIMEOUT_SECONDS", 10)
 	out := os.Getenv("EXPLAIN_OUT")
 
+	// a call may take as long as the cap, and a little more so that the cap is what fails and not the timeout of the request
+	testutil.RequestTimeout = time.Duration(capSeconds+5) * time.Second
+
 	dbURL := dbtest.Empty(t)
 	if err := database.Migrate(dbURL); err != nil {
 		t.Fatalf("migrate %v", err)
@@ -125,7 +128,7 @@ func TestExplainThePlansOfTheQueriesToWatch(t *testing.T) {
 		{"the production list", http.MethodGet, "/v1/production", "", false, 200},
 		{"the report of this month", http.MethodGet, "/v1/reports?period=" + period, "", false, 200},
 		{"the report of an older month", http.MethodGet, "/v1/reports?period=" + older, "", false, 200},
-		{"the PDF of the report", http.MethodGet, "/v1/reports/" + period + "/pdf", "", false, 0},
+		{"the PDF of the report", http.MethodGet, "/v1/reports/" + period + "/pdf", "", false, 200},
 		{"the intake of a batch", http.MethodPost, "/device/v1/readings", batch, true, 200},
 	}
 
@@ -227,10 +230,16 @@ func plans(t *testing.T, pool *pgxpool.Pool, list []statement, out string) {
 		for rows.Next() {
 			var line string
 			if err := rows.Scan(&line); err != nil {
+				fmt.Fprintf(&b, "!! reading the plan failed %v\n", err)
+
 				break
 			}
 
 			b.WriteString(line + "\n")
+		}
+
+		if err := rows.Err(); err != nil {
+			fmt.Fprintf(&b, "!! reading the plan failed %v\n", err)
 		}
 
 		rows.Close()
