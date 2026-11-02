@@ -68,9 +68,12 @@ jobs:
             exit 0
           fi
 
-          pattern='^(internal/(app|business|device|gateway|tips|home|report|production|auth|janitor|database|explain|testutil)/|\.github/workflows/explain\.yaml$)'
+          pattern='^(go\.(mod|sum)$|cmd/|internal/(app|business|device|gateway|tips|home|report|production|auth|janitor|database|explain|testutil)/|\.github/workflows/explain\.yaml$)'
 
-          if git diff --name-only "origin/${BASE_REF}...HEAD" | grep -E -q "$pattern"; then
+          # the list is read first, because grep that stops at the first match would end a pipe early and git would fail under pipefail
+          changed="$(git diff --name-only "origin/${BASE_REF}...HEAD")"
+
+          if grep -E -q "$pattern" <<<"$changed"; then
             echo "run=true" >> "$GITHUB_OUTPUT"
           else
             echo "run=false" >> "$GITHUB_OUTPUT"

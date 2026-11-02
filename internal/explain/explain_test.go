@@ -81,6 +81,10 @@ func TestExplainThePlansOfTheQueriesToWatch(t *testing.T) {
 
 	rec := &recorder{seen: map[string]bool{}}
 	cfg.ConnConfig.Tracer = rec
+	// the settings of the pool of the service, so the plans are made the way production makes them
+	cfg.ConnConfig.RuntimeParams["timezone"] = "UTC"
+	cfg.ConnConfig.RuntimeParams["statement_timeout"] = "15000"
+	cfg.ConnConfig.RuntimeParams["lock_timeout"] = "5000"
 	cfg.MaxConns = 8
 
 	pool, err := pgxpool.NewWithConfig(t.Context(), cfg)
@@ -187,7 +191,7 @@ func seed(t *testing.T, pool *pgxpool.Pool, business, key string, devices, days 
 		{"INSERT INTO readings (gateway_id, node_id, t, watts, energy_kwh) " +
 			"SELECT n.gateway_id, n.node_id, now() - make_interval(mins => m * 10), 20 + (m % 144), m * 0.01 " +
 			"FROM nodes n, generate_series(1, 30 * 144) m", nil},
-		{"INSERT INTO production_records (business_id, day, quantity, unit) SELECT $1, (now() AT TIME ZONE 'Asia/Jakarta')::date - d, 100 + d % 20, 'potong' FROM generate_series(0, $2::int) d", []any{business, days}},
+		{"INSERT INTO production_records (business_id, day, quantity, unit) SELECT $1::uuid, (now() AT TIME ZONE 'Asia/Jakarta')::date - d, 100 + d % 20, 'potong' FROM generate_series(0, $2::int) d", []any{business, days}},
 		{"ANALYZE", nil},
 	}
 
