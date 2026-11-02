@@ -38,7 +38,7 @@ An amount is a whole number of rupiah. A tip shows its saving rounded to the nea
 3. From then on the gateway sends its key as a bearer token. The service keeps only the hash of the key, so a copy of the database cannot act as a gateway. TLS protects the key in transit, and the sequence number of a batch makes a retry safe. A signature on every request would add nothing over TLS here, because a party that sees the plain request also sees the key.
 4. The owner starts a pairing in the app. The next unclaimed node of that kind that the gateway reports becomes the device.
 
-Raw readings are kept 30 days. Hourly sums keep the samples, the sum, the highest and the lowest power and the energy of each node for 400 days, so a short spike stays visible after the raw rows are gone. The energy of an hour comes from the counter of the node when the gap to the last sample is at most one hour and the step is plausible. Otherwise it is the power times the time, with a gap of at most 5 minutes counted for each sample. A time zone with an offset that is not a whole number of hours is refused in the settings, because the hourly sums would not line up with a local day.
+Raw readings are kept 30 days. Hourly sums keep the number of samples, the sum, the highest and the lowest power and the energy of each node for 400 days, so a short spike stays visible after the raw rows are gone. The energy of an hour comes from the counter of the node when the gap to the last sample is at most one hour and the step is plausible. Otherwise it is the power times the time, with a gap of at most 5 minutes counted for each sample. A time zone with an offset that is not a whole number of hours is refused in the settings, because the hourly sums would not line up with a local day.
 
 ## The status of a device
 
@@ -48,7 +48,7 @@ Raw readings are kept 30 days. Hourly sums keep the samples, the sum, the highes
 
 ## Anomalies
 
-- A surge is a sample above 100 W that is over the usual high power of its UTC hour plus the larger of 100 W and 30 percent of that high power. It needs at least 7 days of history for that hour. An overload is the code 3 that the node reports. The service checks both when it stores a batch, only for a node that a business claimed and only for samples that are less than 2 hours old.
+- A surge is a sample above 100 W that is over the usual high power of its UTC hour plus the larger of 100 W and 30 percent of that high power. It needs at least 7 days of history for that hour. An overload is the code 3 that the node reports. The service checks both when it stores a batch, only for a node that a business claimed and only for samples that are at most 2 hours old.
 - The same node raises one anomaly of each kind in 6 hours. A failure of the check is logged and rolled back in a savepoint, so it does not lose the readings. When the savepoint itself fails, the batch fails and the gateway sends it again, which the sequence number makes safe.
 
 ## Tips and the check
