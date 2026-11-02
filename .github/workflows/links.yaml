@@ -27,15 +27,13 @@ jobs:
           persist-credentials: false
 
       # 429 is a site that asks to slow down and not a dead link. The token only lifts the rate limit of the links to GitHub.
-      # The address of the token issuer is a value that the signature check compares and not a page, and the pattern with the
-      # backslashes is a regular expression that the docs print
+      # Lychee skips code blocks, so the issuer address and the pattern with backslashes in the docs need no exclusion
       - name: Check the links
         uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2.9.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           args: >-
-            --no-progress --include-fragments --max-retries 2 --exclude-loopback --exclude 'example\.(com|org|net)'
-            --exclude '^https://token\.actions\.githubusercontent\.com' --exclude '\\\.' --accept '200..=299,429'
+            --no-progress --include-fragments --max-retries 2 --exclude-loopback --exclude 'example\.(com|org|net)' --accept '200..=299,429'
             './*.md' './docs/**/*.md'
           fail: true
