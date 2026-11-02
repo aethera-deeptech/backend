@@ -211,3 +211,54 @@ func (e *Env) CallWith(t *testing.T, method, path, body string, headers map[stri
 
 	return e.Send(t, req)
 }
+
+// Seeded is a business that has one device on one gateway, which the tests of the views use
+type Seeded struct {
+	e        *Env
+	Session  string
+	Business string
+	Device   string
+}
+
+// SeedDevice signs a business up and gives it one device named Mesin jahit 1 on one gateway, with no readings yet
+func (e *Env) SeedDevice(t *testing.T, email, hardware string) *Seeded {
+	t.Helper()
+
+	g := &Seeded{e: e, Session: e.SignUp(t, email)}
+
+	if err := e.Pool.QueryRow(t.Context(), "SELECT business_id::text FROM users WHERE email = $1", email).Scan(&g.Business); err != nil {
+		t.Fatal(err)
+	}
+
+	var gateway, room string
+
+	if err := e.Pool.QueryRow(t.Context(),
+		"INSERT INTO gateways (business_id, name, hardware_id, key_hash) VALUES ($1, 'Hub', $2, sha256(convert_to($2, 'UTF8'))) RETURNING id::text",
+		g.Business, hardware).Scan(&gateway); err != nil {
+		t.Fatal(err)
+	}
+
+	e.Exec(t, "INSERT INTO nodes (gateway_id, node_id, kind) VALUES ($1, 'PLUG-0001', 'plug')", gateway)
+
+	if err := e.Pool.QueryRow(t.Context(), "INSERT INTO rooms (business_id, name) VALUES ($1, 'Ruang jahit') RETURNING id::text", g.Business).Scan(&room); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := e.Pool.QueryRow(t.Context(),
+		"INSERT INTO devices (business_id, gateway_id, node_id, kind, name, room_id) VALUES ($1, $2, 'PLUG-0001', 'plug', 'Mesin jahit 1', $3) RETURNING id::text",
+		g.Business, gateway, room).Scan(&g.Device); err != nil {
+		t.Fatal(err)
+	}
+
+	return g
+}
+
+// Hours writes one hour of data for every hour from a number of hours ago to a number of hours ago, with the same power and energy
+// in each. An hour that has a row already is left alone.
+func (g *Seeded) Hours(t *testing.T, fromAgo, toAgo int, watts, kwh float64) {
+	t.Helper()
+
+	g.e.Exec(t, "INSERT INTO readings_hourly (gateway_id, node_id, hour, samples, sum_watts, max_watts, min_watts, energy_kwh) "+
+		"SELECT d.gateway_id, d.node_id, date_trunc('hour', now()) - make_interval(hours => h), 10, $4::float8 * 10, $4, $4, $5 "+
+		"FROM devices d, generate_series($2::int, $3::int) h WHERE d.id = $1 ON CONFLICT DO NOTHING", g.Device, toAgo, fromAgo, watts, kwh)
+}
