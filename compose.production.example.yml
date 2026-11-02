@@ -51,7 +51,7 @@ services:
       - "127.0.0.1:${API_2_HOST_PORT:-8011}:${APP_PORT:-8080}"
 
   # Metrics and logs go to Grafana Cloud. These two services only start with the `monitoring` profile, which is set with
-  # COMPOSE_PROFILES=monitoring in .env once the GRAFANA_CLOUD_* values are filled in, see docs/monitoring.md. The copies need
+  # COMPOSE_PROFILES=monitoring in .env once grafana/alloy/.env is filled in, see docs/monitoring.md. The copies need
   # METRICS_ADDRESS=:9100 in .env for the metrics.
   alloy:
     image: grafana/alloy:v1.21.0
@@ -64,14 +64,10 @@ services:
       - --storage.path=/var/lib/alloy/data
       - --server.http.listen-addr=127.0.0.1:12345
       - /etc/alloy/config.alloy
-    environment:
-      GRAFANA_CLOUD_PROMETHEUS_URL: ${GRAFANA_CLOUD_PROMETHEUS_URL:-}
-      GRAFANA_CLOUD_PROMETHEUS_USER: ${GRAFANA_CLOUD_PROMETHEUS_USER:-}
-      GRAFANA_CLOUD_LOKI_URL: ${GRAFANA_CLOUD_LOKI_URL:-}
-      GRAFANA_CLOUD_LOKI_USER: ${GRAFANA_CLOUD_LOKI_USER:-}
-      GRAFANA_CLOUD_TOKEN: ${GRAFANA_CLOUD_TOKEN:-}
-      # the name of this host on every series and log line, which has to differ between hosts
-      GRAFANA_HOST: ${GRAFANA_HOST:-main}
+    # the token has its own file, which only this container loads, so the API copies never see it
+    env_file:
+      - path: grafana/alloy/.env
+        required: true
     deploy:
       resources:
         limits:

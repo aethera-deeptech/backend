@@ -346,7 +346,7 @@
       "service": "aethera-api"
     },
     "annotations": {
-      "summary": "More than 90 percent of the database connections of the copy {{ $labels.instance }} on {{ $labels.host }} were in use for 5 minutes. Look for a slow query or a lock, and read the pool panel of the API overview dashboard"
+      "summary": "More than 85 percent of the database connections of the copy {{ $labels.instance }} on {{ $labels.host }} were in use for 5 minutes. Look for a slow query or a lock, and read the pool panel of the API overview dashboard"
     },
     "data": [
       {
@@ -401,7 +401,7 @@
               "evaluator": {
                 "type": "gt",
                 "params": [
-                  0.9
+                  0.85
                 ]
               }
             }

@@ -1,13 +1,13 @@
 // Alloy reads the metrics endpoint and the logs of every container that carries the label `aethera.role`, and sends both to
 // Grafana Cloud. It finds them by label and not by name, so any number of copies of the API can run on this host under any
 // container name, and the same file runs on every other host. `GRAFANA_HOST` names the host on every series and every log
-// line, so the copies of two hosts never collide. It runs only with the `monitoring` profile of compose.yml, see
+// line, so the copies of two hosts never collide. It runs only with the `monitoring` profile of compose.production.example.yml, see
 // docs/monitoring.md.
 
 // ---- discovery ----
 
 // the containers are listed through the socket proxy, which only answers read requests. Only the containers that opt in with
-// the label `aethera.role` (api, db or redis) are kept, anything else on the host is left alone.
+// the label `aethera.role` (`api`) are kept, anything else on the host is left alone.
 discovery.docker "aethera" {
   host = "tcp://socket-proxy:2375"
 
@@ -88,10 +88,6 @@ prometheus.scrape "api" {
   metrics_path    = "/metrics"
   scrape_interval = "60s"
   forward_to      = [prometheus.remote_write.cloud.receiver]
-
-  // the metrics of the background jobs have a label `job` of their own, the name of the job, and so does every scrape. Without
-  // this the scrape wins and the label of the API becomes `exported_job`, which the dashboards and alerts do not read.
-  honor_labels = true
 }
 
 prometheus.remote_write "cloud" {

@@ -35,8 +35,8 @@
 | `config.yaml` | ShellCheck | Every tracked file that ends in `.sh`, with the settings of `.shellcheckrc` |
 | `config.yaml` | OpenAPI lint | `openapi.yaml` against the recommended rules of Redocly, which `redocly.yaml` sets. The contract between the service and its clients is that file, so a break in it fails here |
 | `config.yaml` | Hadolint | The `Dockerfile` against the rules of Hadolint, which also lints the shell commands in it |
-| `config.yaml` | Dotenv lint | The names and the form of the settings in `.env.example`, with dotenv-linter. The order of the keys is not checked, because the file is grouped by topic |
-| `config.yaml` | Compose config | `docker compose config` on `compose.production.example.yml` and on `compose.yml` with `compose.ci.yml`, with the settings of `.env.example`. It builds and starts nothing, so it keeps the example from drifting away from the settings |
+| `config.yaml` | Dotenv lint | The names and the form of the settings in `.env.example` and `grafana/alloy/.env.example`, with dotenv-linter. The order of the keys is not checked, because the file is grouped by topic |
+| `config.yaml` | Compose config | `docker compose config` on `compose.production.example.yml` and on `compose.yml` with `compose.ci.yml`, with the settings of the example env files. It builds and starts nothing, so it keeps the example from drifting away from the settings |
 | `config.yaml` | Python lint | The Python scripts, with ruff and the naming rules of `ruff.toml` |
 | `config.yaml` | File names | The names of the files and folders against `.ls-lint.yml`, with ls-lint |
 | `config.yaml` | Renovate config | `renovate.json` against the schema of Renovate, in strict mode, so a renamed or removed option fails |

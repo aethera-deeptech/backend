@@ -157,7 +157,7 @@
     },
     {
       "type": "logs",
-      "title": "Server errors (5xx)",
+      "title": "Errors",
       "description": "5xx answers, panics with their stack, failed jobs",
       "datasource": {
         "type": "loki",
