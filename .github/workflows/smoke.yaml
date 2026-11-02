@@ -1,0 +1,44 @@
+name: Smoke
+
+# Started by hand from the Actions tab after a deploy, and never by a pull request, because it tests the API that is deployed and
+# not the code of a branch. Only people with write access can start it. The password of the keeper account lives in the
+# smoke-production environment. That environment must allow deployments from main only, so a workflow edited on another branch cannot
+# read the password. The run sends no request that changes business data, but it creates and ends one session, and reading the tips
+# works them out again for the keeper business, so the keeper has to be a dedicated account with no real data, see smoke/prod.py.
+on:
+  workflow_dispatch:
+    inputs:
+      expected_version:
+        description: Version that /healthz has to report, for example 0.2.0
+        required: true
+        type: string
+
+concurrency:
+  group: smoke
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  smoke:
+    name: Smoke test of production
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: smoke-production
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The address is fixed here and not an input, so nobody who starts the run can point the keeper login at another host
+      - name: Run the smoke test
+        env:
+          BASE_URL: https://aethera-api.syafahadyan.com
+          APP_ORIGIN: ${{ vars.APP_ORIGIN }}
+          EXPECTED_VERSION: ${{ inputs.expected_version }}
+          SMOKE_KEEPER_EMAIL: ${{ vars.SMOKE_KEEPER_EMAIL }}
+          SMOKE_KEEPER_PASSWORD: ${{ secrets.SMOKE_KEEPER_PASSWORD }}
+        run: python3 -I smoke/prod.py
