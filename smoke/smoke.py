@@ -56,6 +56,16 @@ class Answer:
             return {}
 
 
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Answers a redirect as it is, so a check of a status never passes on the page that a redirect leads to"""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+OPENER = urllib.request.build_opener(NoRedirect)
+
+
 def call(method, path, body=None, cookie="", bearer="", app=True):
     """Sends one request. An app request carries the CSRF header and the origin, a gateway request carries neither."""
     data = json.dumps(body).encode() if body is not None else None
@@ -73,7 +83,7 @@ def call(method, path, body=None, cookie="", bearer="", app=True):
         req.add_header("Authorization", "Bearer " + bearer)
 
     try:
-        with urllib.request.urlopen(req, timeout=20) as res:
+        with OPENER.open(req, timeout=20) as res:
             return Answer(res.status, res.headers, res.read())
     except urllib.error.HTTPError as err:
         return Answer(err.code, err.headers, err.read())
@@ -146,7 +156,9 @@ def main():
 
     me = expect("who am I", call("GET", "/v1/auth/me", cookie=cookie), 200)
     check("the account is mine", me.get("email") == EMAIL, str(me)[:200])
-    expect("sign in with the password", call("POST", "/v1/auth/login", {"email": EMAIL, "password": PASSWORD}), 200)
+    login = call("POST", "/v1/auth/login", {"email": EMAIL, "password": PASSWORD})
+    expect("sign in with the password", login, 200)
+    check("signing in sets a session", bool(session_cookie(login)))
 
     expect("settings", call("GET", "/v1/settings", cookie=cookie), 200)
     room = expect("make a room", call("POST", "/v1/rooms", {"name": "Ruang jahit"}, cookie=cookie), 201).get("id", "")
@@ -183,12 +195,16 @@ def main():
     check("the plug is working or waiting", detail.get("status") in ("nyala", "siaga", "mati"), str(detail.get("status")))
 
     expect("the home screen", call("GET", "/v1/beranda", cookie=cookie), 200)
+    expect("the production screen", call("GET", "/v1/production", cookie=cookie), 200)
     tips = expect("the tips", call("GET", "/v1/recommendations", cookie=cookie), 200)
     check("a new business is still collecting", tips.get("phase") == "collecting", str(tips)[:200])
     report = expect("the report", call("GET", "/v1/reports", cookie=cookie), 200)
+    period = str(report.get("period", ""))
+    check("the report has a period", re.fullmatch(r"[0-9]{4}-(0[1-9]|1[0-2])", period) is not None, period)
+
     # the API drops samples older than a day, so a script cannot make the week of data that a report needs, and the PDF is covered by
     # the unit tests of the report
-    expect("the PDF waits for a week of data", call("GET", "/v1/reports/" + str(report.get("period", "")) + "/pdf", cookie=cookie), 404)
+    expect("the PDF waits for a week of data", call("GET", "/v1/reports/" + period + "/pdf", cookie=cookie), 404)
 
     expect("sign out", call("POST", "/v1/auth/logout", cookie=cookie), 204)
     expect("the session is gone", call("GET", "/v1/auth/me", cookie=cookie), 401)

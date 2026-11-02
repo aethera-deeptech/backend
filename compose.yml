@@ -7,8 +7,13 @@ services:
     env_file:
       - .env
     environment:
-      # the host name of the database service below, whatever the env file says
+      # the host name of the database service below, whatever the env file says, and the values that both services share, so a value
+      # that the shell sets reaches the API as well as the database
       DB_HOST: db
+      DB_NAME: ${DB_NAME:?set DB_NAME in the env file}
+      DB_USERNAME: ${DB_USERNAME:?set DB_USERNAME in the env file}
+      DB_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in the env file}
+      APP_PORT: ${APP_PORT:-8080}
     ports:
       - "127.0.0.1:${APP_PORT:-8080}:${APP_PORT:-8080}"
     depends_on:

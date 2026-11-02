@@ -5,3 +5,4 @@ rules:
       - config.yaml
       - openapi-diff.yaml
       - security.yaml
+      - smoke-stack.yaml
