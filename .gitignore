@@ -41,3 +41,6 @@ dist/
 .idea/
 .vscode/
 .DS_Store
+# Vale downloads the Google style here, only the Aethera rules are committed
+.github/vale/styles/*
+!.github/vale/styles/Aethera/
