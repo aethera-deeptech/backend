@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"slices"
 	"syscall"
 	"time"
 	// the time zone of a business is any IANA zone, and a container image can come without a zone database
@@ -26,6 +27,7 @@ import (
 	"github.com/aethera-deeptech/backend/internal/logging"
 	"github.com/aethera-deeptech/backend/internal/mail"
 	"github.com/aethera-deeptech/backend/internal/metrics"
+	"github.com/aethera-deeptech/backend/internal/relay"
 )
 
 // version is set at build time with -ldflags
@@ -36,6 +38,9 @@ const shutdownTimeout = 15 * time.Second
 
 // janitorEvery is how often a copy tries a round of the clean up. Only one copy gets the lock for a round.
 const janitorEvery = time.Hour
+
+// relayEvery is how often a copy looks for a relay schedule that has a time that passed. Only one copy gets the lock for a round.
+const relayEvery = time.Minute
 
 // mailWorkers and mailBacklog size the queue of outgoing emails
 const (
@@ -98,7 +103,8 @@ func run() (err error) {
 	}
 
 	// the clean up stops with the signal, and a round that is running ends with its context
-	go janitor.New(pool, janitorEvery, append(auth.PurgeTasks(), gateway.PurgeTasks()...)...).Run(ctx)
+	go janitor.New(pool, janitorEvery, slices.Concat(auth.PurgeTasks(), gateway.PurgeTasks(), relay.PurgeTasks())...).Run(ctx)
+	go relay.NewScheduler(pool, relayEvery).Run(ctx)
 
 	mailQueue, mailer := newMailer(cfg)
 	defer func() {

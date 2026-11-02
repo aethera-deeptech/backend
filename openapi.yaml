@@ -633,6 +633,102 @@ paths:
         "422": {$ref: "#/components/responses/Validation"}
         "4XX": {$ref: "#/components/responses/Error"}
 
+  /v1/devices/{id}/relay:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      tags: [Alat]
+      operationId: getRelay
+      summary: Read the relay of a plug
+      description: "`state` is the last state that the plug reported, or `unknown` while it never reported one. `pending` is a command that waits for the gateway or that the gateway fetched and did not answer yet. `last` is the newest command that ended. A device that is not a plug answers 409 with the code `no_relay`."
+      responses:
+        "200":
+          description: The relay
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Relay"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409":
+          description: The device is a clamp and has no relay (code `no_relay`)
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+        "4XX": {$ref: "#/components/responses/Error"}
+    post:
+      tags: [Alat]
+      operationId: sendRelayCommand
+      summary: Switch the relay of a plug on or off
+      description: "The service cannot call the gateway, because a gateway only calls out. It keeps the command until the gateway fetches it in the answer to its next batch of readings, which is within the sending interval of the gateway, and the gateway reports the result in a later batch. A command that no gateway fetched in 10 minutes expires, so a plug is never switched on an old order. A new command replaces the one that still waits. The answer 202 only says that the command is queued, and the app reads `GET` of this route to see the result. A business can send 60 commands in an hour."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [state]
+              properties:
+                state: {type: string, enum: [on, off]}
+      responses:
+        "202":
+          description: The command is queued
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/RelayPending"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409":
+          description: The device is a clamp and has no relay (code `no_relay`)
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+        "422": {$ref: "#/components/responses/Validation"}
+        "429": {$ref: "#/components/responses/RateLimited"}
+        "4XX": {$ref: "#/components/responses/Error"}
+  /v1/devices/{id}/schedule:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+    put:
+      tags: [Alat]
+      operationId: setRelaySchedule
+      summary: Set the daily switch of a plug
+      description: "The times are local times of the business. The plug is switched off at `offAt` and, when `onAt` is set, on again at `onAt`, on the days that `days` names. The service looks at the schedules every minute and queues a command like the one of the owner. It never acts on a time that passed before the schedule was set, or more than 2 hours ago. A second call replaces the schedule."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/RelaySchedule"}
+      responses:
+        "200":
+          description: The schedule
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/RelaySchedule"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409":
+          description: The device is a clamp and has no relay (code `no_relay`)
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+        "422": {$ref: "#/components/responses/Validation"}
+        "4XX": {$ref: "#/components/responses/Error"}
+    delete:
+      tags: [Alat]
+      operationId: deleteRelaySchedule
+      summary: Remove the schedule of a plug
+      description: A plug that has no schedule answers 204 as well.
+      responses:
+        "204": {description: The schedule is gone}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409":
+          description: The device is a clamp and has no relay (code `no_relay`)
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+        "4XX": {$ref: "#/components/responses/Error"}
+
   /v1/beranda:
     get:
       tags: [Beranda]
@@ -924,12 +1020,16 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [ackSeq, serverTime, accepted, rejected]
+                required: [ackSeq, serverTime, accepted, rejected, commands]
                 properties:
                   ackSeq: {type: integer, minimum: 0}
                   serverTime: {type: string, format: date-time}
                   accepted: {type: integer, minimum: 0, description: The samples that were stored}
                   rejected: {type: integer, minimum: 0, description: The samples that were dropped}
+                  commands:
+                    type: array
+                    description: The relay commands that wait for this gateway, oldest first. A command comes again in every answer until the gateway reports a result for it, so the gateway runs each id once.
+                    items: {$ref: "#/components/schemas/RelayCommand"}
         "401": {$ref: "#/components/responses/InvalidGatewayKey"}
         "409":
           description: The sequence number is not the next one. `expectedSeq` says which one the service waits for.
@@ -1292,6 +1392,55 @@ components:
         topDevices: {type: array, maxItems: 4, items: {$ref: "#/components/schemas/TopDevice"}}
         billRp: {type: integer, minimum: 0}
         energyPerPiece: {$ref: "#/components/schemas/EnergyPerPiece"}
+    Relay:
+      type: object
+      required: [state, reportedAt, pending, last, schedule]
+      properties:
+        state: {type: string, enum: [on, off, unknown]}
+        reportedAt: {type: [string, "null"], format: date-time, description: When the state was reported or confirmed}
+        pending: {oneOf: [{$ref: "#/components/schemas/RelayPending"}, {type: "null"}]}
+        last:
+          oneOf:
+            - type: object
+              required: [action, status, source, at]
+              properties:
+                action: {type: string, enum: [on, off]}
+                status: {type: string, enum: [applied, failed, expired], description: "applied is a switch that the plug confirmed, failed is one that the gateway could not do, and expired is one that no gateway fetched in time or that a newer command replaced"}
+                source: {type: string, enum: [owner, schedule]}
+                at: {type: string, format: date-time}
+            - type: "null"
+        schedule: {oneOf: [{$ref: "#/components/schemas/RelaySchedule"}, {type: "null"}]}
+    RelayPending:
+      type: object
+      required: [id, action, status, expiresAt]
+      properties:
+        id: {type: string, format: uuid}
+        action: {type: string, enum: [on, off]}
+        status: {type: string, enum: [pending, sent], description: pending waits for the gateway and sent was fetched by it}
+        expiresAt: {type: string, format: date-time}
+    RelaySchedule:
+      type: object
+      required: [offAt, days]
+      properties:
+        enabled: {type: boolean, default: true, description: A paused schedule keeps its times and makes no command}
+        offAt: {type: string, pattern: "^([01][0-9]|2[0-3]):[0-5][0-9]$", examples: ["17:30"]}
+        onAt: {type: [string, "null"], pattern: "^([01][0-9]|2[0-3]):[0-5][0-9]$", examples: ["08:00"], description: "Optional, and not the same as offAt"}
+        days: {type: string, enum: [mon-fri, mon-sat, daily]}
+    RelayCommand:
+      type: object
+      description: A relay command in the answer to a batch of readings. The gateway switches the relay of the node and reports the result with the same id in `results` of a later batch.
+      required: [id, nodeId, action, expiresAt]
+      properties:
+        id: {type: string, format: uuid}
+        nodeId: {type: string}
+        action: {type: string, enum: [on, off]}
+        expiresAt: {type: string, format: date-time, description: The gateway skips a command after this time}
+    RelayResult:
+      type: object
+      required: [id, ok]
+      properties:
+        id: {type: string, format: uuid}
+        ok: {type: boolean, description: true when the relay switched and false when it could not}
     Sample:
       type: object
       required: [t, p]
@@ -1303,6 +1452,7 @@ components:
         e: {type: number, description: Total energy of the node in kWh since it was made, minimum: 0}
         f: {type: number, description: Hertz, minimum: 0, maximum: 100}
         pf: {type: number, description: Power factor, minimum: 0, maximum: 1}
+        r: {type: integer, enum: [0, 1], description: "The state of the relay of a plug, 1 for on and 0 for off"}
         a: {type: integer, minimum: 0, maximum: 3, description: "The condition that the gateway classified on its own. 0 is normal, 1 is standby, 2 is a degraded load (low power factor under high load) and 3 is an overload. The service keeps it and decides on its own too."}
     ReadingBatch:
       type: object
@@ -1310,6 +1460,11 @@ components:
       properties:
         seq: {type: integer, minimum: 1}
         sentAt: {type: integer, description: Unix seconds on the clock of the gateway}
+        results:
+          type: array
+          maxItems: 64
+          description: The answers to relay commands that an earlier answer carried. A result for a command that ended, or that is not one of this gateway, is ignored.
+          items: {$ref: "#/components/schemas/RelayResult"}
         nodes:
           type: array
           minItems: 1

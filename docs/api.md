@@ -60,3 +60,20 @@ Raw readings are kept 30 days. Hourly sums keep the number of samples, the sum, 
 ## Home and report
 
 The home screen has the phases `no-devices`, `collecting` and `ready`. The bill comes from the measured energy only, so the load that no device measures is not in it. The report of a month sums the energy, the bill and the measured saving, lists the top devices and gives the same page as one A4 PDF. The saving has three groups, the verified ones, the ones under check and, for the running month, the ones that wait for a decision. Every month is priced with the tariff of today, because the service keeps no tariff history.
+
+## Relay control
+
+A plug has a relay that the owner can switch on and off in the app, or on a daily schedule. The service never calls a gateway, because a gateway sits behind a router and only calls out. So a command waits in the service until the gateway fetches it.
+
+1. The owner calls `POST /v1/devices/{id}/relay` with `on` or `off`. The answer 202 holds the id of the command, and a command that still waits is replaced.
+2. The gateway sends its next batch of readings, and the answer holds `commands`. Each command has an id, the node, the action and the time at which it expires. The gateway switches the relay.
+3. The gateway reports the result in `results` of a later batch, with the same id and `ok` true or false. The command comes again in every answer until the gateway reports a result, so the gateway runs each id once. A sample can also hold `r`, the state of the relay, and the service keeps the newest one.
+4. The app reads `GET /v1/devices/{id}/relay` for the state, the command that waits and the last one that ended.
+
+A command that no gateway fetched in 10 minutes expires, so a plug is never switched on an old order, for example after the gateway was off all night. A gateway that has no node to report cannot send a batch, and so it cannot fetch commands, because a batch needs at least one node. A clamp has no relay and answers 409 with the code `no_relay`. A business can send 60 commands in an hour.
+
+The schedule is `PUT /v1/devices/{id}/schedule` with `offAt`, an optional `onAt` and `days`. The times are local times of the business. One round of the service looks at all schedules every minute, and only one copy does it at a time because the round takes an advisory lock. A schedule makes a command like the one of the owner, so it has the same delay and the same expiry. It never acts on a time that passed before it was set, or more than 10 minutes ago, which is the life of a command, so a service that was down for an hour does not switch a plug on an old order. The service does not know that the owner switched the plug by hand after the time of the schedule, so a schedule can switch it again at its next time. The schedule and the owner share the relay, a device has at most one open command, and the newest command is the one that counts. A batch may carry at most 64 `results`.
+
+During a rolling update the copy that still runs the old version answers a batch that has `r` or `results` with 422, because it does not know the fields. The gateway sends the batch again, and the new copy takes it. A new service with an old gateway works, because the new fields are additive.
+
+The tips only suggest, and the text of the report says so. The relay switches only on a command of the owner or on a schedule that the owner set.

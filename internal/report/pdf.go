@@ -93,7 +93,7 @@ func render(buf *bytes.Buffer, r Report, start time.Time) error {
 
 	pdf.SetFont("Helvetica", "", 11)
 	pdf.SetTextColor(70, 70, 70)
-	pdf.MultiCell(width, 15, tr(fmt.Sprintf("%s, %s. %s Sistem hanya menyarankan dan tidak mengubah atau mematikan alat Anda.", r.businessName, label, tariff)), "", "L", false)
+	pdf.MultiCell(width, 15, tr(fmt.Sprintf("%s, %s. %s Saran di laporan ini hanya usulan dan tidak mengubah atau mematikan alat Anda.", r.businessName, label, tariff)), "", "L", false)
 	pdf.Ln(gap)
 
 	card := func(title string, height float64, body func(x, y float64)) {

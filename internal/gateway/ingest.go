@@ -14,6 +14,7 @@ import (
 
 	"github.com/aethera-deeptech/backend/internal/api"
 	"github.com/aethera-deeptech/backend/internal/auth"
+	"github.com/aethera-deeptech/backend/internal/relay"
 )
 
 // The limits of one batch of readings
@@ -85,6 +86,8 @@ type Sample struct {
 	F  *float64 `json:"f"`
 	PF *float64 `json:"pf"`
 	A  *int     `json:"a"`
+	// R is the state of the relay of a plug, 1 for on and 0 for off
+	R *int `json:"r"`
 }
 
 // NodeBatch holds the samples of one node
@@ -100,6 +103,8 @@ type Batch struct {
 	Seq    int64       `json:"seq"`
 	SentAt int64       `json:"sentAt"`
 	Nodes  []NodeBatch `json:"nodes"`
+	// Results are the answers of the gateway to relay commands that an earlier answer carried
+	Results []relay.Result `json:"results"`
 }
 
 // Ack is the answer to a batch that was stored, or that was stored before
@@ -108,6 +113,8 @@ type Ack struct {
 	ServerTime time.Time `json:"serverTime"`
 	Accepted   int       `json:"accepted"`
 	Rejected   int       `json:"rejected"`
+	// Commands are the relay commands that wait for this gateway, and they come again until the gateway reports a result
+	Commands []relay.Command `json:"commands"`
 }
 
 func inRange(v *float64, lo, hi float64) bool {
@@ -117,7 +124,7 @@ func inRange(v *float64, lo, hi float64) bool {
 // validSample checks one sample against the limits of the sensors. It does not look at the time.
 func validSample(s Sample) bool {
 	return s.P != nil && inRange(s.P, 0, maxWatts) && inRange(s.V, 0, maxVolts) && inRange(s.I, 0, maxAmps) &&
-		inRange(s.E, 0, maxKWh) && inRange(s.F, 0, maxHertz) && inRange(s.PF, 0, 1) && (s.A == nil || (*s.A >= 0 && *s.A <= 3))
+		inRange(s.E, 0, maxKWh) && inRange(s.F, 0, maxHertz) && inRange(s.PF, 0, 1) && (s.A == nil || (*s.A >= 0 && *s.A <= 3)) && (s.R == nil || *s.R == 0 || *s.R == 1)
 }
 
 // Ingest stores a batch. A batch is stored once. A retry of the last batch is answered again without storing it, and a batch that
@@ -156,7 +163,21 @@ func (s *Service) Ingest(ctx context.Context, p *Principal, b Batch, now time.Ti
 	// continue and does not lose its readings behind a silent answer.
 	switch {
 	case b.Seq == last:
-		return Ack{AckSeq: last, ServerTime: now}, nil
+		// the answer to the batch is sent again with the commands that wait now, and the results are stored again, which does no harm
+		if _, err := relay.Complete(ctx, tx, p.GatewayID, b.Results); err != nil {
+			return Ack{}, err
+		}
+
+		commands, err := relay.Fetch(ctx, tx, p.GatewayID)
+		if err != nil {
+			return Ack{}, err
+		}
+
+		if err := tx.Commit(ctx); err != nil {
+			return Ack{}, fmt.Errorf("finish the intake %w", err)
+		}
+
+		return Ack{AckSeq: last, ServerTime: now, Commands: commands}, nil
 	case b.Seq != last+1:
 		e := api.NewError(http.StatusConflict, "sequence_gap", "The batch skips a sequence number")
 		expected := last + 1
@@ -197,7 +218,22 @@ func (s *Service) Ingest(ctx context.Context, p *Principal, b Batch, now time.Ti
 
 		ack.Accepted += accepted
 		ack.Rejected += rejected
+
+		if err := observeRelay(ctx, tx, p.GatewayID, n, shift, now); err != nil {
+			return Ack{}, err
+		}
 	}
+
+	if _, err := relay.Complete(ctx, tx, p.GatewayID, b.Results); err != nil {
+		return Ack{}, err
+	}
+
+	commands, err := relay.Fetch(ctx, tx, p.GatewayID)
+	if err != nil {
+		return Ack{}, err
+	}
+
+	ack.Commands = commands
 
 	if _, err := tx.Exec(ctx, "UPDATE gateways SET last_seq = $2, last_seen_at = $3 WHERE id = $1", p.GatewayID, b.Seq, now); err != nil {
 		return Ack{}, fmt.Errorf("move the sequence number %w", err)
@@ -224,6 +260,10 @@ func checkShape(b Batch) error {
 
 	if len(b.Nodes) == 0 || len(b.Nodes) > maxNodes {
 		fields["nodes"] = "out_of_range"
+	}
+
+	if len(b.Results) > relay.MaxResults {
+		fields["results"] = "out_of_range"
 	}
 
 	total := 0
@@ -359,4 +399,34 @@ func storeSamples(ctx context.Context, tx pgx.Tx, gatewayID string, n NodeBatch,
 	}
 
 	return len(inserted), rejected, nil
+}
+
+// observeRelay stores the newest state of the relay that a node reported in this batch
+func observeRelay(ctx context.Context, tx pgx.Tx, gatewayID string, n NodeBatch, shift time.Duration, now time.Time) error {
+	var (
+		newest time.Time
+		on     bool
+		found  bool
+	)
+
+	for _, s := range n.Samples {
+		if s.R == nil || !validSample(s) {
+			continue
+		}
+
+		t := time.Unix(s.T, 0).Add(shift)
+		if t.Before(now.Add(-maxAge)) || t.After(now.Add(maxFuture)) {
+			continue
+		}
+
+		if !found || t.After(newest) {
+			newest, on, found = t, *s.R == 1, true
+		}
+	}
+
+	if !found {
+		return nil
+	}
+
+	return relay.Observe(ctx, tx, gatewayID, n.NodeID, on, newest.UTC())
 }
