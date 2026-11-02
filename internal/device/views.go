@@ -315,7 +315,7 @@ func (v *Views) newestAnomaly(ctx context.Context, gatewayID, nodeID string, now
 
 	if a.PowerFactor != nil {
 		// the column is a 32-bit float, so 0.45 comes back as 0.4499999
-		rounded := math.Round(float64(*a.PowerFactor)*100) / 100
+		rounded := round2(*a.PowerFactor)
 		a.PowerFactor = &rounded
 	}
 

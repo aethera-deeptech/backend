@@ -79,8 +79,8 @@ func watchNode(ctx context.Context, tx pgx.Tx, gatewayID, nodeID string, samples
 func detectAnomaly(ctx context.Context, tx pgx.Tx, gatewayID, nodeID string, samples []stored, now time.Time) error {
 	var (
 		overload *stored
-		// loaded counts the samples with a power factor at a high load, poor of them are under the limit, and worst is the sample of the
-		// highest power among those
+		// loaded counts the samples with a power factor at a high load, poor counts those under the limit, and worst is the sample of the
+		// highest power among the poor ones
 		loaded, poor int
 		worst        *stored
 		pfSum        float64
@@ -132,7 +132,8 @@ func detectAnomaly(ctx context.Context, tx pgx.Tx, gatewayID, nodeID string, sam
 
 	switch {
 	case reported != nil:
-		degradation = reported
+		// the power factor of one sample says little about what the node saw, so only a degradation that the service found keeps it
+		degradation = &stored{t: reported.t, watts: reported.watts}
 	case loaded >= degradationMinSamples && worst != nil && float64(poor) >= degradationShare*float64(loaded):
 		mean := pfSum / float64(poor)
 		degradation = &stored{t: worst.t, watts: worst.watts, pf: &mean}

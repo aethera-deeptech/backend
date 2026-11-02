@@ -121,3 +121,26 @@ func TestTheNodeCanReportADegradationItself(t *testing.T) {
 		t.Fatalf("the detail is %v", anomaly)
 	}
 }
+
+func TestAReportedDegradationDoesNotKeepThePowerFactorOfOneSample(t *testing.T) {
+	g := business(t, testutil.New(t), "budi@example.com", "ESP32-AABBCC", "a")
+	g.pair(t, "PLUG-0001", "Kompresor")
+
+	g.seq++
+
+	at := time.Now().Add(-time.Duration(g.seq) * 30 * time.Second).Unix()
+	body := fmt.Sprintf(`{"seq":%d,"sentAt":%d,"nodes":[{"nodeId":"PLUG-0001","kind":"plug","samples":[{"t":%d,"p":80,"pf":0.8,"a":2}]}]}`, g.seq, time.Now().Unix(), at)
+
+	if r := g.e.CallWith(t, http.MethodPost, "/device/v1/readings", body, map[string]string{"Authorization": "Bearer " + g.key}); r.Status != http.StatusOK {
+		t.Fatalf("readings answered %d %v", r.Status, r.Body)
+	}
+
+	var (
+		kind string
+		pf   *float64
+	)
+
+	if err := g.e.Pool.QueryRow(t.Context(), "SELECT kind, power_factor FROM anomalies").Scan(&kind, &pf); err != nil || kind != "degradation" || pf != nil {
+		t.Fatalf("the anomaly is %q %v (%v)", kind, pf, err)
+	}
+}
