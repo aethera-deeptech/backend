@@ -1,0 +1,137 @@
+name: DAST active
+
+on:
+  schedule:
+    # Weekly on Sunday at 18:00 UTC (01:00 WIB Monday), so the result is waiting at the start of the week.
+    # GitHub often starts scheduled runs a few hours late.
+    - cron: "0 18 * * 0"
+  workflow_dispatch:
+
+concurrency:
+  group: dast-active-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  zap:
+    name: ZAP active scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Pull images through the Google mirror
+        uses: ./.github/actions/pull-images
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          token: ${{ secrets.DOCKERHUB_PULL_TOKEN }}
+
+      - name: Create the environment file
+        run: |
+          cp .env.example .env
+          go_image="$(grep -oE 'golang:[0-9][^ "]*@sha256:[0-9a-f]{64}' Dockerfile | head -1)"
+          test -n "$go_image" || { echo "no pinned golang image in the Dockerfile" >&2; exit 1; }
+          {
+            echo "APP_ENV=development"
+            echo "DB_PASSWORD=$(openssl rand -hex 16)"
+            echo "GO_IMAGE=${go_image}"
+          } >> .env
+
+      # compose.ci.yml builds the image from this pull request
+      - name: Start the stack
+        run: docker compose -f compose.yml -f compose.ci.yml up -d --build --wait --wait-timeout 240
+
+      - name: Build the scan plan
+        env:
+          BASE_URL: http://127.0.0.1:8080
+          SMOKE_LOG_CMD: docker compose -f compose.yml -f compose.ci.yml logs --no-color --no-log-prefix api
+          ZAP_FULL: "true"
+        run: |
+          mkdir -p zap-out
+          python3 -I .zap/seed.py zap-out/requests.json
+          jq -c --arg base "http://127.0.0.1:8080" '[.[] | {
+              url: ($base + .path),
+              method: .method,
+              headers: ((if .app then ["X-Requested-With: aethera", "Origin: http://localhost:5173"] else [] end) + (if .cookie then ["Cookie: " + .cookie] else [] end) + (if .bearer then ["Authorization: Bearer " + .bearer] else [] end) + (if has("body") then ["Content-Type: application/json"] else [] end))
+            } + (if has("body") then {data: (.body | tojson)} else {} end)]' zap-out/requests.json | sed 's/^/      /' > zap-out/requests.flow
+          sed -e '/@@REQUESTS@@/{r zap-out/requests.flow' -e 'd}' .zap/active.yml > zap-out/plan.yaml
+          chmod -R a+rwX zap-out
+
+      - name: Run the active scan
+        run: |
+          docker run --rm --network host -v "$PWD/zap-out:/zap/wrk:rw" \
+            "$(bash ./.github/tools/image.sh zaproxy)" \
+            zap.sh -cmd -port 8090 -autorun /zap/wrk/plan.yaml
+
+      # The scan only reports for now, so the run stays green and the findings show as annotations and in the summary
+      - name: Write the summary
+        if: ${{ !cancelled() && hashFiles('zap-out/active-report.json') != '' }}
+        run: |
+          {
+            echo "### ZAP active scan"
+            echo
+            echo "| Risk | Alert | Instances |"
+            echo "|:---|:---|---:|"
+            jq -r '[.site[].alerts[]] | sort_by(-(.riskcode | tonumber)) | .[] | "| \(.riskdesc) | \(.name) | \(.count) |"' zap-out/active-report.json
+          } >> "$GITHUB_STEP_SUMMARY"
+          jq -r '[.site[].alerts[]] | .[] | select((.riskcode | tonumber) >= 2) | "::warning title=ZAP active scan::\(.name) (\(.riskdesc)), \(.count) instance(s)"' zap-out/active-report.json
+
+      # A quiet report could also mean the scan sent almost nothing, so the summary shows what the API actually answered
+      - name: Count the requests the scan sent
+        if: ${{ !cancelled() }}
+        run: |
+          docker compose -f compose.yml -f compose.ci.yml logs api --no-log-prefix --no-color > zap-out/api.log || true
+          # the API writes one JSON object for each line, and jq skips whatever is not one, such as a line of the container runtime
+          jq -R -c 'fromjson? | select(type == "object")' zap-out/api.log > zap-out/api.jsonl || true
+          jq -c 'select(.msg == "request")' zap-out/api.jsonl > zap-out/requests.jsonl || true
+          {
+            echo
+            echo "Requests the API answered during the run, $(jq -s 'length' zap-out/requests.jsonl)"
+            echo
+            echo "| Status | Requests |"
+            echo "|:---|---:|"
+            jq -r '.status' zap-out/requests.jsonl | sort | uniq -c | awk '{print "| " $2 " | " $1 " |"}'
+            # a 5xx is a failure of the API itself, which ZAP does not raise as an alert, so the routes and the logged errors are listed
+            echo
+            echo "Requests that the API answered with a server error"
+            echo
+            echo "| Request | Status | Count |"
+            echo "|:---|:---|---:|"
+            jq -r 'select(.status >= 500) | "\(.method) \(.path | gsub("[0-9a-f]{8}-[0-9a-f-]{27}"; "{id}")) \(.status)"' zap-out/requests.jsonl \
+              | sort | uniq -c | awk '{print "| " $2 " " $3 " | " $4 " | " $1 " |"}'
+            echo
+            echo "Errors that the API logged, with how often"
+            echo
+            echo '```'
+            jq -r 'select(.level == "ERROR") | .msg' zap-out/api.jsonl | sort | uniq -c | sort -rn | head -15
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+          errors="$(jq -s '[.[] | select(.status >= 500)] | length' zap-out/requests.jsonl)"
+          if [ "${errors:-0}" -gt 0 ]; then
+            echo "::warning title=ZAP active scan::The API answered $errors request(s) with a server error, see the summary"
+          fi
+
+      # plan.yaml and requests.json hold the tokens of the throwaway accounts, so only the reports are uploaded
+      - name: Upload the reports
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: zap-active-reports
+          path: |
+            zap-out/active-report.html
+            zap-out/active-report.json
+          if-no-files-found: ignore
+
+      - name: Collect container logs
+        if: ${{ failure() }}
+        run: docker compose -f compose.yml -f compose.ci.yml logs --no-color --tail 200
+
+      - name: Stop the stack
+        if: ${{ always() }}
+        run: docker compose -f compose.yml -f compose.ci.yml down -v

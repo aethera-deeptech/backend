@@ -1,0 +1,3 @@
+# zap-baseline rule configuration, see https://www.zaproxy.org/docs/docker/baseline-scan/
+# A line is the rule id, a tab, WARN or FAIL or IGNORE, and a tab with the reason.
+# Every rule that is not listed here fails the build as a warning.

@@ -1,0 +1,92 @@
+name: DAST
+
+on:
+  pull_request:
+    branches: [main]
+  schedule:
+    # Weekly on Monday at 22:00 UTC (05:00 WIB Tuesday), after the daily jobs. The image is pinned by digest, so this
+    # run does not pick up new ZAP rules (a bump of the image does that, and its pull request is scanned). It catches
+    # drift in main, such as a header that disappeared, when no pull request has run the scan for a while.
+    # GitHub often starts scheduled runs a few hours late.
+    - cron: "0 22 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: dast-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  zap:
+    name: ZAP baseline scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Pull images through the Google mirror
+        uses: ./.github/actions/pull-images
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          token: ${{ secrets.DOCKERHUB_PULL_TOKEN }}
+
+      - name: Create the environment file
+        run: |
+          cp .env.example .env
+          go_image="$(grep -oE 'golang:[0-9][^ "]*@sha256:[0-9a-f]{64}' Dockerfile | head -1)"
+          test -n "$go_image" || { echo "no pinned golang image in the Dockerfile" >&2; exit 1; }
+          {
+            echo "APP_ENV=development"
+            echo "DB_PASSWORD=$(openssl rand -hex 16)"
+            echo "GO_IMAGE=${go_image}"
+          } >> .env
+
+      # compose.ci.yml builds the image from this pull request
+      - name: Start the stack
+        run: docker compose -f compose.yml -f compose.ci.yml up -d --build --wait --wait-timeout 240
+
+      # The scan runs the ZAP image directly, pinned by digest, because it only needs the container and the report files
+      - name: Run the ZAP baseline scan
+        env:
+          BASE_URL: http://127.0.0.1:8080
+          SMOKE_LOG_CMD: docker compose -f compose.yml -f compose.ci.yml logs --no-color --no-log-prefix api
+        run: |
+          mkdir -p zap-out
+          cp .zap/rules.tsv .zap/hook.py zap-out/
+          python3 -I .zap/seed.py zap-out/requests.json
+          # the container user is not the runner user, so it needs write access to the shared folder
+          chmod -R a+rwX zap-out
+          docker run --rm --network host -v "$PWD/zap-out:/zap/wrk:rw" \
+            "$(bash ./.github/tools/image.sh zaproxy)" \
+            zap-baseline.py -t http://127.0.0.1:8080 -c rules.tsv --hook /zap/wrk/hook.py --autooff \
+            -m 1 -T 10 -r report.html -w report.md -J report.json
+
+      - name: Write the summary
+        if: ${{ !cancelled() && hashFiles('zap-out/report.md') != '' }}
+        run: cat zap-out/report.md >> "$GITHUB_STEP_SUMMARY"
+
+      # requests.json holds the tokens of the throwaway accounts, so only the reports are uploaded
+      - name: Upload the reports
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: zap-reports
+          path: |
+            zap-out/report.html
+            zap-out/report.md
+            zap-out/report.json
+          if-no-files-found: ignore
+
+      - name: Collect container logs
+        if: ${{ failure() }}
+        run: docker compose -f compose.yml -f compose.ci.yml logs --no-color --tail 200
+
+      - name: Stop the stack
+        if: ${{ always() }}
+        run: docker compose -f compose.yml -f compose.ci.yml down -v

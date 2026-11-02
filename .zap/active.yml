@@ -1,0 +1,55 @@
+# ZAP Automation Framework plan for the weekly active scan, see https://www.zaproxy.org/docs/desktop/addons/automation-framework/
+# The workflow replaces the placeholder line with the requests that seed.sh recorded, so the scan attacks real routes with real tokens.
+# Only throwaway accounts on a throwaway stack are attacked here, never run this against a system you do not own.
+---
+env:
+  contexts:
+    - name: api
+      urls:
+        - http://127.0.0.1:8080
+      includePaths:
+        - http://127.0.0.1:8080.*
+  parameters:
+    failOnError: true
+    failOnWarning: false
+    progressToStdout: true
+
+jobs:
+  # Sends the recorded requests once so ZAP knows every route, because the JSON API has no links to spider
+  - type: requestor
+    name: replay
+    requests:
+@@REQUESTS@@
+
+  - type: passiveScan-wait
+    parameters:
+      maxDuration: 5
+
+  - type: activeScan
+    name: attack
+    parameters:
+      context: api
+      maxRuleDurationInMins: 5
+      maxScanDurationInMins: 30
+      handleAntiCSRFTokens: false
+    policyDefinition:
+      defaultStrength: Medium
+      defaultThreshold: Medium
+
+  - type: passiveScan-wait
+    parameters:
+      maxDuration: 5
+
+  - type: report
+    parameters:
+      template: traditional-json
+      reportDir: /zap/wrk
+      reportFile: active-report
+      reportTitle: Aethera API active scan
+
+  - type: report
+    parameters:
+      template: traditional-html
+      reportDir: /zap/wrk
+      reportFile: active-report
+      reportTitle: Aethera API active scan
