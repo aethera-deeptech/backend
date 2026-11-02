@@ -6,8 +6,8 @@ import (
 	"testing"
 )
 
-// BenchmarkReadBatch is the cost of reading and checking a batch of 16 nodes with 20 samples each, which is the largest batch that a
-// gateway sends
+// BenchmarkReadBatch is the cost of reading and checking a full batch of 16 nodes with 20 samples each, which is a typical batch of a
+// busy gateway
 func BenchmarkReadBatch(b *testing.B) {
 	var nodes []NodeBatch
 
