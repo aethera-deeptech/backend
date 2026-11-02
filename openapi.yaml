@@ -947,7 +947,7 @@ paths:
       tags: [Gateway]
       operationId: enrollGateway
       summary: Ask for a claim code
-      description: "A gateway that has no key makes a random key of its own and calls this route with the SHA-256 of the key text exactly as it will send it in the bearer header (not of decoded bytes), written in lower case hex. The service accepts a key of 32 to 128 ASCII characters, and 43 characters of base64url text from 32 random bytes is the recommendation. The service never sees the key itself. The answer holds the claim code that the gateway shows and a poll id. The route has a limit for each address of the client and for each hardware id. The code and the poll id are random and work once."
+      description: "A gateway that has no key makes a random key of its own and calls this route with the SHA-256 of the key text exactly as it will send it in the bearer header (not of decoded bytes), written in lower case hex. The service accepts a key of 32 to 128 bytes of ASCII text, and 43 characters of base64url text from 32 random bytes is the recommendation. The service never sees the key itself. The answer holds the claim code that the gateway shows and a poll id. The route has a limit for each address of the client and for each hardware id. The code and the poll id are random and work once."
       security: []
       requestBody:
         required: true
@@ -1064,7 +1064,7 @@ components:
     gatewayKey:
       type: http
       scheme: bearer
-      description: "The key that the gateway made when it enrolled, sent as `Authorization: Bearer <key>`. The key is 32 to 128 ASCII characters, and 32 random bytes in base64url (43 characters) is the recommendation. The service stores only its SHA-256, so a copy of the database cannot act as a gateway. TLS protects the key in transit, and the sequence number makes a retry safe."
+      description: "The key that the gateway made when it enrolled, sent as `Authorization: Bearer <key>`. The key is 32 to 128 bytes of ASCII text, and 32 random bytes in base64url (43 characters) is the recommendation. The service stores only its SHA-256, so a copy of the database cannot act as a gateway. TLS protects the key in transit, and the sequence number makes a retry safe."
   headers:
     SessionCookie:
       description: The session cookie
