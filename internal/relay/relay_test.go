@@ -504,3 +504,77 @@ func TestTheRelayViewSaysWhetherTheGatewayIsOnline(t *testing.T) {
 		t.Fatalf("a command for a silent gateway answered %d %v", got.Status, got.Body)
 	}
 }
+
+// sampleAt sends one batch with one sample of the plug at the time t, with the extra fields of the sample and the results of the
+// gateway. The times of one test grow, because a state that a sample reports only counts when the sample is newer than the last one.
+func (r *rig) sampleAt(t *testing.T, at int64, extra, results string) {
+	t.Helper()
+
+	r.seq++
+
+	if results == "" {
+		results = "[]"
+	}
+
+	body := fmt.Sprintf(`{"seq":%d,"sentAt":%d,"nodes":[{"nodeId":"PLUG-0001","kind":"plug","samples":[{"t":%d,"p":42%s}]}],"results":%s}`,
+		r.seq, time.Now().Unix(), at, extra, results)
+
+	if reply := r.e.CallWith(t, http.MethodPost, "/device/v1/readings", body, map[string]string{"Authorization": "Bearer " + r.key}); reply.Status != http.StatusOK {
+		t.Fatalf("the batch answered %d %v", reply.Status, reply.Body)
+	}
+}
+
+func TestAPlugThatCutItselfShowsTheCauseUntilSomethingSwitchesItAgain(t *testing.T) {
+	r := newRig(t)
+
+	base := time.Now().Unix() - 600
+
+	r.sampleAt(t, base+10, `,"r":1`, "")
+
+	if v := r.relayView(t); v["state"] != "on" || v["cutByDevice"] != nil {
+		t.Fatalf("a plug that is on shows %v", v)
+	}
+
+	// the plug cuts its own relay and reports the code of an overload
+	r.sampleAt(t, base+20, `,"a":3,"r":0`, "")
+
+	v := r.relayView(t)
+	cut, _ := v["cutByDevice"].(map[string]any)
+
+	if v["state"] != "off" || cut["reason"] != "overload" || cut["at"] == nil {
+		t.Fatalf("a plug that cut itself shows %v", v)
+	}
+
+	// the owner switches it on, and the cause goes with the state
+	id, _ := r.command(t, "on").Body["id"].(string)
+
+	r.batch(t, nil, "")
+	r.sampleAt(t, base+30, `,"r":1`, fmt.Sprintf(`[{"id":"%s","ok":true}]`, id))
+
+	if v := r.relayView(t); v["state"] != "on" || v["cutByDevice"] != nil {
+		t.Fatalf("a plug that the owner switched on shows %v", v)
+	}
+
+	// a plug that is off because of a command that came after the overload has no cause from the device
+	offID, _ := r.command(t, "off").Body["id"].(string)
+
+	r.batch(t, nil, "")
+	r.sampleAt(t, base+40, `,"r":0`, fmt.Sprintf(`[{"id":"%s","ok":true}]`, offID))
+
+	if v := r.relayView(t); v["state"] != "off" || v["cutByDevice"] != nil {
+		t.Fatalf("a plug that the owner switched off shows %v", v)
+	}
+
+	// the commands are older than the overload now, so the overload is the cause again, until it is more than a day old
+	r.e.Exec(t, "UPDATE relay_commands SET done_at = now() - interval '3 days', created_at = now() - interval '3 days'")
+
+	if v := r.relayView(t); v["cutByDevice"] == nil {
+		t.Fatalf("an overload that came after the last command is not shown %v", v)
+	}
+
+	r.e.Exec(t, "UPDATE anomalies SET at = now() - interval '25 hours'")
+
+	if v := r.relayView(t); v["cutByDevice"] != nil {
+		t.Fatalf("an old overload is shown as the cause %v", v)
+	}
+}
