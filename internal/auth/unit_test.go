@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 )
 
 func TestNormalizeEmail(t *testing.T) {
@@ -37,7 +38,9 @@ func TestValidPassword(t *testing.T) {
 	tests := map[string]string{
 		"":                        "required",
 		"1234567":                 "too_short",
-		"12345678":                "",
+		"12345678":                "too_common",
+		"PassWord":                "too_common",
+		"87654321x":               "",
 		"kata sandi yang panjang": "",
 		strings.Repeat("ä", 128):  "",
 		strings.Repeat("a", 129):  "too_long",
@@ -144,5 +147,27 @@ func TestTokens(t *testing.T) {
 
 	if string(hashToken(a)) != string(hashA) {
 		t.Fatal("the hash of a token changes")
+	}
+}
+
+func TestTheListOfCommonPasswordsCanMatch(t *testing.T) {
+	seen := map[string]bool{}
+
+	for _, line := range strings.Split(strings.TrimSuffix(commonPasswords, "\n"), "\n") {
+		n := utf8.RuneCountInString(line)
+
+		if line != strings.ToLower(strings.TrimSpace(line)) || n < minPasswordRunes || n > maxPasswordRunes {
+			t.Errorf("the entry %q cannot match, it must be lowercase, trimmed and 8 to 128 characters", line)
+		}
+
+		if seen[line] {
+			t.Errorf("the entry %q is listed twice", line)
+		}
+
+		seen[line] = true
+	}
+
+	if len(seen) < 1000 {
+		t.Errorf("the list has %d entries, want at least 1000", len(seen))
 	}
 }

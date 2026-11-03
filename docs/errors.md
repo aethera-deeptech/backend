@@ -11,7 +11,7 @@ A failed response of a route under `/v1` or `/device/v1` has one JSON form, so a
 
 The `message` is English text for a developer and can be reworded, so an app branches on `code` and on the status and never on the message. Some answers add a field.
 
-- `fields` names each field that failed validation, with one code for each field. The codes are `required`, `invalid`, `too_long`, `too_short`, `out_of_range`, `empty`, `end_before_start`, `in_the_future` and `too_old`.
+- `fields` names each field that failed validation, with one code for each field. The codes are `required`, `invalid`, `too_long`, `too_short`, `too_common`, `out_of_range`, `empty`, `end_before_start`, `in_the_future` and `too_old`.
 - `retryAfterSeconds` is on every 429 answer and on the 503 answer `busy`, and the same number is in the `Retry-After` header.
 - `expectedSeq` is on the answer `sequence_gap` and holds the sequence number that the service wants next.
 

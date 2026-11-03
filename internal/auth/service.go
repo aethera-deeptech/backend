@@ -114,6 +114,8 @@ func validPassword(p string) (string, bool) {
 		return "too_short", false
 	case n > maxPasswordRunes:
 		return "too_long", false
+	case isCommonPassword(p):
+		return "too_common", false
 	default:
 		return "", true
 	}
