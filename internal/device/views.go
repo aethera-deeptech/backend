@@ -31,6 +31,7 @@ const (
 type ListItem struct {
 	ID            string     `json:"id"`
 	Name          string     `json:"name"`
+	Kind          string     `json:"kind"`
 	Status        string     `json:"status"`
 	CurrentPowerW *float64   `json:"currentPowerW"`
 	TodayKwh      *float64   `json:"todayKwh"`
@@ -73,6 +74,7 @@ type Detail struct {
 	Name          string    `json:"name"`
 	Status        string    `json:"status"`
 	Room          string    `json:"room"`
+	Kind          string    `json:"kind"`
 	KindLabel     string    `json:"kindLabel"`
 	CurrentPowerW *float64  `json:"currentPowerW"`
 	TodayKwh      *float64  `json:"todayKwh"`
@@ -127,7 +129,7 @@ func (v *Views) clock(ctx context.Context, businessID string) (clock, error) {
 }
 
 const listSQL = `
-SELECT d.id, d.name, n.last_sample_at,
+SELECT d.id, d.name, d.kind, n.last_sample_at,
   (SELECT r.watts FROM readings r WHERE r.gateway_id = d.gateway_id AND r.node_id = d.node_id ORDER BY r.t DESC LIMIT 1),
   (SELECT percentile_cont(0.95) WITHIN GROUP (ORDER BY h.max_watts) FROM readings_hourly h
      WHERE h.gateway_id = d.gateway_id AND h.node_id = d.node_id AND h.hour >= $2::timestamptz - interval '7 days'),
@@ -163,7 +165,7 @@ func (v *Views) List(ctx context.Context, businessID string) ([]ListItem, error)
 			today     float64
 		)
 
-		if err := rows.Scan(&it.ID, &it.Name, &lastAt, &watts, &p95, &anomalyAt, &today); err != nil {
+		if err := rows.Scan(&it.ID, &it.Name, &it.Kind, &lastAt, &watts, &p95, &anomalyAt, &today); err != nil {
 			return nil, fmt.Errorf("read a device %w", err)
 		}
 
@@ -266,6 +268,7 @@ func (v *Views) Get(ctx context.Context, businessID, id string) (Detail, error) 
 	out.Status = Classify(c.now, sampleAt, watts, p95, anomalyAt)
 	watts, today, month = roundPtr(watts, round1), round3(today), round3(month)
 	standby = roundPtr(standby, round1)
+	out.Kind = kind
 	out.KindLabel = KindLabel(kind)
 	out.Signal = Signal(c.now, sampleAt, hops)
 	out.MonthKwh = &month

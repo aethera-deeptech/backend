@@ -49,7 +49,7 @@ func TestAFreshDeviceIsOnAndShowsItsPattern(t *testing.T) {
 	}
 
 	row, _ := items[0].(map[string]any)
-	if row["id"] != id || row["status"] != "nyala" || row["currentPowerW"] != 12.5 {
+	if row["id"] != id || row["kind"] != "plug" || row["status"] != "nyala" || row["currentPowerW"] != 12.5 {
 		t.Fatalf("the row is %v", row)
 	}
 
@@ -58,7 +58,7 @@ func TestAFreshDeviceIsOnAndShowsItsPattern(t *testing.T) {
 		t.Fatalf("the detail answered %d %v", d.Status, d.Body)
 	}
 
-	if d.Body["room"] != "Ruang jahit" || d.Body["kindLabel"] != "WATTLINK Plug" || d.Body["signal"] != "baik" || d.Body["status"] != "nyala" {
+	if d.Body["room"] != "Ruang jahit" || d.Body["kind"] != "plug" || d.Body["kindLabel"] != "WATTLINK Plug" || d.Body["signal"] != "baik" || d.Body["status"] != "nyala" {
 		t.Fatalf("the detail is %v", d.Body)
 	}
 
@@ -200,5 +200,36 @@ func TestRenameChecksTheNameAndTheOwner(t *testing.T) {
 
 	if r := e.Call(t, http.MethodGet, "/v1/devices", "", ""); r.Status != http.StatusUnauthorized {
 		t.Fatalf("no session answered %d", r.Status)
+	}
+}
+
+func TestAClampShowsItsKindInTheListAndTheDetail(t *testing.T) {
+	g := business(t, testutil.New(t), "budi@example.com", "ESP32-AABBCC", "a")
+
+	r := g.start(t, "clamp")
+	if r.Status != http.StatusCreated {
+		t.Fatalf("start answered %d %v", r.Status, r.Body)
+	}
+
+	pairing, _ := r.Body["id"].(string)
+
+	g.hear(t, "CLMP-0001", "clamp")
+
+	id, _ := g.status(t, pairing).Body["deviceId"].(string)
+	if id == "" {
+		t.Fatal("the clamp was not paired")
+	}
+
+	items, _ := g.e.Call(t, http.MethodGet, "/v1/devices", "", g.session).Body["items"].([]any)
+	if len(items) != 1 {
+		t.Fatalf("the list has %d items", len(items))
+	}
+
+	if row, _ := items[0].(map[string]any); row["kind"] != "clamp" {
+		t.Fatalf("the row is %v", row)
+	}
+
+	if d := g.device(t, id); d.Body["kind"] != "clamp" || d.Body["kindLabel"] != "WATTLINK Clamp (dijepit di kabel)" {
+		t.Fatalf("the detail is %v", d.Body)
 	}
 }

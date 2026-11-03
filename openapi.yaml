@@ -1162,10 +1162,11 @@ components:
         timeZone: {type: string, minLength: 1, maxLength: 64}
     DeviceListItem:
       type: object
-      required: [id, name, status, currentPowerW, todayKwh]
+      required: [id, name, kind, status, currentPowerW, todayKwh]
       properties:
         id: {type: string, format: uuid}
         name: {type: string}
+        kind: {$ref: "#/components/schemas/DeviceKind"}
         status: {$ref: "#/components/schemas/DeviceStatus"}
         currentPowerW: {type: [number, "null"], description: Null while the device does not answer}
         todayKwh: {type: [number, "null"]}
@@ -1173,12 +1174,13 @@ components:
         lastSeenAt: {type: string, format: date-time, description: Only with the status offline}
     Device:
       type: object
-      required: [id, name, status, room, kindLabel, currentPowerW, todayKwh, monthKwh, onHoursToday, standbyW, lastSeenAt, signal, powerPattern]
+      required: [id, name, status, room, kind, kindLabel, currentPowerW, todayKwh, monthKwh, onHoursToday, standbyW, lastSeenAt, signal, powerPattern]
       properties:
         id: {type: string, format: uuid}
         name: {type: string}
         status: {$ref: "#/components/schemas/DeviceStatus"}
         room: {type: string}
+        kind: {$ref: "#/components/schemas/DeviceKind"}
         kindLabel: {type: string, examples: [WATTLINK Plug]}
         currentPowerW: {type: [number, "null"]}
         todayKwh: {type: [number, "null"]}
