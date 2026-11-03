@@ -63,9 +63,9 @@ Every setting is an environment variable, and [.env.example](.env.example) lists
 | `APP_ENV` | `development` | `production` turns on the stricter checks, such as an https `APP_ORIGIN` and a mail server and sender |
 | `APP_PORT` | `8080` | The port of the API |
 | `APP_ORIGIN` | `http://localhost:5173` | The one origin that CORS allows, and the base of the links in the emails |
-| `TRUST_PROXY` | `false` | Read the client address from `PROXY_HEADER` when a reverse proxy sits in front |
+| `TRUST_PROXY` | `false` | Read the client address from `PROXY_HEADER` when a reverse proxy sits in front. The header is accepted only from private and loopback addresses, so also set `TRUST_PROXY_CIDRS` to the address of the proxy, or another container on a shared network can set the client address of the rate limits |
 | `DB_HOST`, `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD` | required | The PostgreSQL connection. `DB_PORT` is 5432 unless it is set |
-| `DB_SSL_MODE` | `require`, and `disable` in the example | The mode of the connection. Use `disable` only on a private Docker network |
+| `DB_SSL_MODE` | `require`, and `disable` in the example | The mode of the connection. Use `disable` only on a private Docker network or on your own machine |
 | `DB_MAX_CONNS` | `8` | The pool size of one copy |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURITY`, `SMTP_FROM_ADDRESS` | see the file | The mail server for the verification and reset mails |
 | `SENTRY_DSN` | empty | An empty value switches error reports off |
