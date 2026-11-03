@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"log"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -21,10 +22,15 @@ import (
 func TestTheLogsNameTheRouteAndNotTheValueOfAParameter(t *testing.T) {
 	var out bytes.Buffer
 
-	previous := slog.Default()
+	// slog.SetDefault also points the log package at the new handler, so the log package is put back as well
+	previous, flags, writer := slog.Default(), log.Flags(), log.Writer()
 
 	slog.SetDefault(slog.New(slog.NewJSONHandler(&out, nil)))
-	t.Cleanup(func() { slog.SetDefault(previous) })
+	t.Cleanup(func() {
+		slog.SetDefault(previous)
+		log.SetFlags(flags)
+		log.SetOutput(writer)
+	})
 
 	app := fiber.New(fiber.Config{ErrorHandler: api.ErrorHandler})
 	app.Use(api.AccessLog(), api.Recover())
@@ -34,8 +40,16 @@ func TestTheLogsNameTheRouteAndNotTheValueOfAParameter(t *testing.T) {
 	})
 	app.Get("/boom/:id", func(fiber.Ctx) error { panic("secret-text") })
 	app.Get("/healthz", func(fiber.Ctx) error { return nil })
+	app.Group("/device").Get("/enroll/:pollId", func(fiber.Ctx) error { return nil })
+	app.Get("/multi/:id", func(fiber.Ctx) error { return errors.Join(errors.New("first"), errors.New("second")) })
 
-	for _, path := range []string{"/enroll/secret-poll?x=1", "/fail/secret-id", "/boom/secret-id", "/healthz?x=1"} {
+	paths := []string{
+		"/enroll/secret-poll?x=1", "/fail/secret-id", "/boom/secret-id", "/healthz?x=1", "/device/enroll/secret-poll", "/multi/secret-id",
+		// no route answers these, so the log must not name them
+		"/enroll/secret-poll/extra", "/nothing/secret-poll",
+	}
+
+	for _, path := range paths {
 		res, err := app.Test(httptest.NewRequestWithContext(t.Context(), http.MethodGet, path, http.NoBody))
 		if err != nil {
 			t.Fatal(err)
@@ -53,8 +67,8 @@ func TestTheLogsNameTheRouteAndNotTheValueOfAParameter(t *testing.T) {
 	}
 
 	wants := []string{
-		`"path":"/enroll/:pollId"`, `"path":"/fail/:id"`, `"path":"/boom/:id"`, `"path":"/healthz"`,
-		`"error_type":"*errors.errorString"`, `"panic_type":"string"`,
+		`"path":"/enroll/:pollId"`, `"path":"/fail/:id"`, `"path":"/boom/:id"`, `"path":"/healthz"`, `"path":"/device/enroll/:pollId"`,
+		`"path":"unmatched"`, `"error_type":"*errors.errorString"`, `"panic_type":"string"`,
 	}
 
 	for _, want := range wants {

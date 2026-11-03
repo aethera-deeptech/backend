@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/netip"
-	"strings"
+	"sync"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
@@ -93,32 +93,74 @@ func StatusOf(err error) int {
 	}
 }
 
-// logPath is the path that a log line names. A route with a parameter is named by its pattern, because the value of a parameter can
-// be a secret such as the poll id of an enrollment, and the pattern also keeps the lines of one route alike. A path without a
-// parameter is logged as it was called, without the query.
+// unmatchedPath is what a log line names for a request that no route answered
+const unmatchedPath = "unmatched"
+
+// handlerRoutes holds, for each app, the routes that have a handler of their own and not the middleware routes. The routes are
+// registered before the first request, so the set is built once, at the first line that is logged.
+var handlerRoutes sync.Map
+
+func isHandlerRoute(c fiber.Ctx, route *fiber.Route) bool {
+	set, ok := handlerRoutes.Load(c.App())
+	if !ok {
+		built := map[string]struct{}{}
+
+		for _, r := range c.App().GetRoutes(true) {
+			built[r.Method+" "+r.Path] = struct{}{}
+		}
+
+		set, _ = handlerRoutes.LoadOrStore(c.App(), built)
+	}
+
+	_, ok = set.(map[string]struct{})[route.Method+" "+route.Path]
+
+	return ok
+}
+
+// logPath is the path that a log line names. A request that a route answered is named by the pattern of that route, because the value
+// of a parameter can be a secret such as the poll id of an enrollment, and the pattern also keeps the lines of one route alike. A
+// request that no route answered is named unmatched, because a client that sends a known secret to a wrong address would write it
+// into the log otherwise. The middleware routes do not count as an answer.
 func logPath(c fiber.Ctx) string {
-	if route := c.Route(); route != nil && strings.Contains(route.Path, ":") {
+	if route := c.Route(); route != nil && isHandlerRoute(c, route) {
 		return route.Path
 	}
 
-	return strings.SplitN(c.Path(), "?", 2)[0]
+	return unmatchedPath
 }
+
+// maxUnwrap is how many levels errorType follows, so a chain that loops cannot hold the error handler
+const maxUnwrap = 16
 
 // errorType names the type of the innermost error of a chain, which tells what failed without the text of the error. The text can
-// hold a value of the request or a row of the database.
+// hold a value of the request or a row of the database. An error that wraps several errors is followed along the first of them.
 func errorType(err error) string {
-	for {
-		next := errors.Unwrap(err)
-		if next == nil {
+	for range maxUnwrap {
+		switch e := err.(type) { //nolint:errorlint // the loop walks the chain itself, one level at a time
+		case interface{ Unwrap() error }:
+			next := e.Unwrap()
+			if next == nil {
+				return fmt.Sprintf("%T", err)
+			}
+
+			err = next
+		case interface{ Unwrap() []error }:
+			all := e.Unwrap()
+			if len(all) == 0 {
+				return fmt.Sprintf("%T", err)
+			}
+
+			err = all[0]
+		default:
 			return fmt.Sprintf("%T", err)
 		}
-
-		err = next
 	}
+
+	return fmt.Sprintf("%T", err)
 }
 
-// AccessLog writes one JSON line for each request. It logs the pattern of a route with a parameter and otherwise the path without
-// the query, and never a header or a body, so a token or a cookie cannot reach the log.
+// AccessLog writes one JSON line for each request. It logs the pattern of the route that answered, or unmatched, and never the query,
+// a header or a body, so a token or a cookie cannot reach the log.
 func AccessLog() fiber.Handler {
 	return func(c fiber.Ctx) error {
 		start := time.Now()
