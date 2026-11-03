@@ -14,7 +14,7 @@ Every required check is pinned to the app that reports it, so another app cannot
 
 ## Consequences
 
-- The checks and the review of the diff by the owner are the only gate between a change and production.
+- The required checks are the only enforced gate between a change and production. The owner also reads each diff, but nothing enforces that.
 - A person with write access can merge a pull request that changes a workflow. The checks of that pull request run first, but a workflow runs with the permissions of its own file, so the rules for pinned actions, least privilege and the environments of secrets matter more than they would with a second reviewer.
 - OSSF Scorecard reports the missing approvals as the alerts Code-Review and Branch-Protection. They describe a repository with one owner and stay open. They are not dismissed.
 - A new job or a renamed job changes the ruleset in the same pull request, or the new check would not gate anything.

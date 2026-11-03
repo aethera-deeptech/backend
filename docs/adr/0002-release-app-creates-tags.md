@@ -13,7 +13,7 @@ The release workflow gets its token from the GitHub App `syafa-bot`. Two tag rul
 ## Consequences
 
 - Nobody creates a version tag by hand, including the owner. A release only happens when the release pull request is merged.
-- A wrong release is never edited. The next patch version replaces it.
+- A wrong release is never edited. The next patch version supersedes it, and the wrong version stays published under its own tag.
 - If the App breaks, releases stop until it is fixed. The owner can edit the ruleset in the repository settings, which is the deliberate way around the rule and not a bypass that is open all the time.
 - The App makes the release commits through the API, and GitHub signs those, so they pass the rule for verified signatures.
 - The rule depends on `main`. The ruleset of `main` needs a pull request but no approval ([0003](0003-required-ci-gates.md)), so a person with write access can merge a change to a workflow. The checks on the pull request and the environments that guard the secrets are the defense against that.
