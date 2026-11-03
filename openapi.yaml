@@ -1414,10 +1414,11 @@ components:
         energyPerPiece: {$ref: "#/components/schemas/EnergyPerPiece"}
     Relay:
       type: object
-      required: [state, reportedAt, pending, last, schedule]
+      required: [state, reportedAt, gatewayOnline, pending, last, schedule]
       properties:
         state: {type: string, enum: [on, off, unknown]}
         reportedAt: {type: [string, "null"], format: date-time, description: When the state was reported or confirmed}
+        gatewayOnline: {type: boolean, description: "True when the gateway of the plug sent a batch in the last 15 minutes, the same limit as the status offline of a device. A command is queued also when this is false, and it expires after 10 minutes if the gateway stays away"}
         pending: {oneOf: [{$ref: "#/components/schemas/RelayPending"}, {type: "null"}]}
         last:
           oneOf:
