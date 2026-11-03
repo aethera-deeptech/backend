@@ -32,7 +32,7 @@ const (
 	// loaded, because the power factor of an idle motor is low anyway. A batch needs degradationMinSamples loaded samples and at least
 	// degradationShare of them under the limit, so one odd reading does not raise it.
 	degradationMaxPF      = 0.55
-	degradationMinW       = 150.0
+	degradationMinW       = 35.0
 	degradationMinSamples = 3
 	degradationShare      = 0.8
 	// historyDays and minHistoryDays are how far back the usual power looks and how many days the same hour of the day needs. A week

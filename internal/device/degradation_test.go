@@ -85,10 +85,10 @@ func TestNoDegradationForAGoodMotorALightLoadOrTooFewSamples(t *testing.T) {
 
 	cases := map[string][]load{
 		"a good power factor":            repeat(5, load{watts: 400, pf: 0.9}),
-		"a light load":                   repeat(5, load{watts: 100, pf: 0.3}),
+		"a light load":                   repeat(5, load{watts: 20, pf: 0.3}),
 		"too few loaded samples":         repeat(2, load{watts: 400, pf: 0.3}),
 		"only half of the samples poor":  append(repeat(3, load{watts: 400, pf: 0.4}), repeat(3, load{watts: 400, pf: 0.9})...),
-		"a poor sample at the load edge": {{watts: 149, pf: 0.2}, {watts: 149, pf: 0.2}, {watts: 149, pf: 0.2}},
+		"a poor sample at the load edge": {{watts: 34, pf: 0.2}, {watts: 34, pf: 0.2}, {watts: 34, pf: 0.2}},
 	}
 
 	for name, samples := range cases {
