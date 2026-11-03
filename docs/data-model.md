@@ -23,7 +23,7 @@ A business is the owner of its data. An account belongs to one business through 
 | `gateways` | Name, hardware id, key hash, last sequence number, last seen time | The hardware id and the key hash are unique, and the key hash is 32 bytes |
 | `gateway_enrollments` | The claim code and the poll id, both by hash, and the key hash | A row expires, and it points to the gateway after the owner claims it |
 | `nodes` | A plug or a clamp that a gateway reported, keyed by gateway and node id | The kind is `plug` or `clamp`. It keeps the last sample time, the last energy counter and the relay state |
-| `devices` | A node that the owner paired, with a name and a room | One device for each node, and the room is required |
+| `devices` | A node that the owner paired, with a name, a room and the time of the last energy reset | One device for each node, and the room is required |
 | `pairings` | A search for a new device | The status is `searching`, `connected`, `failed` or `cancelled`, and a business has one search at a time |
 | `rooms` | The rooms of a business | The name is 1 to 40 characters and unique for a business without regard to case |
 

@@ -646,6 +646,28 @@ paths:
         "422": {$ref: "#/components/responses/Validation"}
         "4XX": {$ref: "#/components/responses/Error"}
 
+  /v1/devices/{id}/energy-reset:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      tags: [Alat]
+      operationId: resetDeviceEnergy
+      summary: Start the energy total of a device again
+      description: "Sets the reset time of the device to now, for a plug or a clamp. The request has no body. The total `energySince` of the device then counts from the next whole hour. No reading is deleted, and the day, the month, the bill, the tips and the reports do not change. A second call replaces the time, and the old time cannot be brought back."
+      responses:
+        "200":
+          description: The time of the reset
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [resetAt]
+                properties:
+                  resetAt: {type: string, format: date-time}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "4XX": {$ref: "#/components/responses/Error"}
+
   /v1/devices/{id}/relay:
     parameters:
       - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
@@ -1174,7 +1196,7 @@ components:
         lastSeenAt: {type: string, format: date-time, description: Only with the status offline}
     Device:
       type: object
-      required: [id, name, status, room, kind, kindLabel, currentPowerW, todayKwh, monthKwh, onHoursToday, standbyW, lastSeenAt, signal, powerPattern]
+      required: [id, name, status, room, kind, kindLabel, currentPowerW, todayKwh, monthKwh, onHoursToday, standbyW, lastSeenAt, signal, powerPattern, energySince]
       properties:
         id: {type: string, format: uuid}
         name: {type: string}
@@ -1189,6 +1211,13 @@ components:
         standbyW: {type: [number, "null"]}
         lastSeenAt: {type: string, format: date-time, description: "The device exists only after its first reading, so this is always set"}
         signal: {type: string, enum: [baik, cukup, lemah, tidak-ada]}
+        energySince:
+          type: object
+          description: "A total of the energy that the owner can start again with `POST /v1/devices/{id}/energy-reset`. It is not the day or the month, which do not change with a reset."
+          required: [resetAt, kwh]
+          properties:
+            resetAt: {type: [string, "null"], format: date-time, description: The time of the last reset, and null when the owner never made one}
+            kwh: {type: number, minimum: 0, description: "The energy of the whole hours from the reset on, so it begins at the next whole hour after `resetAt`. With no reset it is the energy of every hour that is kept, up to 400 days."}
         anomaly:
           type: object
           description: Only while the status is anomali
