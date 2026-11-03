@@ -84,7 +84,7 @@ type Schedule struct {
 type View struct {
 	State      string     `json:"state"`
 	ReportedAt *time.Time `json:"reportedAt"`
-	// GatewayOnline says whether the gateway of the plug sent a batch in the last device.OfflineAfter. A command for a gateway that is not
+	// GatewayOnline says whether the gateway of the plug had a batch stored in the last device.OfflineAfter. It does not say that the plug itself answers. A command for a gateway that is not
 	// online is still queued, and it expires after CommandTTL if the gateway stays away.
 	GatewayOnline bool      `json:"gatewayOnline"`
 	Pending       *Pending  `json:"pending"`
