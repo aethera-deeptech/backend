@@ -37,7 +37,8 @@ An amount is a whole number of rupiah. A tip shows its saving rounded to the nea
 2. The owner types the code in the app (`POST /v1/gateways`). The gateway polls and learns that it belongs to a business.
 3. From then on the gateway sends its key as a bearer token. The service keeps only the hash of the key, so a copy of the database cannot act as a gateway. TLS protects the key in transit, and the sequence number of a batch makes a retry safe. A signature on every request would add nothing over TLS here, because a party that sees the plain request also sees the key.
 4. The owner starts a pairing in the app. The next unclaimed node of that kind that the gateway reports becomes the device.
-5. The list and the detail of a device carry `kind`, which is `plug` or `clamp`, so the app can show the relay switch only on a plug. `kindLabel` is the text for the screen and is not meant to be parsed.
+
+The list and the detail of a device carry `kind`, which is `plug` or `clamp`, so the app can show the relay switch only on a plug. `kindLabel` is the text for the screen and is not meant to be parsed.
 
 Raw readings are kept 30 days. Hourly sums keep the number of samples, the sum, the highest and the lowest power and the energy of each node for 400 days, so a short spike stays visible after the raw rows are gone. The energy of an hour comes from the counter of the node when the gap to the last sample is at most one hour and the step is plausible. Otherwise it is the power times the time, with a gap of at most 5 minutes counted for each sample. A time zone with an offset that is not a whole number of hours is refused in the settings, because the hourly sums would not line up with a local day.
 
