@@ -144,6 +144,13 @@ func TestSignUpRules(t *testing.T) {
 		t.Fatalf("validation answered %d %v", r.Status, r.Body)
 	}
 
+	r = e.Call(t, http.MethodPost, "/v1/auth/register", `{"businessName":"Lain","email":"lain@example.com","password":"Password1"}`, "")
+	fields, _ = r.Body["fields"].(map[string]any)
+
+	if r.Status != http.StatusUnprocessableEntity || fields["password"] != "too_common" {
+		t.Fatalf("a common password answered %d %v", r.Status, r.Body)
+	}
+
 	r = e.Call(t, http.MethodPost, "/v1/auth/register", `{"businessName":"X","email":"x@example.com","password":"kata sandi baik","admin":true}`, "")
 	if r.Status != http.StatusBadRequest || code(r) != "invalid_json" {
 		t.Fatalf("an unknown field answered %d %v", r.Status, r.Body)
@@ -243,6 +250,13 @@ func TestForgotAndResetPassword(t *testing.T) {
 
 	if r := e.Call(t, http.MethodPost, "/v1/auth/reset-password", `{"token":"`+token+`","password":"pendek"}`, ""); r.Status != http.StatusUnprocessableEntity {
 		t.Fatalf("a short password answered %d", r.Status)
+	}
+
+	r := e.Call(t, http.MethodPost, "/v1/auth/reset-password", `{"token":"`+token+`","password":"qwerty123"}`, "")
+	common, _ := r.Body["fields"].(map[string]any)
+
+	if r.Status != http.StatusUnprocessableEntity || common["password"] != "too_common" {
+		t.Fatalf("a common password answered %d %v", r.Status, r.Body)
 	}
 
 	if r := e.Call(t, http.MethodPost, "/v1/auth/reset-password", `{"token":"`+token+`","password":"kata sandi baru"}`, ""); r.Status != http.StatusNoContent {
