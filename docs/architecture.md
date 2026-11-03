@@ -6,7 +6,7 @@ The backend is one Go program that serves a JSON API for the dashboard under `/v
 
 | Part | What it does |
 |:---|:---|
-| API server | A Fiber v3 HTTP server that handles routing, security headers, rate limits and errors |
+| API server | A Fiber v3 HTTP server that handles routing, security headers and errors |
 | PostgreSQL | The only store. It holds accounts, sessions, readings, tips and every rate limit counter, and the program talks to it through pgx |
 | Migrations | SQL files that are embedded in the binary and applied when the program starts, see [Data model](data-model.md) |
 | Mail | Sends the verification and reset mails over SMTP. A request never waits for the mail server |
@@ -43,10 +43,12 @@ The code is in `cmd/api` and in the packages under `internal`. A feature package
 ## The path of a request
 
 1. The server recovers from a panic, sets the security headers and writes one access log line for each request.
-2. A route under `/v1` also goes through the CORS and the CSRF checks. A request that changes data must carry the header `X-Requested-With`, and its `Origin` must be the origin of the app.
-3. The session middleware finds the account from the cookie. A request of a gateway has no session, and it carries the key of the gateway as a bearer token instead.
+2. A route under `/v1` also goes through the CORS, the no-store header and the CSRF checks. A request that changes data must carry the header `X-Requested-With`, and when it has an `Origin` header, that origin must be the origin of the app.
+3. A route that needs an account goes through the session check, which finds the account from the cookie. The routes for sign up, sign in, verification and reset do not need a session.
 4. The handler reads the body with the strict reader, which refuses an unknown field, and calls the rules of its feature.
 5. The rules run SQL, and the error handler turns any failure into the JSON form of [Error codes](errors.md).
+
+The routes under `/device/v1` have a shorter chain of their own. They take no cookie and no CSRF header. The reading route takes the key of the gateway as a bearer token, and the enrollment routes use the poll id as their secret.
 
 ## The path of a reading
 
@@ -58,8 +60,8 @@ Every copy of the program starts two timers. Only one copy does a round at a tim
 
 | Task | Every | What it does |
 |:---|:---|:---|
-| Janitor | hour | Deletes sessions, mail tokens and rate limit events that are past their time, unverified businesses, raw readings older than 30 days, hourly sums older than 400 days, ended pairings and enrollments, and relay commands older than 30 days |
-| Relay scheduler | minute | Makes the commands of the schedules that have a time that passed |
+| Janitor | hour | Deletes what is past its time. That covers sessions, mail tokens and rate limit events, businesses that never verified an email, ended pairings and enrollments, raw readings, hourly sums and relay commands, with the periods in [Data model](data-model.md) |
+| Relay scheduler | minute | Makes the commands of the schedules that have a time that passed, and expires the commands that nobody fetched in time |
 
 ## Security in short
 

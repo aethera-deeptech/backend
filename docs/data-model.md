@@ -4,7 +4,7 @@ The data is in PostgreSQL, and the schema comes from the migrations in `internal
 
 ## The business is the tenant
 
-A business is the owner of its data. An account belongs to one business through `users.business_id`, so more people can join a business later. The rows of a business hang off its row, directly through `business_id` or through a gateway. Deleting a business deletes everything under it, because the keys use `ON DELETE CASCADE`.
+A business is the owner of its data. An account belongs to one business through `users.business_id`, so more people can join a business later. The rows of a business hang off its row, directly through `business_id` or through a gateway. Deleting a business deletes everything under it, because the keys use `ON DELETE CASCADE`. The keys from `devices` and `pairings` to a room do not cascade, and a pairing sets its device to null when the device goes. A business delete still works, because the rooms and the devices go in the same statement. No route deletes a business, and only the janitor does, for a business that never verified an email.
 
 ## Accounts and sessions
 
@@ -12,7 +12,7 @@ A business is the owner of its data. An account belongs to one business through 
 |:---|:---|:---|
 | `businesses` | Name, time zone, tariff, work days and hours, anomaly sensitivity, production unit | The name is 1 to 80 characters, the tariff is 1 to 100000 rupiah for each kWh, the work days are `mon-fri`, `mon-sat` or `daily`, and the work end is after the work start |
 | `users` | Email, password hash, Google subject, verified time, consent time and version | The email is lower case and unique. An account needs a password hash or a Google subject |
-| `sessions` | One row for each session, by the SHA-256 hash of the token | Deleted by the janitor when it is past its lifetime |
+| `sessions` | One row for each session, by the SHA-256 hash of the token | Deleted by the janitor after 30 days without use or 90 days in all |
 | `email_tokens` | Verification and reset tokens, by hash | The purpose is `verify` or `reset`, and a token has an expiry and a used time |
 | `rate_limit_events` | One row for each counted request | An unlogged table, so a crash of the database may empty it, and the limits start over |
 
@@ -33,9 +33,9 @@ A business is the owner of its data. An account belongs to one business through 
 |:---|:---|:---|
 | `readings` | The raw samples, keyed by gateway, node and time | Power from 0 to 60000 W, and optional volts, amps, energy, frequency, power factor and node state. The janitor keeps 30 days |
 | `readings_hourly` | The sums of an hour, keyed by gateway, node and UTC hour | The sample count, the sum, the largest and the smallest power, and the energy. The janitor keeps 400 days |
-| `anomalies` | A surge, an overload or a degradation of a node | The kind is one of the three, and a degradation also stores the power factor |
+| `anomalies` | A surge, an overload or a degradation of a node | The kind is one of the three, and a degradation also stores the power factor. The janitor never deletes it, and a debounce keeps it small |
 
-The tips, the home screen and the reports read the hourly sums, so they stay cheap on a long history. The raw samples are only for the recent past.
+The tips, the home screen and the reports read the hourly sums, so they stay fast on a long history. The raw samples are for the recent past, such as the latest power and the charts of a device. The migration library keeps its own table `schema_migrations`.
 
 ## Tips, production and relay
 
