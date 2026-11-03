@@ -291,16 +291,19 @@ func (s *Service) Get(ctx context.Context, businessID, deviceID string) (View, e
 }
 
 // cutByDevice finds the overload that made the plug switch itself off. A plug that carries too much load cuts its own relay and reports
-// the code of an overload, so the cause is an overload of the node that is newer than the last command that the plug applied, because
-// a load cannot exist while the relay is off. It is also not older than the time that a device keeps the status of an anomaly. A plug
-// that was switched off by hand after that overload still shows the cause until then, because the service cannot see a hand.
+// the code of an overload, so the cause is an overload of the node that is newer than the moment the gateway fetched the last command
+// that the plug applied, because a load cannot exist while the relay is off. The sample time is compared with the fetch and not with
+// the result, because the result and the overload often arrive in the same batch, and the sample is older than the batch. The overload
+// is also not older than the time that a device keeps the status of an anomaly. A plug that was switched off by hand, or that restarted
+// with its relay off, after that overload still shows the cause until then, because the service cannot see a hand or a restart. A second
+// overload within the debounce time of the anomaly is not stored again, so it does not show up here.
 func (s *Service) cutByDevice(ctx context.Context, deviceID, gatewayID, nodeID string) (*Cut, error) {
 	var at time.Time
 
 	err := s.pool.QueryRow(ctx,
 		`SELECT a.at FROM anomalies a
 		 WHERE a.gateway_id = $1 AND a.node_id = $2 AND a.kind = 'overload' AND a.at > now() - make_interval(secs => $4)
-		   AND a.at > COALESCE((SELECT max(COALESCE(c.done_at, c.created_at)) FROM relay_commands c WHERE c.device_id = $3 AND c.status = 'applied'),
+		   AND a.at > COALESCE((SELECT max(COALESCE(c.sent_at, c.created_at)) FROM relay_commands c WHERE c.device_id = $3 AND c.status = 'applied'),
 		                       '-infinity'::timestamptz)
 		 ORDER BY a.at DESC LIMIT 1`,
 		gatewayID, nodeID, deviceID, device.AnomalyFor.Seconds()).Scan(&at)

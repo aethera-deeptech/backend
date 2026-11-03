@@ -578,3 +578,38 @@ func TestAPlugThatCutItselfShowsTheCauseUntilSomethingSwitchesItAgain(t *testing
 		t.Fatalf("an old overload is shown as the cause %v", v)
 	}
 }
+
+func TestAnOverloadThatArrivesWithTheResultOfACommandIsStillTheCause(t *testing.T) {
+	r := newRig(t)
+
+	now := time.Now().Unix()
+
+	r.sampleAt(t, now-300, `,"r":0`, "")
+
+	id, _ := r.command(t, "on").Body["id"].(string)
+
+	// the gateway fetches the command, and it was fetched 30 seconds ago
+	r.batch(t, nil, "")
+	r.e.Exec(t, "UPDATE relay_commands SET sent_at = now() - interval '30 seconds'")
+
+	// the plug switched on, overloaded and cut itself, and the next batch has the result and the sample together. The sample is older
+	// than the moment that the batch is stored, which is when the result is stored.
+	r.sampleAt(t, now-5, `,"a":3,"r":0`, fmt.Sprintf(`[{"id":"%s","ok":true}]`, id))
+
+	// the plug keeps reporting the overload, and a sample that is newer than the result sets the state to off after the result set it to on
+	r.sampleAt(t, time.Now().Unix()+3, `,"a":3,"r":0`, "")
+
+	v := r.relayView(t)
+	cut, _ := v["cutByDevice"].(map[string]any)
+
+	if v["state"] != "off" || cut["reason"] != "overload" {
+		t.Fatalf("an overload that came with the result is not shown %v", v)
+	}
+
+	// an overload from before the command was fetched is not the cause of a plug that is off
+	r.e.Exec(t, "UPDATE anomalies SET at = now() - interval '2 minutes'")
+
+	if v := r.relayView(t); v["cutByDevice"] != nil {
+		t.Fatalf("an overload from before the command is shown %v", v)
+	}
+}
