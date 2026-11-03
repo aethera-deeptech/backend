@@ -8,7 +8,7 @@ Release Please reads the Conventional Commit messages that reach `main` to decid
 
 ## Decision
 
-The ruleset of `main` allows only the merge method `merge`, and the repository settings turn squash and rebase merges off. A merge commit has only a subject line.
+The ruleset of `main` allows only the merge method `merge`, and the repository settings turn squash and rebase merges off. GitHub writes the merge commit with its default subject and the title of the pull request as the body.
 
 ## Consequences
 

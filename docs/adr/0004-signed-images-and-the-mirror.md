@@ -1,6 +1,6 @@
 # 0004 Images are signed by the workflow, and the mirror trusts no tag
 
-Status: Accepted, 2026-11-02
+Status: Accepted, 2026-11-01
 
 ## Context
 

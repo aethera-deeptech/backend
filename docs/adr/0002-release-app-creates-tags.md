@@ -4,7 +4,7 @@ Status: Accepted, 2026-11-01
 
 ## Context
 
-A tag that matches `v*` starts the Docker workflow and publishes an image, and a published release cannot be undone. Anyone with write access can push a tag, so one wrong or unreviewed tag would publish an image that nobody can take back. A tag or a pull request that a workflow makes with its default token does not start other workflows, so Release Please needs a token of another kind.
+A tag that matches `v*.*.*` starts the Docker workflow and publishes an image, and an immutable release cannot be edited afterwards. Anyone with write access can push a tag, so one wrong or unreviewed tag would publish an image that nobody can take back. A tag or a pull request that a workflow makes with its default token does not start other workflows, so Release Please needs a token of another kind.
 
 ## Decision
 
@@ -16,6 +16,6 @@ The release workflow gets its token from the GitHub App `syafa-bot`. Two tag rul
 - A wrong release is never edited. The next patch version replaces it.
 - If the App breaks, releases stop until it is fixed. The owner can edit the ruleset in the repository settings, which is the deliberate way around the rule and not a bypass that is open all the time.
 - The App makes the release commits through the API, and GitHub signs those, so they pass the rule for verified signatures.
-- The rule depends on `main`. The ruleset of `main` needs a pull request but no approval ([0003](0003-required-ci-gates.md)), so a person with write access can merge a change to a workflow, and that workflow then runs on `main` and can read the environments. The checks on the pull request are the defense against that.
+- The rule depends on `main`. The ruleset of `main` needs a pull request but no approval ([0003](0003-required-ci-gates.md)), so a person with write access can merge a change to a workflow. The checks on the pull request and the environments that guard the secrets are the defense against that.
 
 The steps are in [CI/CD](../ci-cd.md#releases).
