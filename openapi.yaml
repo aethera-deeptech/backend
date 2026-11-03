@@ -1092,7 +1092,7 @@ components:
         retryAfterSeconds: {type: integer, minimum: 1}
         expectedSeq: {type: integer, minimum: 0}
     Email: {type: string, format: email, maxLength: 254}
-    Password: {type: string, minLength: 8, maxLength: 128, description: At least 8 and at most 128 characters. There is no rule about the kinds of characters.}
+    Password: {type: string, minLength: 8, maxLength: 128, description: At least 8 and at most 128 characters. A password on the list of about 1400 common passwords is refused with the code `too_common`, whatever its letter case. There is no rule about the kinds of characters.}
     Token: {type: string, minLength: 32, maxLength: 128}
     BusinessName: {type: string, minLength: 1, maxLength: 80, description: Between 1 and 80 characters after the spaces at both ends are removed}
     Name40: {type: string, minLength: 1, maxLength: 40, description: Between 1 and 40 characters after the spaces at both ends are removed}
@@ -1517,7 +1517,7 @@ components:
         application/json:
           schema: {$ref: "#/components/schemas/Error"}
     Validation:
-      description: A field is not valid. `fields` names each one with a code such as `required`, `too_short`, `too_long` or `invalid`.
+      description: A field is not valid. `fields` names each one with a code such as `required`, `too_short`, `too_long`, `too_common` or `invalid`.
       content:
         application/json:
           schema: {$ref: "#/components/schemas/Error"}

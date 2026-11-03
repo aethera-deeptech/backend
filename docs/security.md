@@ -23,7 +23,7 @@ This page describes what the API protects, who it protects it from and what stop
 
 | Threat | Measure |
 |:---|:---|
-| Guessing a password | A password is hashed with argon2id, with a cost that follows the OWASP guidance. Only a few hashes run at once, and a request waits a few seconds for a free slot and answers 503 `busy` only when none opens in that time. A sign in with an unknown email does about the same work as a wrong password, and the answer is the same |
+| Guessing a password | A password of about 1400 of the most common ones is refused when it is set. A password is hashed with argon2id, with a cost that follows the OWASP guidance. Only a few hashes run at once, and a request waits a few seconds for a free slot and answers 503 `busy` only when none opens in that time. A sign in with an unknown email does about the same work as a wrong password, and the answer is the same |
 | Flooding the account routes | Each public account route has a limit for the client address, and most also have one for the email, for example 10 sign ins for an email in 15 minutes. The counters live in PostgreSQL, so every copy of the service shares them. A flood with a new email each time is limited by the address only, and the proxy has to limit it too |
 | Reading another business | Every query is limited to the business of the signed in account. An id of another business answers 404 like an id that does not exist, so the answer does not tell whether it exists |
 | A stolen session | The cookie is `HttpOnly` and `SameSite=Lax`, and it is `Secure` with the `__Host-` prefix in production. The service stores only the SHA-256 hash of a session. A session ends after 30 days without use or 90 days in all, an account keeps at most 20, and a password reset ends every session of the account |
@@ -41,7 +41,7 @@ This page describes what the API protects, who it protects it from and what stop
 
 - The proxy and the host. The compose files publish the service on the loopback address of the host only, and the production example expects a reverse proxy in front of it. Limiting a flood from many addresses, terminating TLS and keeping the host patched belong to the operator, see [Operations](operations.md).
 - A stolen owner account. Whoever holds the password and the mailbox is the owner for the service.
-- Guessing at a known email. The limits slow it down and nothing locks the account. The password policy checks the length and nothing else. The register route tells whether an email has an account, and the limits only slow the search down.
+- Guessing at a known email. The limits slow it down and nothing locks the account. The password policy checks the length and a list of common passwords, and nothing else. The register route tells whether an email has an account, and the limits only slow the search down.
 - Blocking an owner. The limit of one email is shared by anyone who sends that email, so a person can use up the sign in or the reset of a known address for a while.
 - A flood from many addresses, each under its limit, can keep the password slots busy, so sign in answers 503 `busy` until it stops.
 - A session cannot be revoked from the app. It ends after the idle time, or when the owner resets the password.
