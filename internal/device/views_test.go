@@ -233,3 +233,73 @@ func TestAClampShowsItsKindInTheListAndTheDetail(t *testing.T) {
 		t.Fatalf("the detail is %v", d.Body)
 	}
 }
+
+func TestAnEnergyResetStartsTheTotalAgainAndKeepsTheMonth(t *testing.T) {
+	e := testutil.New(t)
+	g := business(t, e, "budi@example.com", "ESP32-AABBCC", "a")
+	other := business(t, e, "sari@example.com", "ESP32-DDEEFF", "b")
+	id := g.pair(t, "PLUG-0001", "Mesin jahit 1")
+
+	// three hours that were before the reset, and one hour that begins after it
+	for _, row := range []struct {
+		hours string
+		kwh   float64
+	}{{"-5 hours", 1.0}, {"-3 hours", 2.0}, {"-1 hour", 0.5}, {"+1 hour", 0.7}} {
+		e.Exec(t, "INSERT INTO readings_hourly (gateway_id, node_id, hour, samples, sum_watts, max_watts, min_watts, energy_kwh) "+
+			"SELECT gateway_id, node_id, date_trunc('hour', now()) + $1::interval, 1, 12.5, 12.5, 12.5, $2 FROM nodes", row.hours, row.kwh)
+	}
+
+	var rowsBefore int
+	if err := e.Pool.QueryRow(t.Context(), "SELECT count(*) FROM readings_hourly").Scan(&rowsBefore); err != nil {
+		t.Fatalf("count the hourly rows %v", err)
+	}
+
+	before := g.device(t, id)
+
+	since, _ := before.Body["energySince"].(map[string]any)
+	if since["resetAt"] != nil || since["kwh"] != 4.2 {
+		t.Fatalf("with no reset the total is %v", before.Body["energySince"])
+	}
+
+	r := e.Call(t, http.MethodPost, "/v1/devices/"+id+"/energy-reset", "", g.session)
+	if r.Status != http.StatusOK || r.Body["resetAt"] == nil {
+		t.Fatalf("the reset answered %d %v", r.Status, r.Body)
+	}
+
+	after := g.device(t, id)
+
+	since, _ = after.Body["energySince"].(map[string]any)
+	if since["resetAt"] != r.Body["resetAt"] || since["kwh"] != 0.7 {
+		t.Fatalf("after the reset the total is %v, the reset was %v", after.Body["energySince"], r.Body["resetAt"])
+	}
+
+	// the day and the month feed the bill, the tips and the reports, so a reset must not move them
+	if after.Body["monthKwh"] != before.Body["monthKwh"] || after.Body["todayKwh"] != before.Body["todayKwh"] {
+		t.Fatalf("the reset moved the month or the day, before %v after %v", before.Body, after.Body)
+	}
+
+	var rowsAfter int
+	if err := e.Pool.QueryRow(t.Context(), "SELECT count(*) FROM readings_hourly").Scan(&rowsAfter); err != nil {
+		t.Fatalf("count the hourly rows %v", err)
+	}
+
+	if rowsAfter != rowsBefore {
+		t.Fatalf("the reset changed the hourly rows from %d to %d", rowsBefore, rowsAfter)
+	}
+
+	// a second reset replaces the time
+	if second := e.Call(t, http.MethodPost, "/v1/devices/"+id+"/energy-reset", "", g.session); second.Status != http.StatusOK || second.Body["resetAt"] == r.Body["resetAt"] {
+		t.Fatalf("the second reset answered %d %v after %v", second.Status, second.Body, r.Body["resetAt"])
+	}
+
+	// another business and a wrong id get the same answer, and nothing changes
+	for _, path := range []string{"/v1/devices/" + id + "/energy-reset", "/v1/devices/not-a-uuid/energy-reset", "/v1/devices/6f1c1c1e-0000-4000-8000-000000000000/energy-reset"} {
+		if r := e.Call(t, http.MethodPost, path, "", other.session); r.Status != http.StatusNotFound {
+			t.Fatalf("%s answered %d", path, r.Status)
+		}
+	}
+
+	if r := e.Call(t, http.MethodPost, "/v1/devices/"+id+"/energy-reset", "", ""); r.Status != http.StatusUnauthorized {
+		t.Fatalf("a reset with no session answered %d", r.Status)
+	}
+}

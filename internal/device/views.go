@@ -85,6 +85,18 @@ type Detail struct {
 	Signal        string    `json:"signal"`
 	Anomaly       *Anomaly  `json:"anomaly,omitempty"`
 	PowerPattern  *Pattern  `json:"powerPattern"`
+	// EnergySince is the energy of the device from the last reset that the owner made
+	EnergySince EnergySince `json:"energySince"`
+}
+
+// EnergySince is a total that the owner can start again. The month and the day of a device do not depend on it, because the bill, the
+// tips and the reports read them.
+type EnergySince struct {
+	// ResetAt is the time of the last reset, and null when the owner never made one
+	ResetAt *time.Time `json:"resetAt"`
+	// Kwh is the energy of the whole hours from the reset on. The hourly rows cannot split an hour, so it begins at the next whole hour.
+	// With no reset it is the energy of every hour that is kept.
+	Kwh float64 `json:"kwh"`
 }
 
 // Views reads the devices of a business. Every query names the business, so a business never reads another one.
@@ -209,7 +221,10 @@ func (v *Views) List(ctx context.Context, businessID string) ([]ListItem, error)
 }
 
 const detailSQL = `
-SELECT d.name, d.kind, rm.name, n.hops, COALESCE(n.last_sample_at, n.last_seen_at), n.last_sample_at, d.gateway_id, d.node_id,
+SELECT d.name, d.kind, rm.name, n.hops, COALESCE(n.last_sample_at, n.last_seen_at), n.last_sample_at, d.gateway_id, d.node_id, d.energy_reset_at,
+  (SELECT COALESCE(sum(h.energy_kwh), 0) FROM readings_hourly h
+     WHERE h.gateway_id = d.gateway_id AND h.node_id = d.node_id
+       AND h.hour >= COALESCE(to_timestamp(ceil(extract(epoch FROM d.energy_reset_at) / 3600) * 3600), '-infinity'::timestamptz)),
   (SELECT r.watts FROM readings r WHERE r.gateway_id = d.gateway_id AND r.node_id = d.node_id ORDER BY r.t DESC LIMIT 1),
   (SELECT percentile_cont(0.95) WITHIN GROUP (ORDER BY h.max_watts) FROM readings_hourly h
      WHERE h.gateway_id = d.gateway_id AND h.node_id = d.node_id AND h.hour >= $3::timestamptz - interval '7 days'),
@@ -243,10 +258,12 @@ func (v *Views) Get(ctx context.Context, businessID, id string) (Detail, error) 
 		sampleAt             *time.Time
 		watts, p95, standby  *float64
 		today, month         float64
+		resetAt              *time.Time
+		sinceKwh             float64
 	)
 
 	err = v.pool.QueryRow(ctx, detailSQL, id, businessID, c.now, c.dayStart, c.monthStart, StandbyMinW, StandbyMaxW).Scan(
-		&out.Name, &kind, &out.Room, &hops, &out.LastSeenAt, &sampleAt, &gatewayID, &nid, &watts, &p95, &today, &month, &standby)
+		&out.Name, &kind, &out.Room, &hops, &out.LastSeenAt, &sampleAt, &gatewayID, &nid, &resetAt, &sinceKwh, &watts, &p95, &today, &month, &standby)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Detail{}, api.NotFound()
 	}
@@ -273,6 +290,7 @@ func (v *Views) Get(ctx context.Context, businessID, id string) (Detail, error) 
 	out.Signal = Signal(c.now, sampleAt, hops)
 	out.MonthKwh = &month
 	out.StandbyW = standby
+	out.EnergySince = EnergySince{ResetAt: resetAt, Kwh: round3(sinceKwh)}
 
 	if out.Status == StatusOffline {
 		// the day and the power are not true any more, the month is
@@ -512,6 +530,26 @@ func (v *Views) Rename(ctx context.Context, businessID, id, rawName string) (Det
 	return v.Get(ctx, businessID, id)
 }
 
+// ResetEnergy starts the total of the energy of a device again from now and returns the time of the reset. It deletes nothing.
+func (v *Views) ResetEnergy(ctx context.Context, businessID, id string) (time.Time, error) {
+	if _, err := uuid.Parse(id); err != nil {
+		return time.Time{}, api.NotFound()
+	}
+
+	at := v.now().UTC()
+
+	tag, err := v.pool.Exec(ctx, "UPDATE devices SET energy_reset_at = $3 WHERE id = $1 AND business_id = $2", id, businessID, at)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("reset the energy of the device %w", err)
+	}
+
+	if tag.RowsAffected() == 0 {
+		return time.Time{}, api.NotFound()
+	}
+
+	return at, nil
+}
+
 func maxOf(v []float64) float64 {
 	m := 0.0
 	for _, x := range v {
@@ -553,6 +591,7 @@ func (h *ViewHandlers) Register(r fiber.Router, require fiber.Handler) {
 	r.Get("/devices", require, h.list)
 	r.Get("/devices/:id", require, h.get)
 	r.Patch("/devices/:id", require, h.rename)
+	r.Post("/devices/:id/energy-reset", require, h.resetEnergy)
 }
 
 func (h *ViewHandlers) list(c fiber.Ctx) error {
@@ -571,6 +610,15 @@ func (h *ViewHandlers) get(c fiber.Ctx) error {
 	}
 
 	return c.JSON(out)
+}
+
+func (h *ViewHandlers) resetEnergy(c fiber.Ctx) error {
+	at, err := h.views.ResetEnergy(c.Context(), auth.UserFrom(c).BusinessID, c.Params("id"))
+	if err != nil {
+		return err
+	}
+
+	return c.JSON(fiber.Map{"resetAt": at})
 }
 
 func (h *ViewHandlers) rename(c fiber.Ctx) error {
