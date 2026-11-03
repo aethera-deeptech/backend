@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.6.0](https://github.com/aethera-deeptech/backend/compare/v0.5.0...v0.6.0) (2026-11-03)
+
+
+### Features
+
+* **auth:** refuse a password from the list of common passwords with the code too_common ([0ffb6e6](https://github.com/aethera-deeptech/backend/commit/0ffb6e6c5580383c7527db5be501a76a28e28352))
+* **auth:** refuse common passwords with the code too_common ([35c8ce7](https://github.com/aethera-deeptech/backend/commit/35c8ce79ca3f8090bb42f125ec34daa23fb76bdb))
+
 ## [0.5.0](https://github.com/aethera-deeptech/backend/compare/v0.4.1...v0.5.0) (2026-11-03)
 
 
