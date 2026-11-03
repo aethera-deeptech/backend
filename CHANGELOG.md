@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.4.1](https://github.com/aethera-deeptech/backend/compare/v0.4.0...v0.4.1) (2026-11-03)
+
+
+### Bug Fixes
+
+* **api:** log the route pattern and the error type instead of the called path and the error text ([aad82ed](https://github.com/aethera-deeptech/backend/commit/aad82ed16de7c747b30f71a9835487b69f0a6d30))
+* **api:** log the route pattern and the error type instead of the called path and the error text ([7ec11a0](https://github.com/aethera-deeptech/backend/commit/7ec11a0eaeb00a6c3ea67d216e8e7a4d08dae75d))
+* **api:** log unmatched requests by a fixed label and follow wrapped errors safely ([af5cd6a](https://github.com/aethera-deeptech/backend/commit/af5cd6af48911e02e435290ad9163e7d65c901c6))
+* **api:** send the same-origin resource policy header and drop the ZAP ignore for it ([6b9e657](https://github.com/aethera-deeptech/backend/commit/6b9e6578cb9806f96a6f044e2eb51aba9def2444))
+* **api:** send the same-origin resource policy header and drop the ZAP ignore for it ([3b64181](https://github.com/aethera-deeptech/backend/commit/3b64181cbea96318eedabe09e88e96ac61466841))
+
 ## [0.4.0](https://github.com/aethera-deeptech/backend/compare/v0.3.0...v0.4.0) (2026-11-02)
 
 
