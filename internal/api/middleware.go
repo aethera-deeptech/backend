@@ -65,7 +65,7 @@ func Recover() fiber.Handler {
 	return func(c fiber.Ctx) (err error) {
 		defer func() {
 			if r := recover(); r != nil {
-				slog.Error("a route panicked", "method", c.Method(), "path", c.Path(), "panic", fmt.Sprint(r))
+				slog.Error("a route panicked", "method", c.Method(), "path", logPath(c), "panic_type", fmt.Sprintf("%T", r))
 				errorreport.Panic(r, infoOf(c, http.StatusInternalServerError))
 
 				err = NewError(http.StatusInternalServerError, "internal", "Something went wrong")
@@ -93,8 +93,32 @@ func StatusOf(err error) int {
 	}
 }
 
-// AccessLog writes one JSON line for each request. It logs the path without the query and never a header or a body, so a token or a
-// cookie cannot reach the log.
+// logPath is the path that a log line names. A route with a parameter is named by its pattern, because the value of a parameter can
+// be a secret such as the poll id of an enrollment, and the pattern also keeps the lines of one route alike. A path without a
+// parameter is logged as it was called, without the query.
+func logPath(c fiber.Ctx) string {
+	if route := c.Route(); route != nil && strings.Contains(route.Path, ":") {
+		return route.Path
+	}
+
+	return strings.SplitN(c.Path(), "?", 2)[0]
+}
+
+// errorType names the type of the innermost error of a chain, which tells what failed without the text of the error. The text can
+// hold a value of the request or a row of the database.
+func errorType(err error) string {
+	for {
+		next := errors.Unwrap(err)
+		if next == nil {
+			return fmt.Sprintf("%T", err)
+		}
+
+		err = next
+	}
+}
+
+// AccessLog writes one JSON line for each request. It logs the pattern of a route with a parameter and otherwise the path without
+// the query, and never a header or a body, so a token or a cookie cannot reach the log.
 func AccessLog() fiber.Handler {
 	return func(c fiber.Ctx) error {
 		start := time.Now()
@@ -110,7 +134,7 @@ func AccessLog() fiber.Handler {
 		}
 
 		attrs := []any{
-			"method", c.Method(), "path", strings.SplitN(c.Path(), "?", 2)[0], "status", status,
+			"method", c.Method(), "path", logPath(c), "status", status,
 			"duration_ms", time.Since(start).Milliseconds(), "ip", c.IP(),
 		}
 		if apiErr != nil {

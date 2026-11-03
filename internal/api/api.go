@@ -74,7 +74,7 @@ func ErrorHandler(c fiber.Ctx, err error) error {
 	case errors.As(err, &fiberErr):
 		apiErr = fromFiber(fiberErr)
 	default:
-		slog.Error("a route failed", "method", c.Method(), "path", c.Path(), "error", err)
+		slog.Error("a route failed", "method", c.Method(), "path", logPath(c), "error_type", errorType(err))
 		errorreport.Report(err, infoOf(c, http.StatusInternalServerError))
 
 		apiErr = NewError(http.StatusInternalServerError, "internal", "Something went wrong")
