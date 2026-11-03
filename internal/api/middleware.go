@@ -23,7 +23,7 @@ func SecurityHeaders() fiber.Handler {
 		c.Set("X-Content-Type-Options", "nosniff")
 		c.Set("Referrer-Policy", "no-referrer")
 		c.Set("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'")
-		c.Set("Cross-Origin-Resource-Policy", "same-site")
+		c.Set("Cross-Origin-Resource-Policy", "same-origin")
 
 		return c.Next()
 	}
