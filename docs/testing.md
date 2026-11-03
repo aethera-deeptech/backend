@@ -23,19 +23,20 @@ To run them on a machine, point the variables at a throwaway PostgreSQL. A kille
 
 ```sh
 docker run --rm -d --name pg-test -e POSTGRES_PASSWORD=postgres -p 5432:5432 postgres:18-alpine
-TEST_DB_HOST=127.0.0.1 TEST_DB_USER=postgres TEST_DB_PASSWORD=postgres go test ./... -race -count=1
+until docker exec pg-test pg_isready -U postgres; do sleep 1; done
+export TEST_DB_HOST=127.0.0.1 TEST_DB_USER=postgres TEST_DB_PASSWORD=postgres
+go test ./... -race -count=1
 ```
 
-A smaller run names one package, for example `go test ./internal/relay`. Wait until the server answers before the first run, and stop it when you are done.
+A smaller run names one package, for example `go test ./internal/relay -count=1`, and uses the same variables. Stop the server when you are done.
 
 ```sh
-until docker exec pg-test pg_isready -U postgres; do sleep 1; done
 docker stop pg-test
 ```
 
-## The checks that start the whole stack
+## The checks of a pull request with a database
 
-These workflows build the image of the pull request and run it with a throwaway PostgreSQL, as the server runs it.
+These workflows run against a throwaway PostgreSQL. Most of them build the image of the pull request and start the whole stack as the server runs it. `explain.yaml` runs a Go test against PostgreSQL only, and `migrations.yaml` lints the migration files and starts nothing.
 
 | Workflow | What it checks | Required |
 |:---|:---|:---|
@@ -43,7 +44,7 @@ These workflows build the image of the pull request and run it with a throwaway 
 | `perf.yaml` | A business with 6 gateways and 24 plugs under a k6 script, with limits on the time of a request | yes |
 | `explain.yaml` | The query plans of the main read routes with 100 devices and 400 days of data | yes |
 | `dast.yaml` | The ZAP baseline scan on a seeded stack. It is not a required check | no |
-| `migrations.yaml` | squawk lints the migrations that a pull request adds, for statements that lock a table. A pull request that adds none ends the job at once with a green result | yes |
+| `migrations.yaml` | squawk lints the migrations that a pull request adds or changes, for statements that lock a table. A pull request that adds none ends the job at once with a green result | yes |
 
 ## The checks that run on a schedule
 

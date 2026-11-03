@@ -23,7 +23,7 @@ The app is in Indonesian, and the API keeps a few of those words in its fields a
 
 **Why does a new device show as offline after a short while?** A device is offline when its newest reading is older than 15 minutes, and offline wins over every other status. See [API](api.md).
 
-**Why is there no tip yet?** A device needs 7 days of data before its first tip, and a tip that was applied is checked over 14 days. See [API](api.md).
+**Why is there no tip yet?** A device needs at least 24 hours of data outside the work hours in the last 7 days, and it must have drawn at least 1,2 W on average in them. The home screen counts the days of data that it has collected toward 7. A tip that was applied is checked over 14 days. See [API](api.md).
 
 **Why did no surge anomaly appear on a new device?** The rule compares a reading with the usual high power of the same hour of the day, in UTC, over the last 15 days, and it needs at least 7 such days. Before that only an overload that the node reports and a degradation can be raised.
 
@@ -31,7 +31,7 @@ The app is in Indonesian, and the API keeps a few of those words in its fields a
 
 **Does a schedule work while the gateway has no internet?** No. The service makes the command at the set time, and a gateway that is away for more than 10 minutes never receives it.
 
-**Why do some moments end in `Z` and one has `+07:00`?** The service stores every moment in UTC. Only `asOf` on the home screen is written with the offset of the business zone, and the other moments are written in UTC. A client that wants the local clock converts them with the `timeZone` of `/v1/settings`.
+**Why do some moments end in `Z` and others have `+07:00`?** The service stores every moment in UTC. `asOf` on the home screen and `through` on a running report are written with the offset of the business zone, and the other moments are written in UTC. A client that wants the local clock converts them with the `timeZone` of `/v1/settings`.
 
 **Why does the verification mail not arrive in a development run?** A development run sends no mail. It writes the message to the log, link included. Production needs the `SMTP_*` settings. See [Operations](operations.md).
 
