@@ -76,7 +76,7 @@ Authorization: Bearer <the key text>
 - Only `t` and `p` are required. Leave out a field that the node cannot measure and do not send 0 for it.
 - A sample that is out of range, older than a day or more than a minute ahead of the clock of the service is dropped and counted in `rejected` in the answer, so one bad sample never blocks the gateway. A node that is built wrong, that repeats in the batch or that goes over the 64 nodes is dropped with its samples.
 - Send `e` when the node has a counter. The service uses it for the energy of an hour when the gap between two samples is at most an hour and the step is plausible. A counter that falls or jumps is ignored for that gap. Without a counter the energy is the power times the time, and a gap counts at most 5 minutes of power, so send a sample at least every 5 minutes.
-- Send `pf` for a motor. The service raises a degradation when a batch holds at least 3 samples of 150 W or more that carry `pf`, and at least 80 percent of those are under 0,55. Only samples of the last 2 hours count. A batch of one or two samples never raises it, so send the samples of one node together.
+- Send `pf` for a motor only. The service judges every node that sends `pf`, so leave it out for lights, chargers and power supplies, which often have a power factor under 0,55. The service raises a degradation when a batch holds at least 3 samples of 35 W or more that carry `pf`, and at least 80 percent of those are under 0,55. Only samples of the last 2 hours count. A batch of one or two samples never raises it, so send the samples of one node together.
 - Send `a` 2 or 3 when the gateway decided so on its own, for example while the internet was down. The service keeps it and decides on its own too.
 
 ### The answer
