@@ -45,10 +45,10 @@ The service is built and runs in production. It is a Go program with a PostgreSQ
 
 ## Quick start
 
-The service needs a PostgreSQL that it can reach with the values in `.env`. Run it directly during development.
+The service needs a PostgreSQL that it can reach. It does not read a `.env` file, so set the variables in your shell. `DB_HOST`, `DB_NAME`, `DB_USERNAME` and `DB_PASSWORD` are required, and the mail settings are only required in production, because a development run logs the mails instead of sending them.
 
 ```sh
-cp .env.example .env        # then edit the DB_* and SMTP_* values
+export DB_HOST=localhost DB_NAME=aethera DB_USERNAME=aethera DB_PASSWORD=change-me DB_SSL_MODE=disable
 go run ./cmd/api
 ```
 
@@ -60,12 +60,12 @@ Every setting is an environment variable, and [.env.example](.env.example) lists
 
 | Variable | Default | What it does |
 |:---|:---|:---|
-| `APP_ENV` | `development` | `production` turns on the stricter checks, such as an https `APP_ORIGIN` and a mail sender |
+| `APP_ENV` | `development` | `production` turns on the stricter checks, such as an https `APP_ORIGIN` and a mail server and sender |
 | `APP_PORT` | `8080` | The port of the API |
 | `APP_ORIGIN` | `http://localhost:5173` | The one origin that CORS allows, and the base of the links in the emails |
 | `TRUST_PROXY` | `false` | Read the client address from `PROXY_HEADER` when a reverse proxy sits in front |
-| `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD` | see the file | The PostgreSQL connection |
-| `DB_SSL_MODE` | `disable` in the example | `require` unless it is set. Use `disable` only on a private Docker network |
+| `DB_HOST`, `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD` | required | The PostgreSQL connection. `DB_PORT` is 5432 unless it is set |
+| `DB_SSL_MODE` | `require`, and `disable` in the example | The mode of the connection. Use `disable` only on a private Docker network |
 | `DB_MAX_CONNS` | `8` | The pool size of one copy |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURITY`, `SMTP_FROM_ADDRESS` | see the file | The mail server for the verification and reset mails |
 | `SENTRY_DSN` | empty | An empty value switches error reports off |
@@ -107,8 +107,8 @@ internal/          The packages of the service, one folder for each part
   production       The production records of a business
   config           Settings from the environment
   database         The connection and the migrations
-  server, mail, logging, metrics, errorreport, healthcheck, janitor, explain   Support for running the service
-  testutil         Helpers for the tests
+  server, mail, logging, metrics, errorreport, healthcheck, janitor   Support for running the service
+  testutil, explain   Helpers for the tests and the query plan tool
 docs/              The pages listed above
 grafana/           Alloy, alert rules and dashboards
 k6/, smoke/        The performance test and the smoke test
