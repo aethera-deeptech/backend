@@ -33,7 +33,7 @@ A business is the owner of its data. An account belongs to one business through 
 |:---|:---|:---|
 | `readings` | The raw samples, keyed by gateway, node and time | Power from 0 to 60000 W, and optional volts, amps, energy, frequency, power factor and node state. The janitor keeps 30 days |
 | `readings_hourly` | The sums of an hour, keyed by gateway, node and UTC hour | The sample count, the sum, the largest and the smallest power, and the energy. The janitor keeps 400 days |
-| `anomalies` | A surge, an overload or a degradation of a node | The kind is one of the three, and a degradation also stores the power factor. The janitor never deletes it, and a debounce keeps it small |
+| `anomalies` | A surge, an overload or a degradation of a node | The kind is one of the three, and a degradation stores the power factor, which is empty when the node reported the degradation without one. The janitor never deletes it, and a debounce keeps it small |
 
 The tips, the home screen and the reports read the hourly sums, so they stay fast on a long history. The raw samples are for the recent past, such as the latest power and the charts of a device. The migration library keeps its own table `schema_migrations`.
 

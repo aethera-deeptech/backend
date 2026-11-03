@@ -48,7 +48,7 @@ The code is in `cmd/api` and in the packages under `internal`. A feature package
 4. The handler reads the body with the strict reader, which refuses an unknown field, and calls the rules of its feature.
 5. The rules run SQL, and the error handler turns any failure into the JSON form of [Error codes](errors.md).
 
-The routes under `/device/v1` have a shorter chain of their own. They take no cookie and no CSRF header. The reading route takes the key of the gateway as a bearer token, and the enrollment routes use the poll id as their secret.
+The routes under `/device/v1` have a shorter chain of their own. They take no cookie and no CSRF header. The reading route takes the key of the gateway as a bearer token. The enroll route takes the hardware id, the firmware and the hash of the key, and the poll route uses the poll id as its secret.
 
 ## The path of a reading
 
