@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.5.0](https://github.com/aethera-deeptech/backend/compare/v0.4.1...v0.5.0) (2026-11-03)
+
+
+### Features
+
+* **device:** add the kind of a device to the list and the detail ([cf29c7a](https://github.com/aethera-deeptech/backend/commit/cf29c7a335e962868e1d211334d11480db7e0808))
+* **device:** add the kind of a device to the list and the detail ([8be49f8](https://github.com/aethera-deeptech/backend/commit/8be49f815666cceabdb1101556bbc90ddcedd447))
+* **relay:** add gatewayOnline to the relay view ([04e59a8](https://github.com/aethera-deeptech/backend/commit/04e59a8895324a6e4c314bffd7b64b49557b41fd))
+* **relay:** add gatewayOnline to the relay view ([1be26eb](https://github.com/aethera-deeptech/backend/commit/1be26eb954060359fbe7d33f9fd5ab1c0725411c))
+
+
+### Bug Fixes
+
+* **gateway:** lower the load floor of the degradation rule from 150 W to 35 W ([f7ac099](https://github.com/aethera-deeptech/backend/commit/f7ac0992100f5bff04f377ee1ba3470c8adf41a8))
+* **gateway:** lower the load floor of the degradation rule from 150 W to 35 W ([fafcc2b](https://github.com/aethera-deeptech/backend/commit/fafcc2b02d3eeb66b024f56c24003eeed46d4a68))
+* **gateway:** tell firmware to send pf for motors only and test the 35 W boundary ([782717a](https://github.com/aethera-deeptech/backend/commit/782717aa7284b47260d322b3943bdc53b081fc92))
+* **relay:** count only the commands that were queued against the hourly limit ([7e67c7a](https://github.com/aethera-deeptech/backend/commit/7e67c7aeb3f5a312541083807d9941e8b41a9895))
+* **relay:** count only the commands that were queued against the hourly limit ([3a7365f](https://github.com/aethera-deeptech/backend/commit/3a7365fb06e7d9795450ea99912e13092c826a71))
+
 ## [0.4.1](https://github.com/aethera-deeptech/backend/compare/v0.4.0...v0.4.1) (2026-11-03)
 
 
