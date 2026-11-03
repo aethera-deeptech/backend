@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.7.0](https://github.com/aethera-deeptech/backend/compare/v0.6.0...v0.7.0) (2026-11-03)
+
+
+### Features
+
+* **device:** let the owner start the energy total of a device again ([ce61785](https://github.com/aethera-deeptech/backend/commit/ce61785f093fbc0baac2b2aa7ff9562caea0b781))
+* **device:** let the owner start the energy total of a device again with a reset time ([ab3fbc3](https://github.com/aethera-deeptech/backend/commit/ab3fbc3fef56752f18ea2e09a65e4e5e497d2837))
+* **relay:** show that a plug cut itself off after an overload ([8dbf9bc](https://github.com/aethera-deeptech/backend/commit/8dbf9bc2caeb8bfb95cf570d02a326048d5ce635))
+* **relay:** show that a plug cut itself off after an overload in the relay view ([a8d908a](https://github.com/aethera-deeptech/backend/commit/a8d908aaf43ec3072e67578f799ac168b6fcd4c9))
+
+
+### Bug Fixes
+
+* **device:** quote the resetAt description, truncate the reset time to microseconds and test the hour of the reset ([1417d81](https://github.com/aethera-deeptech/backend/commit/1417d810366ffbba683bbbb15db488193cd39e11))
+* **relay:** compare the overload with the fetch of the command and document the limits of the cause ([5915a23](https://github.com/aethera-deeptech/backend/commit/5915a23acb8b2e3bb22fbf3d46f874c27f396c68))
+* **relay:** move the fetch time in the test fixture and say that the field is an indication that ends after 24 hours ([b2fc22f](https://github.com/aethera-deeptech/backend/commit/b2fc22ffded8a325f085059b99a46c7e1ea9daf9))
+
 ## [0.6.0](https://github.com/aethera-deeptech/backend/compare/v0.5.0...v0.6.0) (2026-11-03)
 
 
