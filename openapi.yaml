@@ -1216,7 +1216,7 @@ components:
           description: "A total of the energy that the owner can start again with `POST /v1/devices/{id}/energy-reset`. It is not the day or the month, which do not change with a reset."
           required: [resetAt, kwh]
           properties:
-            resetAt: {type: [string, "null"], format: date-time, description: The time of the last reset, and null when the owner never made one}
+            resetAt: {type: [string, "null"], format: date-time, description: "The time of the last reset, and null when the owner never made one"}
             kwh: {type: number, minimum: 0, description: "The energy of the whole hours from the reset on, so it begins at the next whole hour after `resetAt`. With no reset it is the energy of every hour that is kept, up to 400 days."}
         anomaly:
           type: object

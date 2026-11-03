@@ -240,13 +240,14 @@ func TestAnEnergyResetStartsTheTotalAgainAndKeepsTheMonth(t *testing.T) {
 	other := business(t, e, "sari@example.com", "ESP32-DDEEFF", "b")
 	id := g.pair(t, "PLUG-0001", "Mesin jahit 1")
 
-	// three hours that were before the reset, and one hour that begins after it
+	// three hours that were before the reset, the hour that the reset falls in, and an hour that begins after it
 	for _, row := range []struct {
 		hours string
 		kwh   float64
-	}{{"-5 hours", 1.0}, {"-3 hours", 2.0}, {"-1 hour", 0.5}, {"+1 hour", 0.7}} {
+	}{{"-5 hours", 1.0}, {"-3 hours", 2.0}, {"-1 hour", 0.5}, {"0 hours", 0.3}, {"+2 hours", 0.7}} {
 		e.Exec(t, "INSERT INTO readings_hourly (gateway_id, node_id, hour, samples, sum_watts, max_watts, min_watts, energy_kwh) "+
-			"SELECT gateway_id, node_id, date_trunc('hour', now()) + $1::interval, 1, 12.5, 12.5, 12.5, $2 FROM nodes", row.hours, row.kwh)
+			"SELECT gateway_id, node_id, date_trunc('hour', now()) + $1::interval, 1, 12.5, 12.5, 12.5, $2 FROM nodes "+
+			"ON CONFLICT (gateway_id, node_id, hour) DO UPDATE SET energy_kwh = EXCLUDED.energy_kwh", row.hours, row.kwh)
 	}
 
 	var rowsBefore int
@@ -257,7 +258,7 @@ func TestAnEnergyResetStartsTheTotalAgainAndKeepsTheMonth(t *testing.T) {
 	before := g.device(t, id)
 
 	since, _ := before.Body["energySince"].(map[string]any)
-	if since["resetAt"] != nil || since["kwh"] != 4.2 {
+	if since["resetAt"] != nil || since["kwh"] != 4.5 {
 		t.Fatalf("with no reset the total is %v", before.Body["energySince"])
 	}
 

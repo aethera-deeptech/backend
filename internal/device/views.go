@@ -536,7 +536,8 @@ func (v *Views) ResetEnergy(ctx context.Context, businessID, id string) (time.Ti
 		return time.Time{}, api.NotFound()
 	}
 
-	at := v.now().UTC()
+	// the column keeps microseconds, so the answer carries the same value that the detail shows later
+	at := v.now().UTC().Truncate(time.Microsecond)
 
 	tag, err := v.pool.Exec(ctx, "UPDATE devices SET energy_reset_at = $3 WHERE id = $1 AND business_id = $2", id, businessID, at)
 	if err != nil {
