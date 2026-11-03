@@ -705,7 +705,7 @@ paths:
       tags: [Alat]
       operationId: setRelaySchedule
       summary: Set the daily switch of a plug
-      description: "The times are local times of the business. The plug is switched off at `offAt` and, when `onAt` is set, on again at `onAt`, on the days that `days` names. The service looks at the schedules every minute and queues a command like the one of the owner. It never acts on a time that passed before the schedule was set, or more than 2 hours ago. A second call replaces the schedule."
+      description: "The times are local times of the business. The plug is switched off at `offAt` and, when `onAt` is set, on again at `onAt`, on the days that `days` names. The service looks at the schedules every minute and queues a command like the one of the owner. It never acts on a time that passed before the schedule was set, or more than 10 minutes ago, which is the life of a command. A second call replaces the schedule."
       requestBody:
         required: true
         content:
