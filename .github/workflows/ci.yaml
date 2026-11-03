@@ -107,15 +107,18 @@ jobs:
             echo "Total statement coverage is $total" >> "$GITHUB_STEP_SUMMARY"
           fi
 
-      # A failed upload only fails the build on the main branch, a manual run on main included, because a Codecov outage must not block a pull request. A pull request from
-      # a fork has no token, and its upload fails without failing the build.
+      # The upload always fails the step on an error, because the wrapper of the action only stops on a failed signature check of the Codecov
+      # program when this is true, and otherwise it runs the program with the token. Only a run that is not on main lets the step fail
+      # without failing the build, so a Codecov outage does not block a pull request. A pull request from a fork has no token and its
+      # upload fails the same way.
       - name: Upload coverage to Codecov
         if: ${{ !cancelled() && hashFiles('coverage.out') != '' }}
+        continue-on-error: ${{ github.ref != 'refs/heads/main' }}
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: coverage.out
-          fail_ci_if_error: ${{ github.ref == 'refs/heads/main' }}
+          fail_ci_if_error: true
 
       - name: Upload coverage
         if: always()
