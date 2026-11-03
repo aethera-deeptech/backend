@@ -29,6 +29,6 @@ Do not run automated scanning or load testing against a live deployment you do n
 
 ## How this repository is checked
 
-Findings from the automated tooling in this repository, which is CodeQL, a Go vulnerability check, a license check, dependency review, gitleaks, Trivy, the ZAP baseline and active scans, fuzzing and OSSF Scorecard, are triaged the same way as external reports.
+The owner triages the findings of the automated tooling in this repository with the same care as external reports. The tooling includes CodeQL, a Go vulnerability check, a license check, dependency review, gitleaks, Trivy, the ZAP baseline and active scans, fuzzing and OSSF Scorecard.
 
-Some Scorecard alerts describe the limits of a repository with one owner, such as a `main` branch that needs no approving review, or a project that is young. Those alerts stay open and are not dismissed. The `main` branch still needs a pull request, a clean set of required checks, resolved review threads and verified signatures before anything is merged.
+Some Scorecard alerts describe the limits of a repository with one owner, such as a `main` branch that needs no approving review, or a project that is young. Those alerts stay open and are not dismissed. The `main` branch still needs a pull request, the required checks, resolved review threads and verified signatures before anything is merged.
