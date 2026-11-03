@@ -37,7 +37,9 @@ func TestValidPassword(t *testing.T) {
 	tests := map[string]string{
 		"":                        "required",
 		"1234567":                 "too_short",
-		"12345678":                "",
+		"12345678":                "too_common",
+		"PassWord":                "too_common",
+		"87654321x":               "",
 		"kata sandi yang panjang": "",
 		strings.Repeat("ä", 128):  "",
 		strings.Repeat("a", 129):  "too_long",
