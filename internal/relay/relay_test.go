@@ -476,3 +476,31 @@ func TestOnlyAQueuedCommandUsesTheLimitOfTheBusiness(t *testing.T) {
 		t.Fatalf("the command over the limit answered %d %v", got.Status, got.Body)
 	}
 }
+
+func TestTheRelayViewSaysWhetherTheGatewayIsOnline(t *testing.T) {
+	r := newRig(t)
+
+	// a gateway that never sent a batch is not online
+	r.e.Exec(t, "UPDATE gateways SET last_seen_at = NULL")
+
+	if got := r.relayView(t)["gatewayOnline"]; got != false {
+		t.Fatalf("a gateway that never reported is online %v", got)
+	}
+
+	r.batch(t, nil, "")
+
+	if got := r.relayView(t)["gatewayOnline"]; got != true {
+		t.Fatalf("a gateway that just sent a batch is not online %v", got)
+	}
+
+	r.e.Exec(t, "UPDATE gateways SET last_seen_at = now() - interval '20 minutes'")
+
+	if got := r.relayView(t)["gatewayOnline"]; got != false {
+		t.Fatalf("a gateway that was silent for 20 minutes is online %v", got)
+	}
+
+	// a command is still queued while the gateway is away
+	if got := r.command(t, "off"); got.Status != http.StatusAccepted {
+		t.Fatalf("a command for a silent gateway answered %d %v", got.Status, got.Body)
+	}
+}

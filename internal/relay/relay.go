@@ -19,6 +19,7 @@ import (
 
 	"github.com/aethera-deeptech/backend/internal/api"
 	"github.com/aethera-deeptech/backend/internal/auth"
+	"github.com/aethera-deeptech/backend/internal/device"
 )
 
 const (
@@ -83,9 +84,12 @@ type Schedule struct {
 type View struct {
 	State      string     `json:"state"`
 	ReportedAt *time.Time `json:"reportedAt"`
-	Pending    *Pending   `json:"pending"`
-	Last       *Last      `json:"last"`
-	Schedule   *Schedule  `json:"schedule"`
+	// GatewayOnline says whether the gateway of the plug had a batch stored in the last device.OfflineAfter. It does not say that the plug itself answers. A command for a gateway that is not
+	// online is still queued, and it expires after CommandTTL if the gateway stays away.
+	GatewayOnline bool      `json:"gatewayOnline"`
+	Pending       *Pending  `json:"pending"`
+	Last          *Last     `json:"last"`
+	Schedule      *Schedule `json:"schedule"`
 }
 
 // Service holds the rules of the relay
@@ -212,11 +216,19 @@ func (s *Service) Get(ctx context.Context, businessID, deviceID string) (View, e
 
 	out := View{State: Unknown}
 
-	var on *bool
+	var (
+		on   *bool
+		seen *time.Time
+	)
 
-	if err := s.pool.QueryRow(ctx, "SELECT relay_on, relay_at FROM nodes WHERE gateway_id = $1 AND node_id = $2", gatewayID, nodeID).Scan(&on, &out.ReportedAt); err != nil {
+	err = s.pool.QueryRow(ctx,
+		"SELECT n.relay_on, n.relay_at, g.last_seen_at FROM nodes n JOIN gateways g ON g.id = n.gateway_id WHERE n.gateway_id = $1 AND n.node_id = $2",
+		gatewayID, nodeID).Scan(&on, &out.ReportedAt, &seen)
+	if err != nil {
 		return View{}, fmt.Errorf("read the node %w", err)
 	}
+
+	out.GatewayOnline = seen != nil && time.Since(*seen) <= device.OfflineAfter
 
 	if on != nil {
 		out.State = Off
