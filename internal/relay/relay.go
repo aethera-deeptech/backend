@@ -145,6 +145,12 @@ func (s *Service) Send(ctx context.Context, businessID, deviceID, state string) 
 		return Pending{}, api.Validation(map[string]string{"state": "invalid"})
 	}
 
+	// the device is checked before the limit, so a bad id or a clamp does not use up the commands of the business
+	id, gatewayID, nodeID, err := s.plug(ctx, s.pool, businessID, deviceID)
+	if err != nil {
+		return Pending{}, err
+	}
+
 	ok, wait, err := s.limiter.Allow(ctx, ruleCommand, businessID)
 	if err != nil {
 		return Pending{}, fmt.Errorf("check the limit %w", err)
@@ -160,11 +166,6 @@ func (s *Service) Send(ctx context.Context, businessID, deviceID, state string) 
 	}
 
 	defer func() { _ = tx.Rollback(ctx) }()
-
-	id, gatewayID, nodeID, err := s.plug(ctx, tx, businessID, deviceID)
-	if err != nil {
-		return Pending{}, err
-	}
 
 	out, err := enqueue(ctx, tx, id, gatewayID, nodeID, state, "owner", time.Now().Add(CommandTTL))
 	if err != nil {

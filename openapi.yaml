@@ -672,7 +672,7 @@ paths:
       tags: [Alat]
       operationId: sendRelayCommand
       summary: Switch the relay of a plug on or off
-      description: "The service cannot call the gateway, because a gateway only calls out. It keeps the command until the gateway fetches it in the answer to its next batch of readings, which is within the sending interval of the gateway, and the gateway reports the result in a later batch. A command that no gateway fetched in 10 minutes expires, so a plug is never switched on an old order. A new command replaces the one that still waits. The answer 202 only says that the command is queued, and the app reads `GET` of this route to see the result. A business can send 60 commands in an hour."
+      description: "The service cannot call the gateway, because a gateway only calls out. It keeps the command until the gateway fetches it in the answer to its next batch of readings, which is within the sending interval of the gateway, and the gateway reports the result in a later batch. A command that no gateway fetched in 10 minutes expires, so a plug is never switched on an old order. A new command replaces the one that still waits. The answer 202 only says that the command is queued, and the app reads `GET` of this route to see the result. A business can send 60 commands in an hour. Only a command that was queued counts, so a call that is refused before it is queued, for example with a 404 or a 409, does not use it up."
       requestBody:
         required: true
         content:

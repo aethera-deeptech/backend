@@ -438,3 +438,41 @@ func TestARealDeviceAddressedInUrnFormWorksOnEveryRoute(t *testing.T) {
 		t.Fatalf("delete answered %d", got.Status)
 	}
 }
+
+// hourlyCommands is the limit of commands for a business in an hour, as ruleCommand sets it
+const hourlyCommands = 60
+
+// TestOnlyAQueuedCommandUsesTheLimitOfTheBusiness checks that a call that ends in 404 or 409 does not use up the 60 commands of an
+// hour, and that the 61st queued command is refused with the time to wait
+func TestOnlyAQueuedCommandUsesTheLimitOfTheBusiness(t *testing.T) {
+	r := newRig(t)
+
+	for range hourlyCommands + 5 {
+		if got := r.e.Call(t, http.MethodPost, "/v1/devices/00000000-0000-4000-8000-000000000000/relay", `{"state":"off"}`, r.g.Session); got.Status != http.StatusNotFound {
+			t.Fatalf("an unknown device answered %d", got.Status)
+		}
+	}
+
+	r.e.Exec(t, "UPDATE devices SET kind = 'clamp'")
+	r.e.Exec(t, "UPDATE nodes SET kind = 'clamp'")
+
+	for range hourlyCommands + 5 {
+		if got := r.command(t, "off"); got.Status != http.StatusConflict {
+			t.Fatalf("a clamp answered %d", got.Status)
+		}
+	}
+
+	r.e.Exec(t, "UPDATE devices SET kind = 'plug'")
+	r.e.Exec(t, "UPDATE nodes SET kind = 'plug'")
+
+	for i := range hourlyCommands {
+		if got := r.command(t, "off"); got.Status != http.StatusAccepted {
+			t.Fatalf("command %d answered %d %v", i+1, got.Status, got.Body)
+		}
+	}
+
+	got := r.command(t, "on")
+	if got.Status != http.StatusTooManyRequests || got.Body["code"] != "rate_limited" || got.Body["retryAfterSeconds"] == nil {
+		t.Fatalf("the command over the limit answered %d %v", got.Status, got.Body)
+	}
+}
