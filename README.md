@@ -8,7 +8,7 @@ The service is built and runs in production. It is a Go program with a PostgreSQ
 
 ## How it fits together
 
-- Each account has one business, and every table points to the business, so more people can join a business later.
+- Each account has one business, and the data of a business hangs off one business row, so more people can join a business later.
 - The dashboard calls the API with a session cookie.
 - The devices of a business reach the service through one gateway over HTTPS, see the [firmware guide](docs/firmware-guide.md).
 - The service works out the tips, the anomalies, the bill so far and the monthly and weekly reports from the readings.
