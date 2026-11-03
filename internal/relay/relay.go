@@ -216,19 +216,19 @@ func (s *Service) Get(ctx context.Context, businessID, deviceID string) (View, e
 
 	out := View{State: Unknown}
 
-	var seen *time.Time
+	var (
+		on   *bool
+		seen *time.Time
+	)
 
-	if err := s.pool.QueryRow(ctx, "SELECT last_seen_at FROM gateways WHERE id = $1", gatewayID).Scan(&seen); err != nil {
-		return View{}, fmt.Errorf("read the gateway %w", err)
+	err = s.pool.QueryRow(ctx,
+		"SELECT n.relay_on, n.relay_at, g.last_seen_at FROM nodes n JOIN gateways g ON g.id = n.gateway_id WHERE n.gateway_id = $1 AND n.node_id = $2",
+		gatewayID, nodeID).Scan(&on, &out.ReportedAt, &seen)
+	if err != nil {
+		return View{}, fmt.Errorf("read the node %w", err)
 	}
 
 	out.GatewayOnline = seen != nil && time.Since(*seen) <= device.OfflineAfter
-
-	var on *bool
-
-	if err := s.pool.QueryRow(ctx, "SELECT relay_on, relay_at FROM nodes WHERE gateway_id = $1 AND node_id = $2", gatewayID, nodeID).Scan(&on, &out.ReportedAt); err != nil {
-		return View{}, fmt.Errorf("read the node %w", err)
-	}
 
 	if on != nil {
 		out.State = Off
