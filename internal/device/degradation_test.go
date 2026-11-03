@@ -144,3 +144,14 @@ func TestAReportedDegradationDoesNotKeepThePowerFactorOfOneSample(t *testing.T) 
 		t.Fatalf("the anomaly is %q %v (%v)", kind, pf, err)
 	}
 }
+
+func TestADegradationRaisesFromTheLoadFloorExactly(t *testing.T) {
+	g := business(t, testutil.New(t), "budi@example.com", "ESP32-AABBCC", "a")
+	g.pair(t, "PLUG-0001", "Kompresor")
+
+	g.sendLoad(t, "PLUG-0001", repeat(3, load{watts: 35, pf: 0.2}))
+
+	if n := g.anomalies(t); n != 1 {
+		t.Fatalf("three poor samples at the floor raised %d anomalies, want 1", n)
+	}
+}
