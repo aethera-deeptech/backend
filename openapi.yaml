@@ -509,7 +509,7 @@ paths:
             application/json:
               schema: {$ref: "#/components/schemas/Error"}
         "409":
-          description: The gateway belongs to another business (code `gateway_claimed_elsewhere`), the business has the most gateways that it can have (code `too_many_gateways`), or a value that must be unique is taken already, which is the key of another gateway in most cases and the hardware id of a claim that ran at the same time in the other (code `key_in_use`)
+          description: The gateway belongs to another business (code `gateway_claimed_elsewhere`), the business has the most gateways that it can have (code `too_many_gateways`), or a value that must be unique is taken already, which is the key of another gateway in most cases and the hardware id when two claims for the same gateway ran at the same time (code `key_in_use`)
           content:
             application/json:
               schema: {$ref: "#/components/schemas/Error"}

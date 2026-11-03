@@ -4,7 +4,7 @@ This is the roadmap of the backend. It shows what the API offers today and what 
 
 ## Done
 
-- Accounts for one business each, with registration, email verification, login with a session cookie, password reset and change of email. Every table points to one business, so more people can join a business later.
+- Accounts for one business each, with registration, email verification, login with a session cookie, password reset and change of email. The data of a business hangs off one business row, so more people can join a business later.
 - Gateways that enroll themselves, are claimed by the owner and send readings in numbered batches. The [firmware guide](docs/firmware-guide.md) explains the protocol.
 - Pairing of plugs and clamps on a gateway, rooms, and the status of every device.
 - Tips that the service works out from the readings, with states from pending to verified and a saving that is checked against the energy per piece.
