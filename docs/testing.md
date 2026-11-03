@@ -11,7 +11,7 @@ The `Tests` job of [ci.yaml](../.github/workflows/ci.yaml) builds the program an
 | Unit tests | next to the code, `*_test.go` | Pure rules such as the status of a device, the scrub of an error report and the period of a report |
 | Route tests | `internal/<package>`, with `internal/testutil` | The routes of a package against a real PostgreSQL, through the same Fiber app that production runs |
 | Fuzz targets | `fuzz_test.go` in four packages | The scrub of an error report, the check of a name, the check of a date and the checks of a batch of a gateway |
-| Benchmarks | `bench_test.go` | The cost of the intake of a batch, the rollups and the main read routes |
+| Benchmarks | `bench_test.go` | The scrub of an error text, the PDF of a report, the reading of a batch of a gateway and the tips refresh for one device |
 
 ## How the database tests work
 
@@ -26,7 +26,12 @@ docker run --rm -d --name pg-test -e POSTGRES_PASSWORD=postgres -p 5432:5432 pos
 TEST_DB_HOST=127.0.0.1 TEST_DB_USER=postgres TEST_DB_PASSWORD=postgres go test ./... -race -count=1
 ```
 
-A smaller run names one package, for example `go test ./internal/relay`.
+A smaller run names one package, for example `go test ./internal/relay`. Wait until the server answers before the first run, and stop it when you are done.
+
+```sh
+until docker exec pg-test pg_isready -U postgres; do sleep 1; done
+docker stop pg-test
+```
 
 ## The checks that start the whole stack
 
@@ -37,8 +42,8 @@ These workflows build the image of the pull request and run it with a throwaway 
 | `smoke-stack.yaml` | Signs a business up, claims a gateway the way the firmware does, pairs a plug, sends a reading and reads every screen of the app | yes |
 | `perf.yaml` | A business with 6 gateways and 24 plugs under a k6 script, with limits on the time of a request | yes |
 | `explain.yaml` | The query plans of the main read routes with 100 devices and 400 days of data | yes |
-| `dast.yaml` | The ZAP baseline scan on a seeded stack | yes |
-| `migrations.yaml` | squawk lints the migrations that a pull request adds, for statements that lock a table | yes |
+| `dast.yaml` | The ZAP baseline scan on a seeded stack. It is not a required check | no |
+| `migrations.yaml` | squawk lints the migrations that a pull request adds, for statements that lock a table. A pull request that adds none ends the job at once with a green result | yes |
 
 ## The checks that run on a schedule
 
@@ -49,6 +54,8 @@ These workflows build the image of the pull request and run it with a throwaway 
 | `dast-active.yaml` | Sunday | The ZAP active scan on a seeded stack. It only reports |
 | `bench.yaml` | Wednesday | Compares the benchmarks of `main` with those of a week before. It only reports |
 | `perf.yaml` | daily | The longer k6 script |
+| `dast.yaml` | Monday | The same ZAP baseline scan as on a pull request |
+| `links.yaml` | weekly | Checks the links of the Markdown files |
 
 ## The smoke test of production
 

@@ -19,7 +19,7 @@ The app is in Indonesian, and the API keeps a few of those words in its fields a
 
 **Why does the app get a 429 on a route?** A route has a limit. The answer carries `retryAfterSeconds` and the header `Retry-After`. The sign in, registration, reset and pairing routes have limits, and so does the relay command, which is 60 commands an hour for a business. The reads have none. See [Errors](errors.md).
 
-**Why does sign in answer 503 with the code `busy`?** The password check has no free slot. A burst of requests that hash a password, such as sign in and registration, can use them all, and the request should be sent again after the number of seconds in the answer.
+**Why does sign in answer 503 with the code `busy`?** The password check has no free slot. A burst of requests that hash a password, such as sign in, registration, a change of the email and a reset, can use them all, and the request should be sent again after the number of seconds in the answer.
 
 **Why does a new device show as offline after a short while?** A device is offline when its newest reading is older than 15 minutes, and offline wins over every other status. See [API](api.md).
 
@@ -41,4 +41,4 @@ The app is in Indonesian, and the API keeps a few of those words in its fields a
 
 **How long is the data kept?** Raw readings 30 days and hourly sums 400 days. See [Privacy](privacy.md#how-long-it-stays).
 
-**Which hardware does the firmware guide expect?** An ESP32 gateway that talks to the service over HTTPS, and plug and clamp nodes that send their readings to it over ESP-NOW. See the [firmware guide](firmware-guide.md).
+**Which hardware does the firmware guide expect?** An ESP32 gateway that talks to the service over HTTPS, and plug and clamp nodes that send their readings to it over ESP-NOW. See the [firmware guide](firmware-guide.md) and the [API](api.md).
