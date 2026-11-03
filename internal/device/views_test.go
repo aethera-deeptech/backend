@@ -49,7 +49,7 @@ func TestAFreshDeviceIsOnAndShowsItsPattern(t *testing.T) {
 	}
 
 	row, _ := items[0].(map[string]any)
-	if row["id"] != id || row["status"] != "nyala" || row["currentPowerW"] != 12.5 {
+	if row["id"] != id || row["kind"] != "plug" || row["status"] != "nyala" || row["currentPowerW"] != 12.5 {
 		t.Fatalf("the row is %v", row)
 	}
 
@@ -58,7 +58,7 @@ func TestAFreshDeviceIsOnAndShowsItsPattern(t *testing.T) {
 		t.Fatalf("the detail answered %d %v", d.Status, d.Body)
 	}
 
-	if d.Body["room"] != "Ruang jahit" || d.Body["kindLabel"] != "WATTLINK Plug" || d.Body["signal"] != "baik" || d.Body["status"] != "nyala" {
+	if d.Body["room"] != "Ruang jahit" || d.Body["kind"] != "plug" || d.Body["kindLabel"] != "WATTLINK Plug" || d.Body["signal"] != "baik" || d.Body["status"] != "nyala" {
 		t.Fatalf("the detail is %v", d.Body)
 	}
 
