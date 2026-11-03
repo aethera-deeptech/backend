@@ -88,6 +88,8 @@ The settings of Alloy live in `grafana/alloy/.env`, see [Monitoring](docs/monito
 | [Operations](docs/operations.md) | How to run and update the service on a server |
 | [Monitoring](docs/monitoring.md) | The Grafana files, the alerts and the dashboards |
 | [CI/CD](docs/ci-cd.md) | Every workflow and every required check |
+| [Testing](docs/testing.md) | How the tests run, which workflows start the whole stack and which run on a schedule |
+| [FAQ](docs/faq.md) | The words of the app and the answers to the questions that come up most |
 | [ROADMAP.md](ROADMAP.md) | What is done and what is planned |
 
 ## Project layout
