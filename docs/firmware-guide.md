@@ -108,7 +108,7 @@ A plug has a relay. The service cannot call the gateway, because the gateway sit
 - `action` is `on` or `off`, never a toggle, so running a command twice does no harm.
 - A batch can carry at most 64 results. A result for a command that ended or that belongs to another gateway is ignored.
 - Send `r` in the samples of a plug so the app shows the real state, also after someone switched the relay by hand.
-- A plug that cuts its own relay because the load is too high sends `a` = 3 and `r` = 0 in its samples, and keeps `a` = 3 while the overload lasts. The service never sends an `off` command for an overload by itself. It raises an overload anomaly from `a` = 3, and the relay view then shows `cutByDevice` until the plug is on again or a later command ends it.
+- A plug that cuts its own relay because the load is too high sends `a` = 3 and `r` = 0 in its samples, and keeps `a` = 3 while the overload lasts. The service never sends an `off` command for an overload by itself. It raises an overload anomaly from `a` = 3, and the relay view then shows `cutByDevice` until the plug is on again or a later command ends it. The field is also null again 24 hours after the overload, even if the plug is still off.
 - A schedule of the owner makes the same kind of command. The gateway does not need to know the schedule.
 
 ## What the gateway keeps

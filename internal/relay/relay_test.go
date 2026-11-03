@@ -566,7 +566,7 @@ func TestAPlugThatCutItselfShowsTheCauseUntilSomethingSwitchesItAgain(t *testing
 	}
 
 	// the commands are older than the overload now, so the overload is the cause again, until it is more than a day old
-	r.e.Exec(t, "UPDATE relay_commands SET done_at = now() - interval '3 days', created_at = now() - interval '3 days'")
+	r.e.Exec(t, "UPDATE relay_commands SET sent_at = now() - interval '3 days', done_at = now() - interval '3 days', created_at = now() - interval '3 days'")
 
 	if v := r.relayView(t); v["cutByDevice"] == nil {
 		t.Fatalf("an overload that came after the last command is not shown %v", v)
