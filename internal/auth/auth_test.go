@@ -252,8 +252,11 @@ func TestForgotAndResetPassword(t *testing.T) {
 		t.Fatalf("a short password answered %d", r.Status)
 	}
 
-	if r := e.Call(t, http.MethodPost, "/v1/auth/reset-password", `{"token":"`+token+`","password":"qwerty123"}`, ""); r.Status != http.StatusUnprocessableEntity {
-		t.Fatalf("a common password answered %d", r.Status)
+	r := e.Call(t, http.MethodPost, "/v1/auth/reset-password", `{"token":"`+token+`","password":"qwerty123"}`, "")
+	common, _ := r.Body["fields"].(map[string]any)
+
+	if r.Status != http.StatusUnprocessableEntity || common["password"] != "too_common" {
+		t.Fatalf("a common password answered %d %v", r.Status, r.Body)
 	}
 
 	if r := e.Call(t, http.MethodPost, "/v1/auth/reset-password", `{"token":"`+token+`","password":"kata sandi baru"}`, ""); r.Status != http.StatusNoContent {
