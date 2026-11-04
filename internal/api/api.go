@@ -23,6 +23,8 @@ type Error struct {
 	Fields            map[string]string `json:"fields,omitempty"`
 	RetryAfterSeconds int               `json:"retryAfterSeconds,omitempty"`
 	ExpectedSeq       *int64            `json:"expectedSeq,omitempty"`
+	// PairingID is the id of the search that already runs, for the answer pairing_running
+	PairingID string `json:"pairingId,omitempty"`
 }
 
 func (e *Error) Error() string { return e.Code + ": " + e.Message }
