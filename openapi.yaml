@@ -545,7 +545,7 @@ paths:
                   id: {type: string, format: uuid}
         "401": {$ref: "#/components/responses/Unauthorized"}
         "409":
-          description: A pairing is running (code `pairing_running`), or the business has no gateway (code `no_gateway`)
+          description: "A pairing is running (code `pairing_running`, with the id of that search in `pairingId`), or the business has no gateway (code `no_gateway`)"
           content:
             application/json:
               schema: {$ref: "#/components/schemas/Error"}
@@ -1113,6 +1113,7 @@ components:
           additionalProperties: {type: string}
         retryAfterSeconds: {type: integer, minimum: 1}
         expectedSeq: {type: integer, minimum: 0}
+        pairingId: {type: string, format: uuid, description: "Only with the code `pairing_running`, the id of the search that already runs, so the app can open it with `GET /v1/pairings/{id}`"}
     Email: {type: string, format: email, maxLength: 254}
     Password: {type: string, minLength: 8, maxLength: 128, description: "At least 8 and at most 128 characters. A password on the list of about 1400 common passwords is refused with the code `too_common`, whatever its letter case. There is no rule about the kinds of characters."}
     Token: {type: string, minLength: 32, maxLength: 128}
