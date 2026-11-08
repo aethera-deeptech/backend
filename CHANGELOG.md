@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.9.0](https://github.com/aethera-deeptech/backend/compare/v0.8.0...v0.9.0) (2026-11-08)
+
+
+### ⚠ BREAKING CHANGES
+
+* **device:** send null for a 15 minute point of the power pattern with no reading
+* **device:** send null for a 15 minute point of the power pattern with no reading
+
+### Features
+
+* **device:** send null for a 15 minute point of the power pattern with no reading ([415cac8](https://github.com/aethera-deeptech/backend/commit/415cac8caea1a353591bbac1a5fa86e6f0b9294e))
+* **device:** send null for a 15 minute point of the power pattern with no reading ([6babefc](https://github.com/aethera-deeptech/backend/commit/6babefcba3da9e319e8f33f15b03b87eab41db54))
+
+## [0.8.0](https://github.com/aethera-deeptech/backend/compare/v0.7.0...v0.8.0) (2026-11-08)
+
+
+### Features
+
+* **device:** add the id of the running search to the pairing_running answer ([584150c](https://github.com/aethera-deeptech/backend/commit/584150c75aa46cedd7bd35202dbaf601dc37d947))
+* **device:** add the id of the running search to the pairing_running answer ([72deab2](https://github.com/aethera-deeptech/backend/commit/72deab2106285bc92faf9a361a34c15f025db438))
+
+
+### Bug Fixes
+
+* **deps:** update the indirect modules brotli and compress ([6b7fd6a](https://github.com/aethera-deeptech/backend/commit/6b7fd6ae683e4816ab0873c0b973d25e42d0a025))
+* **deps:** update the indirect modules brotli to 1.2.7 and compress to 1.20.2 ([5413bab](https://github.com/aethera-deeptech/backend/commit/5413bab84fb984822ecea709c7dc384fa29a2219))
+* **device:** release the transaction before the lookup of the running search and say that pairingId is optional ([b352d1b](https://github.com/aethera-deeptech/backend/commit/b352d1bbd62ad02bf677936d72c6e6eaec138586))
+
 ## [0.7.0](https://github.com/aethera-deeptech/backend/compare/v0.6.0...v0.7.0) (2026-11-03)
 
 

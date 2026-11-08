@@ -134,8 +134,8 @@ func TestOneSearchAtATimeAndItCanBeCancelled(t *testing.T) {
 
 	id, _ := g.start(t, "plug").Body["id"].(string)
 
-	if r := g.start(t, "clamp"); r.Status != http.StatusConflict || r.Code() != "pairing_running" {
-		t.Fatalf("a second search answered %d %v", r.Status, r.Body)
+	if r := g.start(t, "clamp"); r.Status != http.StatusConflict || r.Code() != "pairing_running" || r.Body["pairingId"] != id {
+		t.Fatalf("a second search answered %d %v, want the id %s of the one that runs", r.Status, r.Body, id)
 	}
 
 	if r := g.e.Call(t, http.MethodDelete, "/v1/pairings/"+id, "", g.session); r.Status != http.StatusNoContent {

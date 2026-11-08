@@ -14,6 +14,7 @@ The `message` is English text for a developer and can be reworded, so an app bra
 - `fields` names each field that failed validation, with one code for each field. The codes are `required`, `invalid`, `too_long`, `too_short`, `too_common`, `out_of_range`, `empty`, `end_before_start`, `in_the_future` and `too_old`.
 - `retryAfterSeconds` is on every 429 answer and on the 503 answer `busy`, and the same number is in the `Retry-After` header.
 - `expectedSeq` is on the answer `sequence_gap` and holds the sequence number that the service wants next.
+- `pairingId` is on the answer `pairing_running` and holds the id of the search that already runs. It can be left out, for example when that search ended in the meantime.
 
 An error that the service did not plan is answered as a plain 500 with the code `internal` and no detail. The routes that are listed in [openapi.yaml](../openapi.yaml) name the codes that each of them can answer.
 
@@ -59,7 +60,7 @@ A change of the email to the address that the account already has answers 422 `v
 | `gateway_claimed_elsewhere` | 409 | The gateway belongs to another business | Show that the gateway belongs to another business |
 | `key_in_use` | 409 | A value that must be unique is taken already. It is the key of another gateway in most cases, and the hardware id when two claims for the same gateway ran at the same time | Send the claim again. When the key is the cause, the gateway makes a new key and enrolls again. When the same claim now answers `gateway_claimed_elsewhere`, the gateway belongs to another business |
 | `no_gateway` | 409 | The business has no gateway yet, so there is nothing to pair a device to | Send the person to claim a gateway first |
-| `pairing_running` | 409 | A search for a device is already running | Show the search that runs or wait for its end |
+| `pairing_running` | 409 | A search for a device is already running. The answer has `pairingId`, the id of that search | Open the search with `pairingId` or wait for its end |
 
 ## Gateway protocol
 
