@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/aethera-deeptech/backend/internal/testutil"
 )
@@ -315,5 +316,32 @@ func TestAnEnergyResetStartsTheTotalAgainAndKeepsTheMonth(t *testing.T) {
 
 	if r := e.Call(t, http.MethodPost, "/v1/devices/"+id+"/energy-reset", "", ""); r.Status != http.StatusUnauthorized {
 		t.Fatalf("a reset with no session answered %d", r.Status)
+	}
+}
+
+func TestAReadingOfZeroWattsIsAPointAndNotAGap(t *testing.T) {
+	g := business(t, testutil.New(t), "budi@example.com", "ESP32-AABBCC", "a")
+	id := g.pair(t, "PLUG-0001", "Mesin jahit 1")
+
+	// a plug that is switched off reports 0 W, which is a real reading and must stay a number, while the times with no reading are null
+	g.send(t, "PLUG-0001", 0, 12*time.Hour, nil)
+
+	pattern, _ := g.device(t, id).Body["powerPattern"].(map[string]any)
+	points, _ := pattern["points"].([]any)
+
+	numbers, zeros := 0, 0
+
+	for _, p := range points {
+		if v, ok := p.(float64); ok {
+			numbers++
+
+			if v == 0 {
+				zeros++
+			}
+		}
+	}
+
+	if len(points) != 96 || numbers != 2 || zeros != 1 {
+		t.Fatalf("%d points, %d numbers and %d zeros, want 96, 2 and 1", len(points), numbers, zeros)
 	}
 }
