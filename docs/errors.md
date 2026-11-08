@@ -14,7 +14,7 @@ The `message` is English text for a developer and can be reworded, so an app bra
 - `fields` names each field that failed validation, with one code for each field. The codes are `required`, `invalid`, `too_long`, `too_short`, `too_common`, `out_of_range`, `empty`, `end_before_start`, `in_the_future` and `too_old`.
 - `retryAfterSeconds` is on every 429 answer and on the 503 answer `busy`, and the same number is in the `Retry-After` header.
 - `expectedSeq` is on the answer `sequence_gap` and holds the sequence number that the service wants next.
-- `pairingId` is on the answer `pairing_running` and holds the id of the search that already runs. It is left out when that search ended in the meantime.
+- `pairingId` is on the answer `pairing_running` and holds the id of the search that already runs. It can be left out, for example when that search ended in the meantime.
 
 An error that the service did not plan is answered as a plain 500 with the code `internal` and no detail. The routes that are listed in [openapi.yaml](../openapi.yaml) name the codes that each of them can answer.
 
