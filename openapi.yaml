@@ -545,7 +545,7 @@ paths:
                   id: {type: string, format: uuid}
         "401": {$ref: "#/components/responses/Unauthorized"}
         "409":
-          description: "A pairing is running (code `pairing_running`, with the id of that search in `pairingId`), or the business has no gateway (code `no_gateway`)"
+          description: "A pairing is running (code `pairing_running`, with the id of that search in `pairingId` when it is available, otherwise wait for it to end), or the business has no gateway (code `no_gateway`)"
           content:
             application/json:
               schema: {$ref: "#/components/schemas/Error"}

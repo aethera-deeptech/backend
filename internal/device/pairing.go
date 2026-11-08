@@ -114,6 +114,10 @@ func (p *Pairings) Start(ctx context.Context, businessID, kind, rawName, roomID 
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == uniqueViolation {
+			// the failed insert aborted the transaction, and it still holds a connection, so it is released before the lookup asks the pool
+			// for another one
+			_ = tx.Rollback(ctx)
+
 			running := api.NewError(http.StatusConflict, "pairing_running", "A search for a device is running")
 			running.PairingID = p.runningID(ctx, businessID)
 
