@@ -69,6 +69,19 @@ func TestAFreshDeviceIsOnAndShowsItsPattern(t *testing.T) {
 		t.Fatalf("the pattern has %d points and the ceiling %v", len(points), pattern["yMaxW"])
 	}
 
+	// one reading fills one point, and every time with no reading is null and not zero
+	filled := 0
+
+	for _, p := range points {
+		if p != nil {
+			filled++
+		}
+	}
+
+	if filled != 1 {
+		t.Fatalf("%d points have a value, want 1 and null for the others", filled)
+	}
+
 	if _, ok := pattern["expected"]; ok {
 		t.Fatal("a device with one reading has no usual band")
 	}
