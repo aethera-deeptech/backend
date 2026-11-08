@@ -114,7 +114,14 @@ func (p *Pairings) Start(ctx context.Context, businessID, kind, rawName, roomID 
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == uniqueViolation {
-			return "", api.NewError(http.StatusConflict, "pairing_running", "A search for a device is running")
+			// the failed insert aborted the transaction, and it still holds a connection, so it is released before the lookup asks the pool
+			// for another one
+			_ = tx.Rollback(ctx)
+
+			running := api.NewError(http.StatusConflict, "pairing_running", "A search for a device is running")
+			running.PairingID = p.runningID(ctx, businessID)
+
+			return "", running
 		}
 
 		return "", fmt.Errorf("store the pairing %w", err)
@@ -125,6 +132,18 @@ func (p *Pairings) Start(ctx context.Context, businessID, kind, rawName, roomID 
 	}
 
 	return id, nil
+}
+
+// runningID returns the id of the search that runs for the business, or an empty text when it ended in the meantime. The answer is
+// only a help for the app, so a failed read is not an error.
+func (p *Pairings) runningID(ctx context.Context, businessID string) string {
+	var id string
+
+	if err := p.pool.QueryRow(ctx, "SELECT id FROM pairings WHERE business_id = $1 AND status = 'searching' AND expires_at > now()", businessID).Scan(&id); err != nil {
+		return ""
+	}
+
+	return id
 }
 
 // Get returns the state of a search. While it searches it also looks for the node, so the answer is up to date without a worker.
