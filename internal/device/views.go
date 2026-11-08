@@ -62,10 +62,11 @@ type Span struct {
 
 // Pattern is the power of the last 24 hours in 15 minute points
 type Pattern struct {
-	Points  []float64 `json:"points"`
-	YMaxW   float64   `json:"yMaxW"`
-	Expect  *Band     `json:"expected,omitempty"`
-	Anomaly *Span     `json:"anomaly,omitempty"`
+	// Points holds the highest power of each 15 minutes, and null for a time with no reading, so an outage of the gateway is not a device that was off
+	Points  []*float64 `json:"points"`
+	YMaxW   float64    `json:"yMaxW"`
+	Expect  *Band      `json:"expected,omitempty"`
+	Anomaly *Span      `json:"anomaly,omitempty"`
 }
 
 // Detail is the screen of one device
@@ -398,7 +399,7 @@ func (v *Views) pattern(ctx context.Context, gatewayID, nodeID string, c clock, 
 	}
 	defer rows.Close()
 
-	points := make([]float64, patternPoints)
+	points := make([]*float64, patternPoints)
 	seen := 0
 
 	for rows.Next() {
@@ -412,7 +413,8 @@ func (v *Views) pattern(ctx context.Context, gatewayID, nodeID string, c clock, 
 		}
 
 		if b >= 0 && b < patternPoints {
-			points[b] = round1(w)
+			power := round1(w)
+			points[b] = &power
 			seen++
 		}
 	}
@@ -426,7 +428,13 @@ func (v *Views) pattern(ctx context.Context, gatewayID, nodeID string, c clock, 
 	}
 
 	out := &Pattern{Points: points}
-	top := maxOf(points)
+	top := 0.0
+
+	for _, p := range points {
+		if p != nil {
+			top = math.Max(top, *p)
+		}
+	}
 
 	out.Expect, err = v.expected(ctx, gatewayID, nodeID, c, since)
 	if err != nil {

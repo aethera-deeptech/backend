@@ -1233,7 +1233,11 @@ components:
           description: Null while there is no recent data. The points cover the 24 hours that end now, spread evenly.
           required: [points, yMaxW]
           properties:
-            points: {type: array, minItems: 2, items: {type: number, minimum: 0}}
+            points:
+              type: array
+              minItems: 2
+              description: "The highest power of each 15 minutes. A time with no reading is null and not 0, so a gap in the data, such as an outage of the gateway, is not shown as a device that was off."
+              items: {type: [number, "null"], minimum: 0}
             yMaxW: {type: number}
             expected:
               type: object
