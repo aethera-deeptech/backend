@@ -54,7 +54,7 @@ services:
   # COMPOSE_PROFILES=monitoring in .env once grafana/alloy/.env is filled in, see docs/monitoring.md. The copies need
   # METRICS_ADDRESS=:9100 in .env for the metrics.
   alloy:
-    image: grafana/alloy:v1.21.0
+    image: grafana/alloy:v1.21.3
     container_name: aethera-alloy
     restart: always
     profiles:
