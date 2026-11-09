@@ -892,8 +892,11 @@ func TestRevokeOthersKeepsThisSessionAndCountsTheRest(t *testing.T) {
 	tablet := signInAs(t, e, "budi@example.com", "Mozilla/5.0 (iPad; CPU OS 18_0 like Mac OS X) Safari/605.1.15")
 	siti := e.SignUp(t, "siti@example.com")
 
+	// a row that is idle too long and that the janitor has not removed yet is deleted but not counted
+	e.Exec(t, "UPDATE sessions SET last_used_at = now() - interval '31 days' WHERE label = 'Safari on iPad'")
+
 	r := e.Call(t, http.MethodPost, "/v1/auth/sessions/revoke-others", "", laptop)
-	if r.Status != http.StatusOK || r.Body["ended"] != float64(2) {
+	if r.Status != http.StatusOK || r.Body["ended"] != float64(1) {
 		t.Fatalf("revoke answered %d %v", r.Status, r.Body)
 	}
 

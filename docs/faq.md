@@ -37,7 +37,7 @@ The app is in Indonesian, and the API keeps a few of those words in its fields a
 
 **Can an owner delete an account?** Not through the API. An owner who wants the data removed asks the operator. See [Privacy](privacy.md#deleting-an-account).
 
-**Can a session be ended from the app?** Only by signing out of that session. A session also ends after 30 days without use, after 90 days, or when the owner resets the password. See [Security](security.md).
+**Can a session be ended from the app?** Yes. The owner can list the signed in devices, end one of them, or end all the others, and signing out ends the session of that device. A session also ends after 30 days without use, after 90 days, or when the owner resets the password. See [Security](security.md).
 
 **How long is the data kept?** Raw readings 30 days, hourly sums 400 days and anomalies 90 days. See [Privacy](privacy.md#how-long-it-stays).
 

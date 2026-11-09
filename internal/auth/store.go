@@ -429,14 +429,22 @@ func (s *Store) DeleteSessionByID(ctx context.Context, userID, id string, curren
 	return true, bytes.Equal(hash, current), nil
 }
 
-// DeleteOtherSessions ends every session of the user except the one of the request and returns how many it ended
+// DeleteOtherSessions ends every session of the user except the one of the request. It returns how many of them could still sign in,
+// which is what the list showed. A row past a limit that the clean up has not removed yet is deleted too and is not counted.
 func (s *Store) DeleteOtherSessions(ctx context.Context, userID string, current []byte) (int, error) {
-	tag, err := s.pool.Exec(ctx, "DELETE FROM sessions WHERE user_id = $1 AND token_hash <> $2", userID, current)
+	var ended int
+
+	err := s.pool.QueryRow(ctx,
+		`WITH gone AS (
+		   DELETE FROM sessions WHERE user_id = $1 AND token_hash <> $2 RETURNING last_used_at, created_at
+		 )
+		 SELECT count(*) FILTER (WHERE last_used_at > now() - make_interval(secs => $3) AND created_at > now() - make_interval(secs => $4)) FROM gone`,
+		userID, current, sessionIdle.Seconds(), sessionAbsolute.Seconds()).Scan(&ended)
 	if err != nil {
 		return 0, fmt.Errorf("end the other sessions %w", err)
 	}
 
-	return int(tag.RowsAffected()), nil
+	return ended, nil
 }
 
 // DeleteSession ends one session
