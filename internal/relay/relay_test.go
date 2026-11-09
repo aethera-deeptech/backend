@@ -791,9 +791,18 @@ func TestTheMomentsOfTheRelayCarryTheOffsetOfTheBusiness(t *testing.T) {
 		t.Fatalf("the view is %v, want the offset +09:00", view)
 	}
 
-	// the command that the gateway fetches is a message of the protocol and stays in UTC
+	// the command that ended is the last one, and its time carries the offset as well
 	zero := 0
-	for _, c := range r.batch(t, &zero, "") {
+	id, _ := sent.Body["id"].(string)
+	fetched := r.batch(t, &zero, "")
+	r.batch(t, &zero, `[{"id":"`+id+`","ok":true}]`)
+
+	if last, _ := r.relayView(t)["last"].(map[string]any); !hasOffset(last["at"], "+09:00") {
+		t.Fatalf("the last command is %v, want the offset +09:00", last)
+	}
+
+	// the command that the gateway fetches is a message of the protocol and stays in UTC
+	for _, c := range fetched {
 		if exp, _ := c["expiresAt"].(string); !strings.HasSuffix(exp, "Z") {
 			t.Fatalf("the command of the gateway has expiresAt %v, want UTC", c["expiresAt"])
 		}

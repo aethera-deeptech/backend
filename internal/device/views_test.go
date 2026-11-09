@@ -396,12 +396,13 @@ func TestTheMomentsOfADeviceCarryTheOffsetOfTheBusiness(t *testing.T) {
 		t.Fatalf("the anomaly row is %v", row)
 	}
 
-	if r := g.e.Call(t, http.MethodPost, "/v1/devices/"+id+"/energy-reset", "", g.session); r.Status >= 300 {
-		t.Fatalf("the reset answered %d %v", r.Status, r.Body)
+	reset := g.e.Call(t, http.MethodPost, "/v1/devices/"+id+"/energy-reset", "", g.session)
+	if reset.Status >= 300 || !hasOffset(reset.Body["resetAt"], "+09:00") {
+		t.Fatalf("the reset answered %d %v, want a resetAt with +09:00", reset.Status, reset.Body)
 	}
 
 	since, _ := g.device(t, id).Body["energySince"].(map[string]any)
-	if !hasOffset(since["resetAt"], "+09:00") {
-		t.Fatalf("the reset time is %v", since["resetAt"])
+	if !hasOffset(since["resetAt"], "+09:00") || since["resetAt"] != reset.Body["resetAt"] {
+		t.Fatalf("the reset time is %v and the answer said %v", since["resetAt"], reset.Body["resetAt"])
 	}
 }
