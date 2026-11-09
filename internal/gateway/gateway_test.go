@@ -569,9 +569,9 @@ func TestRevokingTheKeyCutsOffTheOldKeyAndKeepsTheData(t *testing.T) {
 		t.Fatalf("the list after the revoke is %v", item)
 	}
 
-	var readings, devices int
-	if err := g.e.Pool.QueryRow(t.Context(), "SELECT (SELECT count(*) FROM readings), (SELECT count(*) FROM devices)").Scan(&readings, &devices); err != nil || readings != 1 || devices != 1 {
-		t.Fatalf("after the revoke there are %d readings and %d devices (%v), want 1 and 1", readings, devices, err)
+	var readings, gateways int
+	if err := g.e.Pool.QueryRow(t.Context(), "SELECT (SELECT count(*) FROM readings), (SELECT count(*) FROM gateways)").Scan(&readings, &gateways); err != nil || readings != 1 || gateways != 1 {
+		t.Fatalf("after the revoke there are %d readings and %d gateways (%v), want 1 and 1", readings, gateways, err)
 	}
 
 	// the same call again is fine
