@@ -56,7 +56,7 @@ The Grafana Cloud free plan allows about 10 000 active series and 50 GB of logs 
 | API is down | A copy that runs did not answer its scrape for 5 minutes. It also fires when no data arrives at all, which is what happens when Alloy is down. A copy that was stopped or removed disappears from the discovery, so "Fewer than 2 API copies are up" is the rule that catches it |
 | Fewer than 2 API copies are up | Fewer than 2 copies of the API reported `up` for 5 minutes. Removing a copy on purpose fires it until the threshold in the rule is lowered |
 | 5xx ratio is high | More than 5 percent of the requests failed with a 5xx for 10 minutes |
-| Requests are shed as busy | More than 2 percent of the requests of the API routes were answered 503 for 10 minutes. The health routes are not counted. The service answers 503 `busy` when a request passes its 10 second limit, and the 5xx rule above counts these answers too, so this one warns earlier |
+| Requests are shed as busy | More than 2 percent of the requests of the API routes were answered 503 for 10 minutes. The health routes and the requests to paths that the API does not serve are not counted. The service answers 503 `busy` when a request passes its 10 second limit, and the 5xx rule above counts these answers too, so this one warns earlier |
 | p95 latency is high | The p95 latency of the requests other than the health check was above one second for 10 minutes |
 | Database pool is nearly full | More than 85 percent of the connections of the pool of a copy were in use for 5 minutes |
 | Many requests are rate limited | More than 100 requests were refused by a limiter in 10 minutes |
