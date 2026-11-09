@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.0](https://github.com/aethera-deeptech/backend/compare/v0.12.0...v0.13.0) (2026-11-09)
+
+
+### Features
+
+* **auth:** let the owner delete the account with the password ([ae3a0d3](https://github.com/aethera-deeptech/backend/commit/ae3a0d3c769d8aa13da7834ef027feacbd902663))
+
 ## [0.12.0](https://github.com/aethera-deeptech/backend/compare/v0.11.0...v0.12.0) (2026-11-09)
 
 
