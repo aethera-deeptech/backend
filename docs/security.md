@@ -45,6 +45,6 @@ This page describes what the API protects, who it protects it from and what stop
 - Blocking an owner. The limit of one email is shared by anyone who sends that email, so a person can use up the sign in or the reset of a known address for a while.
 - A flood from many addresses, each under its limit, can keep the password slots busy, so sign in answers 503 `busy` until it stops.
 - A session ends after the idle time, when the owner resets the password, or when the owner ends it, or all the others, in the list of devices.
-- A gateway key is made by the device, so its strength depends on the firmware. The app cannot revoke a key, and enrolling the hardware again replaces it. A stolen key can send false readings within the limits.
+- A gateway key is made by the device, so its strength depends on the firmware. The owner can cut off a key in the app, which makes the old key answer 401, and enrolling the hardware again replaces it. A stolen key can send false readings within the limits.
 - The rate limit tables can be emptied by a crash of the database, because they are unlogged. The limits then start over.
 - Nothing here has had a penetration test by a third party. The [ZAP scans](ci-cd.md) check for the usual web faults and are not a substitute.

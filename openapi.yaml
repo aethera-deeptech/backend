@@ -571,6 +571,23 @@ paths:
         "422": {$ref: "#/components/responses/Validation"}
         "429": {$ref: "#/components/responses/RateLimited"}
         "4XX": {$ref: "#/components/responses/Error"}
+  /v1/gateways/{id}/revoke-key:
+    post:
+      tags: [Pasang alat]
+      operationId: revokeGatewayKey
+      summary: Cut off the key of a gateway
+      description: The old key answers 401 `invalid_gateway_key` from then on. The devices and the readings stay, and the list shows `keyRevoked` as true until the hardware enrolls again with a new key and the owner claims its new code with `POST /v1/gateways`. The route has no body and returns no claim code, because the gateway makes its own code when it enrolls. The same call twice is fine. An id of another business, an unknown id and an id that is not a uuid all answer 404.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        "204":
+          description: The key is cut off
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "4XX": {$ref: "#/components/responses/Error"}
   /v1/pairings:
     post:
       tags: [Pasang alat]
@@ -1182,11 +1199,12 @@ components:
         name: {$ref: "#/components/schemas/Name40"}
     Gateway:
       type: object
-      required: [id, name, lastSeenAt]
+      required: [id, name, lastSeenAt, keyRevoked]
       properties:
         id: {type: string, format: uuid}
         name: {$ref: "#/components/schemas/Name40"}
         lastSeenAt: {type: string, format: date-time, description: The time of the last batch. A gateway that never sent a batch shows the time of its claim.}
+        keyRevoked: {type: boolean, description: True after the owner cut off the key, until the hardware is claimed again with a new key. A gateway in this state sends nothing that the service accepts.}
     DeviceKind:
       type: string
       enum: [plug, clamp]
