@@ -35,6 +35,9 @@ const (
 // readyTimeout is how long the readiness route waits for the database
 const readyTimeout = 2 * time.Second
 
+// requestDeadline is how long one request of the API may run before its context ends and the answer is 503 busy
+const requestDeadline = 10 * time.Second
+
 // readyCache is how long the answer of the readiness route is reused, so a flood of requests costs one ping and not one connection of
 // the pool for each request
 const readyCache = 2 * time.Second
@@ -108,6 +111,10 @@ func New(opts Options) *fiber.App {
 	}
 
 	app.Use(api.Recover(), api.SecurityHeaders())
+
+	// a query that waits for a free connection of a busy pool or for a stalled database ends with the request, so it cannot hold a
+	// worker for ever. The health routes keep their own, shorter timeout.
+	app.Use([]string{"/v1", "/device/v1"}, api.Deadline(requestDeadline))
 
 	// the browser app calls from its own origin with its cookie. A request from any other origin gets no CORS headers.
 	app.Use("/v1", cors.New(cors.Config{
