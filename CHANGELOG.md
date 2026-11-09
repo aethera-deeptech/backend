@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.9.1](https://github.com/aethera-deeptech/backend/compare/v0.9.0...v0.9.1) (2026-11-09)
+
+
+### Bug Fixes
+
+* **api:** answer 503 busy for any error after the deadline and document the new cases ([f9e67b3](https://github.com/aethera-deeptech/backend/commit/f9e67b36f95eb5f9a1188c5ca26bd3de36dc0852))
+* **api:** end a request that runs for 10 seconds and answer 503 busy ([c69955a](https://github.com/aethera-deeptech/backend/commit/c69955ac92a2fe756e180b96fdfab878b6b1dd58))
+* **api:** end a request that runs for 10 seconds and answer 503 busy ([ec42f42](https://github.com/aethera-deeptech/backend/commit/ec42f42c2d6c08a3e9dbb2535495a85a3001a04e))
+* **app:** contain a panic for each clean up task and each schedule claim ([0ffbfd2](https://github.com/aethera-deeptech/backend/commit/0ffbfd2494d93e2893de4f92b21aee877ac5e7a0))
+* **app:** contain a panic of the clean up, the scheduler and the mail worker ([a691826](https://github.com/aethera-deeptech/backend/commit/a691826ac34b2b63cbf15c9e831c8d01bb05cccf))
+* **app:** contain a panic of the clean up, the scheduler and the mail worker ([3bf3e4b](https://github.com/aethera-deeptech/backend/commit/3bf3e4bce0272f1ab7c1126c62171feb13d8bcff))
+
 ## [0.9.0](https://github.com/aethera-deeptech/backend/compare/v0.8.0...v0.9.0) (2026-11-08)
 
 
