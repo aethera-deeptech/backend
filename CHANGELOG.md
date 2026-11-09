@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.9.3](https://github.com/aethera-deeptech/backend/compare/v0.9.2...v0.9.3) (2026-11-09)
+
+
+### Bug Fixes
+
+* **gateway:** store an overload again after a command switched the plug on ([f83895d](https://github.com/aethera-deeptech/backend/commit/f83895dd0925fd24926f630ef7b6ff0a784954fc))
+* **gateway:** store an overload again after a command switched the plug on ([3b265b2](https://github.com/aethera-deeptech/backend/commit/3b265b2435aa6e067cc2a23c524ff8aa68d54ab3))
+* **gateway:** store the results of the commands before the samples of the same batch ([e04f500](https://github.com/aethera-deeptech/backend/commit/e04f500732958d5235e7be2aa4b9b0d74192d508))
+* **janitor:** bound the unlock and the close of a connection that holds the lock ([4a38e80](https://github.com/aethera-deeptech/backend/commit/4a38e8098dec8b8969249a4557920a7d2f641a07))
+* **janitor:** close the connection when the advisory lock cannot be let go ([af79861](https://github.com/aethera-deeptech/backend/commit/af798613648bb36a18f9aa0391912970b22fdb77))
+* **janitor:** close the connection when the advisory lock cannot be let go ([6501c39](https://github.com/aethera-deeptech/backend/commit/6501c3980455bf03a7da91465c587c8d12007d7b))
+* **janitor:** log the error when the lock query fails ([07659e1](https://github.com/aethera-deeptech/backend/commit/07659e114e527d4248250de43ea53d9c9a6b96f0))
+
 ## [0.9.2](https://github.com/aethera-deeptech/backend/compare/v0.9.1...v0.9.2) (2026-11-09)
 
 
