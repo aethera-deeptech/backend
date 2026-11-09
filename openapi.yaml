@@ -221,6 +221,33 @@ paths:
             application/json:
               schema: {$ref: "#/components/schemas/Error"}
         "4XX": {$ref: "#/components/responses/Error"}
+  /v1/account:
+    delete:
+      tags: [Account]
+      operationId: deleteAccount
+      summary: Delete the account and the business with everything under it
+      description: "The password is checked again, so a stolen session cannot delete the account alone. The delete takes the business and everything under it in one statement. That covers the user, the sessions, the gateways with their keys, the nodes, the devices, the readings, the anomalies, the tips, the relay commands and schedules, the rooms and the production records. It cannot be undone. The answer clears the cookie like logout. A wrong password answers 403 `invalid_credentials`, and not 401, because the session is still valid. The tries are limited to 5 an hour for each user. A 503 `busy` means that nothing was deleted, so the same call can be repeated."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              properties:
+                password: {type: string, minLength: 1}
+      responses:
+        "204":
+          description: The business is deleted and the cookie is cleared
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403":
+          description: The password is wrong (code `invalid_credentials`), or the CSRF header or the origin is missing
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+        "422": {$ref: "#/components/responses/Validation"}
+        "429": {$ref: "#/components/responses/RateLimited"}
+        "4XX": {$ref: "#/components/responses/Error"}
   /v1/auth/logout:
     post:
       tags: [Account]

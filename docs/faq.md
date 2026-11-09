@@ -35,7 +35,7 @@ The app is in Indonesian, and the API keeps a few of those words in its fields a
 
 **Why does the verification mail not arrive in a development run?** A development run sends no mail. It writes the message to the log, link included. Production needs the `SMTP_*` settings. See [Operations](operations.md).
 
-**Can an owner delete an account?** Not through the API. An owner who wants the data removed asks the operator. See [Privacy](privacy.md#deleting-an-account).
+**Can an owner delete an account?** Yes. `DELETE /v1/account` with the password deletes the business and everything under it, and it cannot be undone. See [Privacy](privacy.md#deleting-an-account).
 
 **Can a session be ended from the app?** Yes. The owner can list the signed in devices, end one of them, or end all the others, and signing out ends the session of that device. A session also ends after 30 days without use, after 90 days, or when the owner resets the password. See [Security](security.md).
 

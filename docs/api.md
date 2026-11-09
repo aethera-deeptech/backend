@@ -17,6 +17,10 @@ The contract is `openapi.yaml` in the root of the repository. The job `OpenAPI l
 - `POST /v1/auth/sessions/revoke-others` ends every other session of the user and keeps the one of the request. It answers 200 with `{"ended": n}`, and `n` is 0 when there was no other session.
 - The service has no Redis. Sessions, limits and tokens live in PostgreSQL, so both copies see the same state.
 
+## Deleting the account
+
+`DELETE /v1/account` takes `{"password": "..."}` and deletes the business with everything under it, then clears the cookie and answers 204. The password is checked again so that a stolen session cannot do it alone, a wrong one answers 403 `invalid_credentials` and not 401, and a user has 5 tries an hour. The delete is one statement, so a 503 `busy` means that nothing was deleted and the same call can be repeated. It cannot be undone.
+
 ## Errors
 
 Every error of a route under `/v1` or `/device/v1` is JSON with `code` and `message`, and [Error codes](errors.md) lists them all. The routes `/healthz` and `/readyz` have a small status body of their own, and they answer 503 when the service is not healthy. The app reads the `code` and writes its own text. A field that failed validation is named in `fields` with a code. A response of 429 has `Retry-After` and `retryAfterSeconds`. The codes of the account screens are `invalid_credentials`, `email_not_verified`, `google_failed`, `email_taken`, `token_invalid_or_expired`, `resend_too_soon` and `rate_limited`.

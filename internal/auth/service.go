@@ -52,6 +52,7 @@ var (
 	ruleForgotIP      = Rule{Bucket: "forgot-ip", Max: 20, Window: time.Hour}
 	ruleChangeIP      = Rule{Bucket: "change-ip", Max: 10, Window: time.Hour}
 	ruleChangeEmail   = Rule{Bucket: "change-email", Max: 5, Window: time.Hour}
+	ruleDeleteAccount = Rule{Bucket: "delete-account", Max: 5, Window: time.Hour}
 )
 
 // Service holds the rules of the accounts
@@ -332,6 +333,40 @@ func (s *Service) Authenticate(ctx context.Context, token string) (*User, error)
 // Logout ends the session of a token
 func (s *Service) Logout(ctx context.Context, token string) error {
 	return s.store.DeleteSession(ctx, hashToken(token))
+}
+
+// DeleteAccount deletes the business of the user, and with it everything under the business, after the password is checked again so a
+// stolen session cannot do it alone. The tries are limited for each user, because the session is all that a guesser needs.
+func (s *Service) DeleteAccount(ctx context.Context, user *User, password string) error {
+	if password == "" {
+		return api.Validation(map[string]string{"password": "required"})
+	}
+
+	if err := s.allow(ctx, ruleDeleteAccount, user.ID, ""); err != nil {
+		return err
+	}
+
+	hctx, cancel := s.hashContext(ctx)
+	defer cancel()
+
+	matches := false
+
+	if user.PasswordHash != nil {
+		var err error
+
+		if matches, err = s.hasher.Verify(hctx, password, *user.PasswordHash); err != nil {
+			return busyOr(err)
+		}
+	} else if err := s.hasher.VerifyDummy(hctx); err != nil {
+		return busyOr(err)
+	}
+
+	// 403 and not 401, because the session is fine and a 401 tells the app that the user is signed out
+	if !matches {
+		return api.NewError(http.StatusForbidden, "invalid_credentials", "The password is wrong")
+	}
+
+	return s.store.DeleteBusiness(ctx, user.BusinessID)
 }
 
 // Sessions lists the open sessions of the user, and marks the one that the token belongs to

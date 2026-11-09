@@ -52,7 +52,7 @@ There is no analytics script and no advertising. The service sets one cookie, th
 
 ## Deleting an account
 
-The API has no route that deletes an account or a business, and the dashboard cannot ask for it. Today an owner who wants the data removed asks the operator, who deletes the business row. Every table under the business goes with it, because the keys cascade, see [Data model](data-model.md). The logs, the backups, the reverse proxy of the host, Sentry, Grafana Cloud and the mail provider keep their own copies and follow their own retention.
+The owner deletes the account in the app with `DELETE /v1/account`, which asks for the password again. The route deletes the business row, and every table under the business goes with it in the same statement, because the keys cascade, see [Data model](data-model.md). That covers the user, the sessions, the gateways, the devices, the readings, the anomalies, the tips and the relay data. It cannot be undone. The operator can still delete a business row by hand for an owner who cannot sign in. The logs, the backups, the reverse proxy of the host, Sentry, Grafana Cloud and the mail provider keep their own copies and follow their own retention.
 
 ## Consent
 

@@ -46,6 +46,8 @@ func NewHandlers(svc *Service, cookie CookieConfig) *Handlers {
 
 // Register adds the routes under /auth of the router
 func (h *Handlers) Register(r fiber.Router) {
+	r.Delete("/account", api.BodyLimit(maxAuthBody), h.Require(), h.deleteAccount)
+
 	g := r.Group("/auth", api.BodyLimit(maxAuthBody))
 	g.Post("/register", h.register)
 	g.Post("/login", h.login)
@@ -148,6 +150,25 @@ func (h *Handlers) login(c fiber.Ctx) error {
 
 func (h *Handlers) logout(c fiber.Ctx) error {
 	if err := h.svc.Logout(c.Context(), c.Cookies(h.cookie.Name)); err != nil {
+		return err
+	}
+
+	h.clearCookie(c)
+
+	return c.SendStatus(http.StatusNoContent)
+}
+
+// deleteAccount deletes the business of the user after a check of the password, and clears the cookie like logout does
+func (h *Handlers) deleteAccount(c fiber.Ctx) error {
+	var in struct {
+		Password string `json:"password"`
+	}
+
+	if err := api.Decode(c, &in); err != nil {
+		return err
+	}
+
+	if err := h.svc.DeleteAccount(c.Context(), UserFrom(c), in.Password); err != nil {
 		return err
 	}
 

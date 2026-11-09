@@ -43,7 +43,7 @@ The codes `unauthorized`, `csrf_header_missing` and `origin_not_allowed` apply t
 | Code | Status | Meaning | What the app does |
 |:---|:---|:---|:---|
 | `email_taken` | 409 | The email already has an account. It is also the answer to a change to an email that another account uses | Ask for another email, or send the person to sign in |
-| `invalid_credentials` | 401 | The email or the password is wrong, with the same answer for both. It also answers a wrong password on the change of the email | Show one sign in error |
+| `invalid_credentials` | 401 or 403 | The email or the password is wrong, with the same answer for both. It also answers a wrong password on the change of the email. A wrong password on the delete of the account answers 403, because the session is still valid | Show one sign in error |
 | `email_not_verified` | 403 | The password is right but the email is not verified yet | Offer to send the verification mail again |
 | `token_invalid_or_expired` | 410 | The link of a mail is unknown, used or expired | Ask the person to request a new mail |
 | `resend_too_soon` | 429 | A second verification or reset mail for the same address within a minute | Wait `retryAfterSeconds` |

@@ -447,6 +447,16 @@ func (s *Store) DeleteOtherSessions(ctx context.Context, userID string, current 
 	return ended, nil
 }
 
+// DeleteBusiness deletes the business, and every table under it goes with it because the keys cascade. This is the whole of the
+// deletion, so it is one statement and it either happens fully or not at all.
+func (s *Store) DeleteBusiness(ctx context.Context, businessID string) error {
+	if _, err := s.pool.Exec(ctx, "DELETE FROM businesses WHERE id = $1", businessID); err != nil {
+		return fmt.Errorf("delete the business %w", err)
+	}
+
+	return nil
+}
+
 // DeleteSession ends one session
 func (s *Store) DeleteSession(ctx context.Context, hash []byte) error {
 	if _, err := s.pool.Exec(ctx, "DELETE FROM sessions WHERE token_hash = $1", hash); err != nil {
