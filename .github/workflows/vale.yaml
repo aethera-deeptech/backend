@@ -30,7 +30,7 @@ jobs:
 
       # The Vale binary, the review tool and the Google style are all downloaded from GitHub releases, which answered 504 for a while on
       # 2026-11-09 and failed the required check. They are cached by the hash of this workflow and of the Vale config, so a new Vale
-      # version or a new style release (Renovate raises both) downloads once and every other run reads the cache.
+      # version or a new style release (Renovate raises both) downloads again once, and every other run reads the cache.
       - name: Restore the Vale tools and the Google style
         id: cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -39,6 +39,7 @@ jobs:
             /opt/hostedtoolcache/vale
             /opt/hostedtoolcache/reviewdog
             .github/vale/styles/Google
+            .github/vale/styles/.vale-config
           key: vale-${{ runner.os }}-${{ hashFiles('.github/workflows/vale.yaml', '.vale.ini') }}
 
       - name: Vale
