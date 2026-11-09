@@ -671,3 +671,49 @@ func TestRevokingAKeyNeedsASessionAndTheHeader(t *testing.T) {
 		t.Fatalf("the key stopped after refused revokes, it answered %d %v", r.Status, r.Body)
 	}
 }
+
+func lastSeenAgo(t *testing.T, g rig) time.Duration {
+	t.Helper()
+
+	var secs float64
+	if err := g.e.Pool.QueryRow(t.Context(), "SELECT extract(epoch FROM now() - last_seen_at) FROM gateways WHERE id = $1", g.gateway).Scan(&secs); err != nil {
+		t.Fatal(err)
+	}
+
+	return time.Duration(secs * float64(time.Second))
+}
+
+func TestARetryOfTheLastBatchKeepsTheGatewayOnlineAndAWrongNumberDoesNot(t *testing.T) {
+	g := enrolled(t, "budi@example.com", "ESP32-AABBCC", "a")
+
+	body := batch(1, "NODE-0001", "plug", sample(0, 310))
+	if r := g.send(t, body); r.Status != http.StatusOK {
+		t.Fatalf("the first batch answered %d %v", r.Status, r.Body)
+	}
+
+	// the gateway was last heard an hour ago
+	g.e.Exec(t, "UPDATE gateways SET last_seen_at = now() - interval '1 hour' WHERE id = $1", g.gateway)
+
+	// a batch with a number that the service does not wait for is refused and does not count as a sign of life
+	if r := g.send(t, batch(5, "NODE-0001", "plug", sample(0, 310))); r.Status != http.StatusConflict {
+		t.Fatalf("a wrong number answered %d", r.Status)
+	}
+
+	if ago := lastSeenAgo(t, g); ago < 59*time.Minute {
+		t.Fatalf("a refused batch moved the last seen time to %v ago", ago)
+	}
+
+	// the same batch again, because the answer was lost, is acknowledged again and the gateway counts as alive
+	if r := g.send(t, body); r.Status != http.StatusOK || r.Body["ackSeq"] != float64(1) {
+		t.Fatalf("the retry answered %d %v", r.Status, r.Body)
+	}
+
+	if ago := lastSeenAgo(t, g); ago > time.Minute {
+		t.Fatalf("a retry left the last seen time %v ago", ago)
+	}
+
+	var readings int
+	if err := g.e.Pool.QueryRow(t.Context(), "SELECT count(*) FROM readings").Scan(&readings); err != nil || readings != 1 {
+		t.Fatalf("there are %d readings (%v), a retry must not store them again", readings, err)
+	}
+}

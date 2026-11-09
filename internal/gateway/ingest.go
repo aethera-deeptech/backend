@@ -178,6 +178,12 @@ func (s *Service) Ingest(ctx context.Context, p *Principal, b Batch, now time.Ti
 			return Ack{}, err
 		}
 
+		// a gateway that keeps retrying because its answers get lost is alive and gets its commands, so it must not show as offline.
+		// A batch with a wrong number does not count, because that gateway sends nothing that is stored.
+		if _, err := tx.Exec(ctx, "UPDATE gateways SET last_seen_at = $2 WHERE id = $1", p.GatewayID, now); err != nil {
+			return Ack{}, fmt.Errorf("record the retry %w", err)
+		}
+
 		if err := tx.Commit(ctx); err != nil {
 			return Ack{}, fmt.Errorf("finish the intake %w", err)
 		}

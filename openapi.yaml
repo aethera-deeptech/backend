@@ -1231,7 +1231,7 @@ components:
       properties:
         id: {type: string, format: uuid}
         name: {$ref: "#/components/schemas/Name40"}
-        lastSeenAt: {type: string, format: date-time, description: The time of the last batch. A gateway that never sent a batch shows the time of its claim.}
+        lastSeenAt: {type: string, format: date-time, description: The time of the last batch that the service stored or that the gateway sent again because its answer was lost. A gateway that never sent a batch shows the time of its claim.}
         keyRevoked: {type: boolean, description: "True after the owner cut off the key, until the hardware is claimed again with a new key. A gateway in this state sends nothing that the service accepts."}
     DeviceKind:
       type: string
