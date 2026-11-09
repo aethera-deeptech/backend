@@ -68,7 +68,7 @@ jobs:
             exit 0
           fi
 
-          pattern='^(go\.(mod|sum)$|cmd/|internal/(app|business|device|gateway|tips|home|report|production|auth|janitor|database|explain|testutil)/|\.github/workflows/explain\.yaml$)'
+          pattern='^(go\.(mod|sum)$|cmd/|internal/(app|business|device|gateway|relay|tips|home|report|production|auth|janitor|database|explain|testutil)/|\.github/workflows/explain\.yaml$)'
 
           # the list is read first, because grep that stops at the first match would end a pipe early and git would fail under pipefail
           changed="$(git diff --name-only "origin/${BASE_REF}...HEAD")"
