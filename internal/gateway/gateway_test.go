@@ -614,11 +614,33 @@ func TestRevokingTheKeyCutsOffTheOldKeyAndKeepsTheData(t *testing.T) {
 	}
 }
 
+func TestRevokingTheKeyRemovesACodeThatWaitsForTheSameHardware(t *testing.T) {
+	g := enrolled(t, "budi@example.com", "ESP32-AABBCC", "a")
+
+	// the gateway asks for a code again with its old key, and the owner cuts the key off before the code is claimed
+	_, oldHash := key("a")
+
+	r := g.e.CallWith(t, http.MethodPost, "/device/v1/enroll", `{"hardwareId":"ESP32-AABBCC","keyHash":"`+oldHash+`"}`, nil)
+	code, _ := r.Body["claimCode"].(string)
+
+	if r = g.e.Call(t, http.MethodPost, "/v1/gateways/"+g.gateway+"/revoke-key", "", g.session); r.Status != http.StatusNoContent {
+		t.Fatalf("revoke answered %d", r.Status)
+	}
+
+	if r = g.e.Call(t, http.MethodPost, "/v1/gateways", `{"claimCode":"`+code+`","name":"Hub"}`, g.session); r.Status != http.StatusNotFound || r.Code() != "claim_code_unknown" {
+		t.Fatalf("the waiting code answered %d %v, want 404 claim_code_unknown", r.Status, r.Body)
+	}
+
+	if r = g.send(t, batch(1, "NODE-0001", "plug", sample(0, 5))); r.Status != http.StatusUnauthorized {
+		t.Fatalf("the old key answered %d", r.Status)
+	}
+}
+
 func TestOnlyTheOwnerCanRevokeAKeyAndABadIDIsNotFound(t *testing.T) {
 	g := enrolled(t, "budi@example.com", "ESP32-AABBCC", "a")
 	other := g.e.SignUp(t, "ani@example.com")
 
-	for _, id := range []string{"00000000-0000-4000-8000-000000000000", "not-a-uuid", "1", "urn:uuid:" + g.gateway} {
+	for _, id := range []string{"00000000-0000-4000-8000-000000000000", "not-a-uuid", "1", "urn:uuid:" + g.gateway, strings.ToUpper(g.gateway), "{" + g.gateway + "}"} {
 		if r := g.e.Call(t, http.MethodPost, "/v1/gateways/"+id+"/revoke-key", "", g.session); r.Status != http.StatusNotFound || r.Code() != "not_found" {
 			t.Fatalf("revoking %q answered %d %v", id, r.Status, r.Body)
 		}

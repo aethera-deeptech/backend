@@ -375,8 +375,9 @@ func (s *Service) List(ctx context.Context, businessID string) ([]Gateway, error
 // when it enrolls again and the owner claims its new code. The same call twice is fine. An id of another business, an unknown id and
 // an id that is not a uuid all answer not found.
 func (s *Service) RevokeKey(ctx context.Context, businessID, id string) error {
+	// the parser also accepts forms such as urn:uuid: and braces, so only the plain lower case form counts as one
 	parsed, err := uuid.Parse(id)
-	if err != nil {
+	if err != nil || parsed.String() != id {
 		return api.NotFound()
 	}
 
@@ -385,13 +386,31 @@ func (s *Service) RevokeKey(ctx context.Context, businessID, id string) error {
 		return fmt.Errorf("make an unusable key hash %w", err)
 	}
 
-	tag, err := s.pool.Exec(ctx, "UPDATE gateways SET key_hash = $3, key_revoked_at = now() WHERE id = $1 AND business_id = $2", parsed.String(), businessID, unusable)
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return fmt.Errorf("start the cut off %w", err)
+	}
+
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	var hardwareID string
+
+	err = tx.QueryRow(ctx, "UPDATE gateways SET key_hash = $3, key_revoked_at = now() WHERE id = $1 AND business_id = $2 RETURNING hardware_id", parsed.String(), businessID, unusable).Scan(&hardwareID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return api.NotFound()
+	}
+
 	if err != nil {
 		return fmt.Errorf("cut off the key %w", err)
 	}
 
-	if tag.RowsAffected() == 0 {
-		return api.NotFound()
+	// a code that waits for this hardware may hold the hash of the key that was cut off, and a claim of it would bring that key back
+	if _, err := tx.Exec(ctx, "DELETE FROM gateway_enrollments WHERE gateway_id IS NULL AND hardware_id = $1", hardwareID); err != nil {
+		return fmt.Errorf("remove the waiting codes %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("finish the cut off %w", err)
 	}
 
 	return nil
