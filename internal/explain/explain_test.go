@@ -153,7 +153,7 @@ func TestExplainThePlansOfTheQueriesToWatch(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	batchWithResult := fmt.Sprintf(`{"seq":2,"sentAt":%d,"nodes":[{"nodeId":"NODE-0001","kind":"plug","samples":[{"t":%d,"p":155.5}]}],"results":[{"id":%q,"ok":true}]}`, now+10, now, pending)
+	batchWithResult := fmt.Sprintf(`{"seq":2,"sentAt":%d,"nodes":[{"nodeId":"NODE-0001","kind":"plug","samples":[{"t":%d,"p":155.5,"r":1}]}],"results":[{"id":%q,"ok":true}]}`, now+10, now, pending)
 
 	period := time.Now().Format("2006-01")
 	older := time.Now().AddDate(0, -2, 0).Format("2006-01")
@@ -207,19 +207,25 @@ func TestExplainThePlansOfTheQueriesToWatch(t *testing.T) {
 	// old commands, run while the recorder is on, and a round that is slower than the cap fails like a call
 	rounds := []struct {
 		name string
-		run  func()
+		run  func() int64
 	}{
-		{"a round of the relay scheduler", func() { relay.NewScheduler(pool, time.Minute).Round(t.Context()) }},
-		{"a round of the relay purge", func() { janitor.New(pool, time.Hour, relay.PurgeTasks()...).Round(t.Context()) }},
+		{"a round of the relay scheduler", func() int64 { return int64(relay.NewScheduler(pool, time.Minute).Round(t.Context())) }},
+		{"a round of the relay purge", func() int64 { return janitor.New(pool, time.Hour, relay.PurgeTasks()...).Round(t.Context()) }},
 	}
 
 	for _, r := range rounds {
 		started := time.Now()
 
-		r.run()
+		did := r.run()
 
 		took := time.Since(started)
-		t.Logf("%s took %s", r.name, took.Round(time.Millisecond))
+		t.Logf("%s took %s and did %d", r.name, took.Round(time.Millisecond), did)
+
+		// a round returns the number of commands made or of rows deleted and logs its failures, so a count of zero means that the
+		// seed no longer gives the round any work and the statements of it are not in the plans
+		if did == 0 {
+			t.Errorf("%s did nothing, so its statements are not watched", r.name)
+		}
 
 		if took > time.Duration(capSeconds)*time.Second {
 			t.Errorf("%s took %s, the cap is %d seconds", r.name, took, capSeconds)
@@ -257,8 +263,12 @@ func seed(t *testing.T, conn *pgx.Conn, business, key string, devices, days int)
 			"SELECT n.gateway_id, n.node_id, now() - make_interval(mins => m * 10), 20 + (m % 144), m * 0.01 " +
 			"FROM nodes n, generate_series(1, 30 * 144) m", nil},
 		{"INSERT INTO production_records (business_id, day, quantity, unit) SELECT $1::uuid, (now() AT TIME ZONE 'Asia/Jakarta')::date - d, 100 + d % 20, 'potong' FROM generate_series(0, $2::int) d", []any{business, days}},
-		// a schedule for every device, with its last look two minutes ago so the scheduler has times to look at
-		{"INSERT INTO relay_schedules (device_id, off_at, on_at, days, checked_at) SELECT d.id, '17:30', '08:00', 'mon-sat', now() - interval '2 minutes' FROM devices d WHERE d.business_id = $1 AND d.id <> (SELECT id FROM devices WHERE business_id = $1 ORDER BY name LIMIT 1)", []any{business}},
+		// a schedule for every device whose times passed a minute and three minutes ago in the time zone of the business, and whose last look
+		// was five minutes ago, so a round of the scheduler finds a time to act on at any hour of the day. The window of the scheduler is
+		// ten minutes and a time of the day before counts, so a run near midnight works as well.
+		{"INSERT INTO relay_schedules (device_id, off_at, on_at, days, checked_at) " +
+			"SELECT d.id, ((now() AT TIME ZONE 'Asia/Jakarta') - interval '1 minute')::time, ((now() AT TIME ZONE 'Asia/Jakarta') - interval '3 minutes')::time, 'daily', now() - interval '5 minutes' " +
+			"FROM devices d WHERE d.business_id = $1", []any{business}},
 		// 45 days of ended commands, two for each device a day, so the lists and the purge have rows to scan, with 15 days past the purge
 		{"INSERT INTO relay_commands (device_id, gateway_id, node_id, action, source, status, created_at, expires_at, done_at) " +
 			"SELECT d.id, d.gateway_id, d.node_id, CASE WHEN h % 2 = 0 THEN 'on' ELSE 'off' END, CASE WHEN h % 3 = 0 THEN 'schedule' ELSE 'owner' END, 'applied', " +
@@ -290,6 +300,11 @@ func plans(t *testing.T, pool *pgxpool.Pool, list []statement, out string) {
 
 	for _, s := range list {
 		head := strings.ToUpper(strings.TrimSpace(s.sql))
+		// the calls of the advisory locks have no plan to watch, and an EXPLAIN ANALYZE of one would take a lock on a pooled connection
+		if strings.HasPrefix(head, "SELECT PG_") {
+			continue
+		}
+
 		if !strings.HasPrefix(head, "SELECT") && !strings.HasPrefix(head, "WITH") && !strings.HasPrefix(head, "INSERT") &&
 			!strings.HasPrefix(head, "UPDATE") && !strings.HasPrefix(head, "DELETE") {
 			continue
