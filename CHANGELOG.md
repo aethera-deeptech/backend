@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.10.0](https://github.com/aethera-deeptech/backend/compare/v0.9.3...v0.10.0) (2026-11-09)
+
+
+### Features
+
+* **auth:** list the signed in devices and end one of them ([dda6f57](https://github.com/aethera-deeptech/backend/commit/dda6f57628ae594540b3f3007fd5d5c4477d643e))
+* **auth:** list the signed in devices and end one of them ([0c80ace](https://github.com/aethera-deeptech/backend/commit/0c80ace86078e52e5cd97c1c598f646f617d7665))
+* **janitor:** delete anomalies older than 90 days ([a9bcdb9](https://github.com/aethera-deeptech/backend/commit/a9bcdb931047dfaa1d74b216b910ac95ef483587))
+* **janitor:** delete anomalies older than 90 days ([a2da37a](https://github.com/aethera-deeptech/backend/commit/a2da37a4a5727c0a736be51c47d6abb26a9431c7))
+
+
+### Bug Fixes
+
+* **auth:** send the canonical session id and break ties in the list ([94b31a4](https://github.com/aethera-deeptech/backend/commit/94b31a47ce3a863f375bb7a026008bf4bf5ef7af))
+* **relay:** close the scheduler connection when its lock cannot be asked for or let go ([5be3a87](https://github.com/aethera-deeptech/backend/commit/5be3a87f0038ce171deaa0591cb33a3d71aaf671))
+* **relay:** close the scheduler connection when its lock cannot be asked for or let go ([e2f2c65](https://github.com/aethera-deeptech/backend/commit/e2f2c65f8b56dcb424d4dce97aa6863edfcd6534))
+
 ## [0.9.3](https://github.com/aethera-deeptech/backend/compare/v0.9.2...v0.9.3) (2026-11-09)
 
 
