@@ -4,7 +4,7 @@ info:
   version: 0.1.0
   summary: The API of the energy audit dashboard for small businesses
   description: |
-    The API serves two clients. The web app of a business reads and writes under `/v1`, and the gateway of a business sends its readings under `/device/v1`. Every amount of money is a whole number of rupiah. Every moment is ISO 8601 with the offset of the time zone of the business, and the service stores it in UTC.
+    The API serves two clients. The web app of a business reads and writes under `/v1`, and the gateway of a business sends its readings under `/device/v1`. Every amount of money is a whole number of rupiah. Every moment is ISO 8601 and the service stores it in UTC. The moments of the home screen, the running report, the devices and the relay are written with the offset of the time zone of the business. The other moments of `/v1` and the moments in the answers under `/device/v1` are written in UTC with `Z`. The times that a gateway sends in its batches are Unix seconds.
 
     The paths under `/v1` that the frontend already assumes keep the shapes of `docs/api-assumptions.md` of the frontend repository. Where this file adds to them, the text says so.
   license:

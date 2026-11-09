@@ -117,6 +117,19 @@ type clock struct {
 	dayStart    time.Time
 	monthStart  time.Time
 	sensitivity string
+	// loc is the time zone of the business, which the moments of an answer are written in
+	loc *time.Location
+}
+
+// inZone writes a moment in the time zone of the business. It is the same instant, and only the offset in the text changes.
+func inZone(loc *time.Location, t *time.Time) *time.Time {
+	if t == nil {
+		return nil
+	}
+
+	local := t.In(loc)
+
+	return &local
 }
 
 func (v *Views) clock(ctx context.Context, businessID string) (clock, error) {
@@ -134,6 +147,7 @@ func (v *Views) clock(ctx context.Context, businessID string) (clock, error) {
 		loc = time.UTC
 	}
 
+	c.loc = loc
 	local := c.now.In(loc)
 	c.dayStart = time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, loc).UTC()
 	c.monthStart = time.Date(local.Year(), local.Month(), 1, 0, 0, 0, 0, loc).UTC()
@@ -188,9 +202,9 @@ func (v *Views) List(ctx context.Context, businessID string) ([]ListItem, error)
 
 		switch it.Status {
 		case StatusOffline:
-			it.LastSeenAt = lastAt
+			it.LastSeenAt = inZone(c.loc, lastAt)
 		case StatusAnomaly:
-			it.AnomalyAt = anomalyAt
+			it.AnomalyAt = inZone(c.loc, anomalyAt)
 			it.CurrentPowerW = watts
 			it.TodayKwh = &today
 		default:
@@ -291,7 +305,8 @@ func (v *Views) Get(ctx context.Context, businessID, id string) (Detail, error) 
 	out.Signal = Signal(c.now, sampleAt, hops)
 	out.MonthKwh = &month
 	out.StandbyW = standby
-	out.EnergySince = EnergySince{ResetAt: resetAt, Kwh: round3(sinceKwh)}
+	out.EnergySince = EnergySince{ResetAt: inZone(c.loc, resetAt), Kwh: round3(sinceKwh)}
+	out.LastSeenAt = out.LastSeenAt.In(c.loc)
 
 	if out.Status == StatusOffline {
 		// the day and the power are not true any more, the month is
@@ -303,7 +318,9 @@ func (v *Views) Get(ctx context.Context, businessID, id string) (Detail, error) 
 	}
 
 	if out.Status == StatusAnomaly {
-		out.Anomaly = anomaly
+		local := *anomaly
+		local.At = local.At.In(c.loc)
+		out.Anomaly = &local
 	}
 
 	level := WorkingLevel(p95)
@@ -544,8 +561,13 @@ func (v *Views) ResetEnergy(ctx context.Context, businessID, id string) (time.Ti
 		return time.Time{}, api.NotFound()
 	}
 
+	c, err := v.clock(ctx, businessID)
+	if err != nil {
+		return time.Time{}, err
+	}
+
 	// the column keeps microseconds, so the answer carries the same value that the detail shows later
-	at := v.now().UTC().Truncate(time.Microsecond)
+	at := c.now.Truncate(time.Microsecond)
 
 	tag, err := v.pool.Exec(ctx, "UPDATE devices SET energy_reset_at = $3 WHERE id = $1 AND business_id = $2", id, businessID, at)
 	if err != nil {
@@ -556,7 +578,8 @@ func (v *Views) ResetEnergy(ctx context.Context, businessID, id string) (time.Ti
 		return time.Time{}, api.NotFound()
 	}
 
-	return at, nil
+	// the same instant as the column, written with the offset of the business like the detail writes it
+	return at.In(c.loc), nil
 }
 
 func maxOf(v []float64) float64 {

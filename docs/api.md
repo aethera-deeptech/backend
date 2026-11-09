@@ -31,7 +31,7 @@ The design shows "Email sudah terdaftar" on the sign up screen. That text tells 
 
 ## Time
 
-The service stores every moment in UTC and keeps an IANA time zone for each business, `Asia/Jakarta` by default. The zone decides the day, the month and the working hours. A moment in an answer carries the offset of that zone.
+The service stores every moment in UTC and keeps an IANA time zone for each business, `Asia/Jakarta` by default. The zone decides the day, the month and the working hours. The moments of the home screen, the running report, the devices and the relay carry the offset of that zone, for example `+07:00`. They are the same instants as in UTC and only the text differs. The other moments of `/v1` (the list of gateways, the list of sessions and the times of a tip) and the moments in the answers under `/device/v1` are written in UTC with `Z`. The times that a gateway sends in its batches are Unix seconds.
 
 ## Money
 

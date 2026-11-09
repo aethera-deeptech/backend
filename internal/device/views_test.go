@@ -345,3 +345,64 @@ func TestAReadingOfZeroWattsIsAPointAndNotAGap(t *testing.T) {
 		t.Fatalf("%d points, %d numbers and %d zeros, want 96, 2 and 1", len(points), numbers, zeros)
 	}
 }
+
+func hasOffset(v any, offset string) bool {
+	s, _ := v.(string)
+
+	return strings.HasSuffix(s, offset)
+}
+
+func TestTheMomentsOfADeviceCarryTheOffsetOfTheBusiness(t *testing.T) {
+	g := business(t, testutil.New(t), "budi@example.com", "ESP32-AABBCC", "a")
+	id := g.pair(t, "PLUG-0001", "Mesin jahit 1")
+
+	// the zone of a new business is Asia/Jakarta, and the moment is the same instant as before and only written with the offset
+	g.e.Exec(t, "UPDATE nodes SET last_sample_at = now() - interval '1 hour'")
+
+	d := g.device(t, id)
+	if !hasOffset(d.Body["lastSeenAt"], "+07:00") {
+		t.Fatalf("the last seen time is %v, want the offset +07:00", d.Body["lastSeenAt"])
+	}
+
+	// a business in another zone gets its own offset in every moment of the detail and of the list
+	g.e.Exec(t, "UPDATE businesses SET time_zone = 'Asia/Jayapura'")
+
+	d = g.device(t, id)
+	if !hasOffset(d.Body["lastSeenAt"], "+09:00") {
+		t.Fatalf("the last seen time is %v, want the offset +09:00", d.Body["lastSeenAt"])
+	}
+
+	items, _ := g.e.Call(t, http.MethodGet, "/v1/devices", "", g.session).Body["items"].([]any)
+	row, _ := items[0].(map[string]any)
+
+	if row["status"] != "offline" || !hasOffset(row["lastSeenAt"], "+09:00") {
+		t.Fatalf("the offline row is %v", row)
+	}
+
+	g.e.Exec(t, "UPDATE nodes SET last_sample_at = now()")
+	g.e.Exec(t, "INSERT INTO anomalies (gateway_id, node_id, at, peak_watts, expected_high_watts, kind) VALUES ((SELECT gateway_id FROM devices WHERE id = $1), 'PLUG-0001', now() - interval '1 hour', 900, 300, 'surge')", id)
+
+	d = g.device(t, id)
+	anomaly, _ := d.Body["anomaly"].(map[string]any)
+
+	if d.Body["status"] != "anomali" || !hasOffset(anomaly["at"], "+09:00") {
+		t.Fatalf("the anomaly is %v", d.Body["anomaly"])
+	}
+
+	items, _ = g.e.Call(t, http.MethodGet, "/v1/devices", "", g.session).Body["items"].([]any)
+	row, _ = items[0].(map[string]any)
+
+	if !hasOffset(row["anomalyAt"], "+09:00") {
+		t.Fatalf("the anomaly row is %v", row)
+	}
+
+	reset := g.e.Call(t, http.MethodPost, "/v1/devices/"+id+"/energy-reset", "", g.session)
+	if reset.Status >= 300 || !hasOffset(reset.Body["resetAt"], "+09:00") {
+		t.Fatalf("the reset answered %d %v, want a resetAt with +09:00", reset.Status, reset.Body)
+	}
+
+	since, _ := g.device(t, id).Body["energySince"].(map[string]any)
+	if !hasOffset(since["resetAt"], "+09:00") || since["resetAt"] != reset.Body["resetAt"] {
+		t.Fatalf("the reset time is %v and the answer said %v", since["resetAt"], reset.Body["resetAt"])
+	}
+}
