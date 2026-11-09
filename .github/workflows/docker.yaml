@@ -111,7 +111,7 @@ jobs:
           # pull request or a tag wrote can only be read by that same ref. Every push to a pull request used to add about 120 MB
           # of layers, which pushed the repository over the 10 GB limit and evicted the caches of main. Mode min keeps only the layers
           # of the final image. Mode max also kept every layer of the build stage, and the cache of the repository was 10.9 GB in 344
-          # entries against the limit of 10 GB, so the caches of setup-go and of the linter were evicted
+          # entries on 2026-11-09 against the limit of 10 GB, so GitHub had to evict its oldest entries
           cache-to: ${{ github.ref == 'refs/heads/main' && 'type=gha,mode=min' || '' }}
 
       # The build digest is the one of the index of both platforms. Each platform has an image of its own with its own
