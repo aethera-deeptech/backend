@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.9.2](https://github.com/aethera-deeptech/backend/compare/v0.9.1...v0.9.2) (2026-11-09)
+
+
+### Performance Improvements
+
+* **auth:** read the session, the user and the business in one query ([a9ee0f8](https://github.com/aethera-deeptech/backend/commit/a9ee0f81de4b4d34d780479fb7cf79e74399986f))
+* **auth:** read the session, the user and the business in one query ([cecf3d6](https://github.com/aethera-deeptech/backend/commit/cecf3d68d761cb2e90e19a9a24969b788dfe3f84))
+
 ## [0.9.1](https://github.com/aethera-deeptech/backend/compare/v0.9.0...v0.9.1) (2026-11-09)
 
 
