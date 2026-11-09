@@ -842,7 +842,7 @@ func TestASessionOfAnotherUserOrABadIDIsNotFound(t *testing.T) {
 	items := sessionItems(t, e.Call(t, http.MethodGet, "/v1/auth/sessions", "", siti))
 	sitiID, _ := items[0]["id"].(string)
 
-	for _, id := range []string{sitiID, "00000000-0000-0000-0000-000000000000", "not-a-uuid", "1"} {
+	for _, id := range []string{sitiID, "00000000-0000-0000-0000-000000000000", "not-a-uuid", "1", "urn:uuid:" + sitiID} {
 		if r := e.Call(t, http.MethodDelete, "/v1/auth/sessions/"+id, "", budi); r.Status != http.StatusNotFound || code(r) != "not_found" {
 			t.Fatalf("deleting %q answered %d %v", id, r.Status, r.Body)
 		}
@@ -869,6 +869,15 @@ func TestEndingASessionNeedsTheHeaderAndTheOrigin(t *testing.T) {
 
 	if r := e.Send(t, req); r.Status != http.StatusForbidden {
 		t.Fatalf("a delete with no CSRF header answered %d", r.Status)
+	}
+
+	req = httptest.NewRequestWithContext(t.Context(), http.MethodDelete, "/v1/auth/sessions/"+id, nil)
+	req.Header.Set("X-Requested-With", "aethera")
+	req.Header.Set("Origin", "https://other.example")
+	req.Header.Set("Cookie", testutil.CookieName+"="+laptop)
+
+	if r := e.Send(t, req); r.Status != http.StatusForbidden {
+		t.Fatalf("a delete from another origin answered %d", r.Status)
 	}
 
 	if r := e.Call(t, http.MethodGet, "/v1/auth/me", "", laptop); r.Status != http.StatusOK {

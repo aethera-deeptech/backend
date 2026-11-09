@@ -386,7 +386,7 @@ func (s *Store) Sessions(ctx context.Context, userID string, current []byte) ([]
 	rows, err := s.pool.Query(ctx,
 		`SELECT id::text, label, created_at, last_used_at, token_hash = $2 FROM sessions
 		 WHERE user_id = $1 AND last_used_at > now() - make_interval(secs => $3) AND created_at > now() - make_interval(secs => $4)
-		 ORDER BY (token_hash = $2) DESC, last_used_at DESC LIMIT $5`,
+		 ORDER BY (token_hash = $2) DESC, last_used_at DESC, created_at DESC LIMIT $5`,
 		userID, current, sessionIdle.Seconds(), sessionAbsolute.Seconds(), maxSessionsForUser)
 	if err != nil {
 		return nil, fmt.Errorf("list the sessions %w", err)

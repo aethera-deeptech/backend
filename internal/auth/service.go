@@ -342,11 +342,13 @@ func (s *Service) Sessions(ctx context.Context, userID, token string) ([]Session
 // EndSession ends one session of the user by its id. It reports whether the session was the one of the token. An id that is not a uuid or
 // that belongs to another user answers not found.
 func (s *Service) EndSession(ctx context.Context, userID, token, id string) (bool, error) {
-	if _, err := uuid.Parse(id); err != nil {
+	parsed, err := uuid.Parse(id)
+	if err != nil {
 		return false, api.NotFound()
 	}
 
-	found, wasCurrent, err := s.store.DeleteSessionByID(ctx, userID, id, hashToken(token))
+	// the canonical form goes to the database, because the parser also accepts a form such as urn:uuid: that PostgreSQL refuses
+	found, wasCurrent, err := s.store.DeleteSessionByID(ctx, userID, parsed.String(), hashToken(token))
 	if err != nil {
 		return false, err
 	}
