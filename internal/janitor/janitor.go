@@ -4,6 +4,7 @@ package janitor
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -89,7 +90,7 @@ func (j *Janitor) Round(ctx context.Context) int64 {
 	var total int64
 
 	for _, t := range j.tasks {
-		n, err := runTask(ctx, conn.Conn(), t)
+		n, err := runContained(ctx, conn.Conn(), t)
 		total += n
 
 		if err != nil {
@@ -104,6 +105,24 @@ func (j *Janitor) Round(ctx context.Context) int64 {
 	}
 
 	return total
+}
+
+// errTaskPanicked is the error of a task that panicked, so the round treats it like any failed task and goes on with the next one
+var errTaskPanicked = errors.New("the task panicked")
+
+// runContained runs a task and turns a panic of it into an error. One bad task then does not starve the tasks after it, which would
+// stop their deletes every hour without a sign.
+func runContained(ctx context.Context, conn *pgx.Conn, t Task) (n int64, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Error("a background task panicked", "task", "janitor "+t.Name, "panic_type", fmt.Sprintf("%T", r))
+			errorreport.Panic(r, errorreport.Info{Route: "janitor " + t.Name})
+
+			n, err = 0, errTaskPanicked
+		}
+	}()
+
+	return runTask(ctx, conn, t)
 }
 
 func runTask(ctx context.Context, conn *pgx.Conn, t Task) (int64, error) {

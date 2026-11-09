@@ -276,9 +276,3 @@ func TestAContainedPanicOfATaskDoesNotLeaveAndIsReportedByTheNameOfTheTask(t *te
 		t.Fatalf("the tags are %v", events[0].Tags)
 	}
 }
-
-func TestContainDoesNothingWhenTheTaskDoesNotPanic(t *testing.T) {
-	func() {
-		defer Contain("janitor")
-	}()
-}

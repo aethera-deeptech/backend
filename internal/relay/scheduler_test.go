@@ -1,6 +1,8 @@
 package relay
 
 import (
+	"context"
+	"errors"
 	"testing"
 	"time"
 )
@@ -74,5 +76,15 @@ func TestNewestUsesTheTimeZoneOfTheBusiness(t *testing.T) {
 
 	if got, _ := newest(d, time.Date(2026, 11, 3, 17, 1, 0, 0, time.UTC)); got != "" {
 		t.Fatalf("17:00 UTC is not a switch time in Jakarta, got %q", got)
+	}
+}
+
+// TestAPanicOfAClaimIsAnErrorAndNotACrash makes a claim on a nil connection, which panics inside the claim, as a bug in a claim would
+func TestAPanicOfAClaimIsAnErrorAndNotACrash(t *testing.T) {
+	s := NewScheduler(nil, time.Minute)
+
+	ok, err := s.claimContained(context.Background(), nil, due{}, "off", time.Now())
+	if ok || !errors.Is(err, errClaimPanicked) {
+		t.Fatalf("got %v and error %v, want false and the panic error", ok, err)
 	}
 }
