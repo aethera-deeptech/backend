@@ -263,7 +263,7 @@
       "service": "aethera-api"
     },
     "annotations": {
-      "summary": "More than 1 percent of the requests were answered 503 for 10 minutes. The service answers 503 busy when a request runs past its 10 second limit, so look at the latency, the database pool and the slow routes before the 5xx ratio rule fires"
+      "summary": "More than 2 percent of the requests of the API routes were answered 503 for 10 minutes. The service answers 503 busy when a request runs past its 10 second limit or when the password check has no free slot, so look at the latency, the database pool and the slow routes before the 5xx ratio rule fires"
     },
     "data": [
       {
@@ -275,7 +275,7 @@
         "datasourceUid": "__PROMETHEUS_UID__",
         "model": {
           "refId": "A",
-          "expr": "(sum(rate(aethera_http_requests_total{status=\"503\"}[10m])) or vector(0)) / clamp_min(sum(rate(aethera_http_requests_total[10m])), 0.001)",
+          "expr": "(sum(rate(aethera_http_requests_total{status=\"503\",route!~\"/(healthz|readyz)\"}[10m])) or vector(0)) / clamp_min(sum(rate(aethera_http_requests_total{route!~\"/(healthz|readyz)\"}[10m])), 0.001)",
           "instant": true,
           "intervalMs": 60000,
           "maxDataPoints": 43200
@@ -318,7 +318,7 @@
               "evaluator": {
                 "type": "gt",
                 "params": [
-                  0.01
+                  0.02
                 ]
               }
             }
