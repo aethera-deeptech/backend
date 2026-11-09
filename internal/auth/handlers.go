@@ -51,6 +51,8 @@ func (h *Handlers) Register(r fiber.Router) {
 	g.Post("/login", h.login)
 	g.Post("/logout", h.Require(), h.logout)
 	g.Get("/me", h.Require(), h.me)
+	g.Get("/sessions", h.Require(), h.sessions)
+	g.Delete("/sessions/:id", h.Require(), h.endSession)
 	g.Post("/verify-email", h.verifyEmail)
 	g.Post("/resend-verification", h.resend)
 	g.Post("/change-email", h.changeEmail)
@@ -133,7 +135,7 @@ func (h *Handlers) login(c fiber.Ctx) error {
 		return err
 	}
 
-	token, me, err := h.svc.Login(c.Context(), api.ClientKey(c), in.Email, in.Password)
+	token, me, err := h.svc.Login(c.Context(), api.ClientKey(c), in.Email, in.Password, c.Get(fiber.HeaderUserAgent))
 	if err != nil {
 		return err
 	}
@@ -153,6 +155,29 @@ func (h *Handlers) logout(c fiber.Ctx) error {
 	return c.SendStatus(http.StatusNoContent)
 }
 
+func (h *Handlers) sessions(c fiber.Ctx) error {
+	list, err := h.svc.Sessions(c.Context(), UserFrom(c).ID, c.Cookies(h.cookie.Name))
+	if err != nil {
+		return err
+	}
+
+	return c.JSON(fiber.Map{"items": list})
+}
+
+// endSession ends one session. When it is the one of the request, it works like logout and also clears the cookie.
+func (h *Handlers) endSession(c fiber.Ctx) error {
+	wasCurrent, err := h.svc.EndSession(c.Context(), UserFrom(c).ID, c.Cookies(h.cookie.Name), c.Params("id"))
+	if err != nil {
+		return err
+	}
+
+	if wasCurrent {
+		h.clearCookie(c)
+	}
+
+	return c.SendStatus(http.StatusNoContent)
+}
+
 func (h *Handlers) me(c fiber.Ctx) error {
 	return c.JSON(meOf(UserFrom(c)))
 }
@@ -166,7 +191,7 @@ func (h *Handlers) verifyEmail(c fiber.Ctx) error {
 		return err
 	}
 
-	token, me, err := h.svc.VerifyEmail(c.Context(), api.ClientKey(c), in.Token)
+	token, me, err := h.svc.VerifyEmail(c.Context(), api.ClientKey(c), in.Token, c.Get(fiber.HeaderUserAgent))
 	if err != nil {
 		return err
 	}
