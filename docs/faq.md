@@ -31,7 +31,7 @@ The app is in Indonesian, and the API keeps a few of those words in its fields a
 
 **Does a schedule work while the gateway has no internet?** No. The service makes the command at the set time, and a gateway that is away for more than 10 minutes never receives it.
 
-**Why do some moments end in `Z` and others have `+07:00`?** The service stores every moment in UTC. The moments of the home screen, the running report, the devices and the relay are written with the offset of the business zone. The moments of the list of gateways, the list of sessions and the times of a tip are written in UTC, and so is everything under `/device/v1`. A client that wants the local clock for those converts them with the `timeZone` of `/v1/settings`.
+**Why do some moments end in `Z` and others have `+07:00`?** The service stores every moment in UTC. The moments of the home screen, the running report, the devices and the relay are written with the offset of the business zone. The moments of the list of gateways, the list of sessions and the times of a tip are written in UTC, and so are the moments in the answers under `/device/v1`. A gateway sends its own times as Unix seconds. A client that wants the local clock for those converts them with the `timeZone` of `/v1/settings`.
 
 **Why does the verification mail not arrive in a development run?** A development run sends no mail. It writes the message to the log, link included. Production needs the `SMTP_*` settings. See [Operations](operations.md).
 
