@@ -172,6 +172,8 @@ if FULL:
         owner("GET", "/v1/settings"),
         owner("GET", "/v1/rooms"),
         owner("GET", "/v1/gateways"),
+        owner("GET", "/v1/auth/sessions"),
+        owner("DELETE", "/v1/auth/sessions/00000000-0000-4000-8000-000000000000"),
         owner("GET", "/v1/production"),
         owner("GET", f"/v1/devices/{device}/relay"),
         owner("POST", "/v1/rooms", {"name": "Ruang tambahan"}),
