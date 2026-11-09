@@ -42,3 +42,36 @@ func TestARoundLetsGoOfItsLockBeforeTheConnectionGoesBack(t *testing.T) {
 		}
 	}
 }
+
+// TestARoundWhoseConnectionDiesLeavesThePoolWorking ends the session of the round from inside the task. The unlock then fails, and the
+// round has to close the connection and not give a dead one back, so the pool still answers afterwards.
+func TestARoundWhoseConnectionDiesLeavesThePoolWorking(t *testing.T) {
+	e := testutil.New(t)
+
+	task := janitor.Task{Name: "ends its own session", Query: "SELECT pg_terminate_backend(pg_backend_pid()) WHERE $1::int > 0"}
+
+	janitor.New(e.Pool, time.Hour, task).Round(t.Context())
+
+	for range 3 {
+		if err := e.Pool.Ping(t.Context()); err != nil {
+			t.Fatalf("the pool does not answer after a round whose connection died %v", err)
+		}
+	}
+}
+
+func TestCloseBoundedClosesAHijackedConnection(t *testing.T) {
+	e := testutil.New(t)
+
+	conn, err := e.Pool.Acquire(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	raw := conn.Hijack()
+
+	janitor.CloseBounded(t.Context(), raw)
+
+	if !raw.IsClosed() {
+		t.Fatal("the connection is still open after the close")
+	}
+}
