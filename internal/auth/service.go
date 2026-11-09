@@ -378,12 +378,18 @@ func (s *Service) DeleteAccount(ctx context.Context, user *User, password string
 
 	// 403 and not 401, because the session is fine and a 401 tells the app that the user is signed out
 	if !matches {
-		// the check above passed, so a refusal here only means that parallel tries filled the budget, and the answer stays 403
-		if _, _, err := s.limiter.Allow(ctx, ruleDeleteAccount, user.ID); err != nil {
+		// the try is charged after the hash, and a refusal here means that parallel tries filled the budget in the meantime, so a wrong
+		// guess and a right one get the same 429 and the answer tells nothing about the password
+		if err := s.allow(ctx, ruleDeleteAccount, user.ID, ""); err != nil {
 			return err
 		}
 
 		return api.NewError(http.StatusForbidden, "invalid_credentials", "The password is wrong")
+	}
+
+	// the budget is read again, because parallel wrong tries may have spent it while this hash ran
+	if err := s.check(ctx, ruleDeleteAccount, user.ID); err != nil {
+		return err
 	}
 
 	return s.store.DeleteBusiness(ctx, user.BusinessID)
