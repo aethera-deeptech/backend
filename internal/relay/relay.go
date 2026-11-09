@@ -296,7 +296,8 @@ func (s *Service) Get(ctx context.Context, businessID, deviceID string) (View, e
 // the result, because the result and the overload often arrive in the same batch, and the sample is older than the batch. The overload
 // is also not older than the time that a device keeps the status of an anomaly. A plug that was switched off by hand, or that restarted
 // with its relay off, after that overload still shows the cause until then, because the service cannot see a hand or a restart. A second
-// overload within the debounce time of the anomaly is not stored again, so it does not show up here.
+// overload within the debounce time of the anomaly is not stored again, unless a command that switched the plug on was fetched and
+// applied between the two. Then the second one is stored and shows up here.
 func (s *Service) cutByDevice(ctx context.Context, deviceID, gatewayID, nodeID string) (*Cut, error) {
 	var at time.Time
 

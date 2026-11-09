@@ -685,3 +685,24 @@ func TestAnOverloadWithNoCommandThatSwitchedThePlugOnIsStillHeldBack(t *testing.
 		t.Fatalf("an overload after a command that switched the plug off left %d rows, want 1", n)
 	}
 }
+
+// TestAnOverloadInTheSameBatchAsTheResultOfTheOnCommandIsStoredAgain checks the order inside one batch. The result of the command is
+// stored before the samples, so the second overload is not held back when it comes together with the result.
+func TestAnOverloadInTheSameBatchAsTheResultOfTheOnCommandIsStoredAgain(t *testing.T) {
+	r := newRig(t)
+
+	base := time.Now().Unix() - 600
+
+	r.sampleAt(t, base+10, `,"r":1`, "")
+	r.sampleAt(t, base+20, `,"a":3,"r":0`, "")
+
+	id, _ := r.command(t, "on").Body["id"].(string)
+
+	// the gateway fetches the command, and the next batch has the result and the new overload together
+	r.batch(t, nil, "")
+	r.sampleAt(t, time.Now().Unix()+5, `,"a":3,"r":0`, fmt.Sprintf(`[{"id":"%s","ok":true}]`, id))
+
+	if n := r.overloads(t); n != 2 {
+		t.Fatalf("an overload that came with the result left %d rows, want 2", n)
+	}
+}

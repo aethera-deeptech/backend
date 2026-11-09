@@ -188,6 +188,13 @@ func (s *Service) Ingest(ctx context.Context, p *Principal, b Batch, now time.Ti
 
 	ack := Ack{AckSeq: b.Seq, ServerTime: now}
 
+	// the results of the commands are stored before the samples, so the check for an anomaly sees a command that this batch ended. The
+	// state of the relay comes out the same, because a result sets it at the time of the batch and a sample that is not newer than that
+	// time does not replace it.
+	if _, err := relay.Complete(ctx, tx, p.GatewayID, b.Results); err != nil {
+		return Ack{}, err
+	}
+
 	// the nodes of the gateway are read after the lock on its row, so two batches of one gateway count one after the other
 	known, err := knownNodes(ctx, tx, p.GatewayID)
 	if err != nil {
@@ -222,10 +229,6 @@ func (s *Service) Ingest(ctx context.Context, p *Principal, b Batch, now time.Ti
 		if err := observeRelay(ctx, tx, p.GatewayID, n, shift, now); err != nil {
 			return Ack{}, err
 		}
-	}
-
-	if _, err := relay.Complete(ctx, tx, p.GatewayID, b.Results); err != nil {
-		return Ack{}, err
 	}
 
 	commands, err := relay.Fetch(ctx, tx, p.GatewayID)
