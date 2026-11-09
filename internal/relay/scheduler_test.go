@@ -1,6 +1,8 @@
 package relay
 
 import (
+	"context"
+	"errors"
 	"testing"
 	"time"
 )
@@ -74,5 +76,35 @@ func TestNewestUsesTheTimeZoneOfTheBusiness(t *testing.T) {
 
 	if got, _ := newest(d, time.Date(2026, 11, 3, 17, 1, 0, 0, time.UTC)); got != "" {
 		t.Fatalf("17:00 UTC is not a switch time in Jakarta, got %q", got)
+	}
+}
+
+// TestAPanicOfAClaimIsAnErrorAndNotACrash makes a claim on a nil connection, which panics inside the claim, as a bug in a claim would
+func TestAPanicOfAClaimIsAnErrorAndNotACrash(t *testing.T) {
+	s := NewScheduler(nil, time.Minute)
+
+	ok, err := s.claimContained(context.Background(), nil, due{}, "off", time.Now())
+	if ok || !errors.Is(err, errClaimPanicked) {
+		t.Fatalf("got %v and error %v, want false and the panic error", ok, err)
+	}
+}
+
+// TestRunSurvivesARoundThatPanics gives the scheduler no pool, so the first round panics at once. Run must contain it and still stop
+// when its context ends.
+func TestRunSurvivesARoundThatPanics(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	done := make(chan struct{})
+
+	go func() {
+		NewScheduler(nil, time.Hour).Run(ctx)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Run did not return after a round that panicked")
 	}
 }

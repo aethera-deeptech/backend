@@ -2,11 +2,14 @@ package relay
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/aethera-deeptech/backend/internal/errorreport"
 )
 
 const (
@@ -31,7 +34,7 @@ func NewScheduler(pool *pgxpool.Pool, every time.Duration) *Scheduler {
 
 // Run does a round now and then once for each interval, until the context ends
 func (s *Scheduler) Run(ctx context.Context) {
-	s.Round(ctx)
+	s.guardedRound(ctx)
 
 	ticker := time.NewTicker(s.every)
 	defer ticker.Stop()
@@ -41,9 +44,16 @@ func (s *Scheduler) Run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			s.Round(ctx)
+			s.guardedRound(ctx)
 		}
 	}
+}
+
+// guardedRound does a round that cannot end the process, so a panic skips that round and the next one starts on time
+func (s *Scheduler) guardedRound(ctx context.Context) {
+	defer errorreport.Contain("relay scheduler")
+
+	s.Round(ctx)
 }
 
 type due struct {
@@ -138,7 +148,7 @@ func (s *Scheduler) Round(ctx context.Context) int {
 			continue
 		}
 
-		ok, err := s.claim(ctx, conn, d, action, now)
+		ok, err := s.claimContained(ctx, conn, d, action, now)
 		if err != nil {
 			slog.Warn("the relay scheduler could not make a command", "error", err, "at", at)
 
@@ -151,6 +161,24 @@ func (s *Scheduler) Round(ctx context.Context) int {
 	}
 
 	return made
+}
+
+// errClaimPanicked is the error of a claim that panicked, so the round goes on with the next schedule
+var errClaimPanicked = errors.New("the claim panicked")
+
+// claimContained makes the command of one schedule and turns a panic into an error. One bad schedule then does not stop the commands of
+// every other business, every minute.
+func (s *Scheduler) claimContained(ctx context.Context, conn *pgxpool.Conn, d due, action string, now time.Time) (ok bool, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Error("a background task panicked", "task", "relay scheduler claim", "panic_type", fmt.Sprintf("%T", r))
+			errorreport.Panic(r, errorreport.Info{Route: "relay scheduler claim"})
+
+			ok, err = false, errClaimPanicked
+		}
+	}()
+
+	return s.claim(ctx, conn, d, action, now)
 }
 
 // claim makes the command of a schedule and moves the time of its last look in one transaction, so a failure loses neither. It does

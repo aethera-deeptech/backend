@@ -135,6 +135,16 @@ func Panic(recovered any, info Info) {
 	current.client.Recover(recovered, nil, scope)
 }
 
+// Contain is deferred at the top of a background task, such as a round of the clean up or of the scheduler. It stops a panic of the
+// task from ending the process, logs it with the type of the value and never its text, and sends it to Sentry as a panic of the task.
+// The task then runs again at its next turn.
+func Contain(task string) {
+	if r := recover(); r != nil {
+		slog.Error("a background task panicked", "task", task, "panic_type", fmt.Sprintf("%T", r))
+		Panic(r, Info{Route: task})
+	}
+}
+
 // guard keeps a failure inside the reporter from leaving it. The reports run on the goroutine of a request and in the recovery of a
 // panic, and a panic there would end the process, which is the opposite of what a reporter is for. The log line holds no value.
 func guard() {

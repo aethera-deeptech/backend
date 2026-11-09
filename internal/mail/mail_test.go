@@ -140,3 +140,35 @@ func TestBuildMakesAMultipartMessageWithAPlainTextLink(t *testing.T) {
 		t.Error("a recipient with a display name was accepted")
 	}
 }
+
+func TestAPanicOfTheSenderIsContainedAndTheMessageIsTriedAgain(t *testing.T) {
+	var calls atomic.Int32
+
+	sent := make(chan Message, 1)
+	q := NewQueue(senderFunc(func(_ context.Context, m Message) error {
+		if calls.Add(1) == 1 {
+			panic("the sender broke for a@b.cd")
+		}
+
+		sent <- m
+
+		return nil
+	}), 1, 4)
+	q.waits = []time.Duration{20 * time.Millisecond}
+
+	q.Enqueue(Message{To: "a@b.cd", Subject: "first"})
+
+	select {
+	case m := <-sent:
+		if m.Subject != "first" {
+			t.Fatalf("the message is %q", m.Subject)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("the message was not sent again after the panic")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	q.Close(ctx)
+}
