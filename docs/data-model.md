@@ -4,7 +4,7 @@ The data is in PostgreSQL, and the schema comes from the migrations in `internal
 
 ## The business is the tenant
 
-A business is the owner of its data. An account belongs to one business through `users.business_id`, so more people can join a business later. The rows of a business hang off its row, directly through `business_id` or through a gateway. Deleting a business deletes everything under it, because the keys use `ON DELETE CASCADE`. The keys from `devices` and `pairings` to a room do not cascade, and a pairing sets its device to null when the device goes. A business delete still works, because the rooms and the devices go in the same statement. No route deletes a business, and only the janitor does, for a business that never verified an email.
+A business is the owner of its data. An account belongs to one business through `users.business_id`, so more people can join a business later. The rows of a business hang off its row, directly through `business_id` or through a gateway. Deleting a business deletes everything under it, because the keys use `ON DELETE CASCADE`. The keys from `devices` and `pairings` to a room do not cascade, and a pairing sets its device to null when the device goes. A business delete still works, because the rooms and the devices go in the same statement. The owner deletes a business with `DELETE /v1/account`, which removes the readings, the hourly sums and the anomalies in batches before the business row. The janitor also deletes a business that never verified an email.
 
 ## Accounts and sessions
 

@@ -17,6 +17,10 @@ The contract is `openapi.yaml` in the root of the repository. The job `OpenAPI l
 - `POST /v1/auth/sessions/revoke-others` ends every other session of the user and keeps the one of the request. It answers 200 with `{"ended": n}`, and `n` is 0 when there was no other session.
 - The service has no Redis. Sessions, limits and tokens live in PostgreSQL, so both copies see the same state.
 
+## Deleting the account
+
+`DELETE /v1/account` takes `{"password": "..."}` and deletes the business with everything under it, then clears the cookie and answers 204. The password is checked again so that a stolen session cannot do it alone, a wrong one answers 403 `invalid_credentials` and not 401, and a user has 5 tries an hour. The readings, the hourly sums and the anomalies go first in batches, and the business row goes last. A 503 `busy` can therefore come after a part of the readings was deleted, or after the whole delete when the time ran out just after the commit. The same call can be repeated until it ends with 204. A 401 on the repeat means that the session is gone, which a finished delete causes, and so does a session that ended in the meantime. The app cannot tell the two apart from the answer, so it sends the user to the sign in page. A sign in with the right password works only while the account still exists, and a failed sign in proves nothing, because a wrong password gives the same answer. It cannot be undone.
+
 ## Errors
 
 Every error of a route under `/v1` or `/device/v1` is JSON with `code` and `message`, and [Error codes](errors.md) lists them all. The routes `/healthz` and `/readyz` have a small status body of their own, and they answer 503 when the service is not healthy. The app reads the `code` and writes its own text. A field that failed validation is named in `fields` with a code. A response of 429 has `Retry-After` and `retryAfterSeconds`. The codes of the account screens are `invalid_credentials`, `email_not_verified`, `google_failed`, `email_taken`, `token_invalid_or_expired`, `resend_too_soon` and `rate_limited`.
