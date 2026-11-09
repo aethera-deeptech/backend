@@ -80,6 +80,8 @@ func (j *Janitor) Round(ctx context.Context) int64 {
 	var got bool
 	if err := conn.QueryRow(ctx, "SELECT pg_try_advisory_lock($1)", int64(lockKey)).Scan(&got); err != nil {
 		// the server may have taken the lock before the answer failed, so the connection must not go back to the pool with it
+		slog.Warn("the clean up could not ask for its lock, so the connection is closed", "error", err)
+
 		_ = conn.Hijack().Close(context.WithoutCancel(ctx))
 
 		return 0
