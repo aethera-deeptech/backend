@@ -393,20 +393,31 @@ func (s *Service) RevokeKey(ctx context.Context, businessID, id string) error {
 
 	defer func() { _ = tx.Rollback(ctx) }()
 
+	// the rows are locked in the order of Claim, the waiting codes first and the gateway after them, so a revoke and a claim of the same
+	// hardware wait for each other and never deadlock. The hardware id is read without a lock, because a gateway never changes it.
 	var hardwareID string
 
-	err = tx.QueryRow(ctx, "UPDATE gateways SET key_hash = $3, key_revoked_at = now() WHERE id = $1 AND business_id = $2 RETURNING hardware_id", parsed.String(), businessID, unusable).Scan(&hardwareID)
+	err = tx.QueryRow(ctx, "SELECT hardware_id FROM gateways WHERE id = $1 AND business_id = $2", parsed.String(), businessID).Scan(&hardwareID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return api.NotFound()
 	}
 
 	if err != nil {
-		return fmt.Errorf("cut off the key %w", err)
+		return fmt.Errorf("read the gateway %w", err)
 	}
 
 	// a code that waits for this hardware may hold the hash of the key that was cut off, and a claim of it would bring that key back
 	if _, err := tx.Exec(ctx, "DELETE FROM gateway_enrollments WHERE gateway_id IS NULL AND hardware_id = $1", hardwareID); err != nil {
 		return fmt.Errorf("remove the waiting codes %w", err)
+	}
+
+	tag, err := tx.Exec(ctx, "UPDATE gateways SET key_hash = $3, key_revoked_at = now() WHERE id = $1 AND business_id = $2", parsed.String(), businessID, unusable)
+	if err != nil {
+		return fmt.Errorf("cut off the key %w", err)
+	}
+
+	if tag.RowsAffected() == 0 {
+		return api.NotFound()
 	}
 
 	if err := tx.Commit(ctx); err != nil {
