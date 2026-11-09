@@ -163,6 +163,12 @@ func (s *Service) Send(ctx context.Context, businessID, deviceID, state string) 
 		return Pending{}, err
 	}
 
+	// the zone is read before the command is stored, so a failed read never leaves a command that the answer does not show
+	loc, err := s.location(ctx, businessID)
+	if err != nil {
+		return Pending{}, err
+	}
+
 	ok, wait, err := s.limiter.Allow(ctx, ruleCommand, businessID)
 	if err != nil {
 		return Pending{}, fmt.Errorf("check the limit %w", err)
@@ -187,6 +193,8 @@ func (s *Service) Send(ctx context.Context, businessID, deviceID, state string) 
 	if err := tx.Commit(ctx); err != nil {
 		return Pending{}, fmt.Errorf("finish the command %w", err)
 	}
+
+	out.ExpiresAt = out.ExpiresAt.In(loc)
 
 	return out, nil
 }
@@ -215,9 +223,30 @@ func enqueue(ctx context.Context, q querier, deviceID, gatewayID, nodeID, action
 	return out, nil
 }
 
+// location reads the time zone of the business, which the moments of an answer are written in. It is the same instant and only the
+// offset in the text changes. A zone that cannot be loaded falls back to UTC.
+func (s *Service) location(ctx context.Context, businessID string) (*time.Location, error) {
+	var zone string
+	if err := s.pool.QueryRow(ctx, "SELECT time_zone FROM businesses WHERE id = $1", businessID).Scan(&zone); err != nil {
+		return nil, fmt.Errorf("read the time zone %w", err)
+	}
+
+	loc, err := time.LoadLocation(zone)
+	if err != nil {
+		return time.UTC, nil //nolint:nilerr // a bad zone name is not a reason to refuse the answer
+	}
+
+	return loc, nil
+}
+
 // Get reads the relay of a plug, the schedule of it included
 func (s *Service) Get(ctx context.Context, businessID, deviceID string) (View, error) {
 	deviceID, gatewayID, nodeID, err := s.plug(ctx, s.pool, businessID, deviceID)
+	if err != nil {
+		return View{}, err
+	}
+
+	loc, err := s.location(ctx, businessID)
 	if err != nil {
 		return View{}, err
 	}
@@ -286,6 +315,23 @@ func (s *Service) Get(ctx context.Context, businessID, deviceID string) (View, e
 	}
 
 	out.Schedule = sched
+
+	if out.ReportedAt != nil {
+		local := out.ReportedAt.In(loc)
+		out.ReportedAt = &local
+	}
+
+	if out.CutByDevice != nil {
+		out.CutByDevice.At = out.CutByDevice.At.In(loc)
+	}
+
+	if out.Pending != nil {
+		out.Pending.ExpiresAt = out.Pending.ExpiresAt.In(loc)
+	}
+
+	if out.Last != nil {
+		out.Last.At = out.Last.At.In(loc)
+	}
 
 	return out, nil
 }

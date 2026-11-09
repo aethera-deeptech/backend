@@ -756,3 +756,46 @@ func TestCloseBoundedClosesAHijackedConnection(t *testing.T) {
 		t.Fatal("the connection is still open after the close")
 	}
 }
+
+func hasOffset(v any, offset string) bool {
+	s, _ := v.(string)
+
+	return strings.HasSuffix(s, offset)
+}
+
+func TestTheMomentsOfTheRelayCarryTheOffsetOfTheBusiness(t *testing.T) {
+	r := newRig(t)
+	one := 1
+
+	r.batch(t, &one, "")
+
+	sent := r.command(t, "off")
+	if sent.Status != http.StatusAccepted || !hasOffset(sent.Body["expiresAt"], "+07:00") {
+		t.Fatalf("the command answered %d %v, want an expiresAt with +07:00", sent.Status, sent.Body)
+	}
+
+	view := r.relayView(t)
+	pending, _ := view["pending"].(map[string]any)
+
+	if !hasOffset(view["reportedAt"], "+07:00") || !hasOffset(pending["expiresAt"], "+07:00") {
+		t.Fatalf("the view is %v, want the offset +07:00", view)
+	}
+
+	// the zone of the business decides the offset
+	r.e.Exec(t, "UPDATE businesses SET time_zone = 'Asia/Jayapura'")
+
+	view = r.relayView(t)
+	pending, _ = view["pending"].(map[string]any)
+
+	if !hasOffset(view["reportedAt"], "+09:00") || !hasOffset(pending["expiresAt"], "+09:00") {
+		t.Fatalf("the view is %v, want the offset +09:00", view)
+	}
+
+	// the command that the gateway fetches is a message of the protocol and stays in UTC
+	zero := 0
+	for _, c := range r.batch(t, &zero, "") {
+		if exp, _ := c["expiresAt"].(string); !strings.HasSuffix(exp, "Z") {
+			t.Fatalf("the command of the gateway has expiresAt %v, want UTC", c["expiresAt"])
+		}
+	}
+}
