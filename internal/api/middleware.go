@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -73,6 +74,41 @@ func Recover() fiber.Handler {
 		}()
 
 		return c.Next()
+	}
+}
+
+// Deadline gives each request a context that ends after limit, so a query that waits for a free connection of a busy pool or for a
+// stalled database stops with the request and does not hold a worker for ever. A route that ends with an error after the time ran
+// out is answered 503 busy with a short retry time, which the app already handles for the password check. The error is not read
+// for the deadline, because a layer can hide it. An example is a rollback that fails with a closed connection after the query was cut.
+// An error that the route chose on purpose, an *Error or a fiber error, keeps its own answer.
+func Deadline(limit time.Duration) fiber.Handler {
+	return func(c fiber.Ctx) error {
+		ctx, cancel := context.WithTimeout(c.Context(), limit)
+		defer cancel()
+
+		c.SetContext(ctx)
+
+		err := c.Next()
+		if err == nil || !errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return err
+		}
+
+		var (
+			apiErr   *Error
+			fiberErr *fiber.Error
+		)
+
+		if errors.As(err, &apiErr) || errors.As(err, &fiberErr) {
+			return err
+		}
+
+		slog.Warn("a route ran out of time", "method", c.Method(), "path", logPath(c), "limit", limit.String())
+
+		e := NewError(http.StatusServiceUnavailable, "busy", "The service is busy, try again")
+		e.RetryAfterSeconds = 2
+
+		return e
 	}
 }
 
