@@ -609,3 +609,46 @@ func TestALateSaveForAnOldAddressKeepsTheNewLink(t *testing.T) {
 		t.Fatalf("the new link answered %d %v", r.Status, r.Body)
 	}
 }
+
+// TestASessionUseTimeIsRefreshedOnlyAfterTenMinutes checks the touch rule of the one query that reads the session, a recent session
+// keeps its time and a session that was last used 11 minutes ago gets the time of now
+func TestASessionUseTimeIsRefreshedOnlyAfterTenMinutes(t *testing.T) {
+	e := testutil.New(t)
+	session := e.SignUp(t, "budi@example.com")
+	ctx := context.Background()
+
+	var before time.Time
+	if err := e.Pool.QueryRow(ctx, "SELECT last_used_at FROM sessions").Scan(&before); err != nil {
+		t.Fatal(err)
+	}
+
+	if r := e.Call(t, http.MethodGet, "/v1/auth/me", "", session); r.Status != http.StatusOK {
+		t.Fatalf("a fresh session answered %d", r.Status)
+	}
+
+	var same time.Time
+	if err := e.Pool.QueryRow(ctx, "SELECT last_used_at FROM sessions").Scan(&same); err != nil {
+		t.Fatal(err)
+	}
+
+	if !same.Equal(before) {
+		t.Fatalf("a request within 10 minutes moved the use time from %v to %v", before, same)
+	}
+
+	if _, err := e.Pool.Exec(ctx, "UPDATE sessions SET last_used_at = now() - interval '11 minutes'"); err != nil {
+		t.Fatal(err)
+	}
+
+	if r := e.Call(t, http.MethodGet, "/v1/auth/me", "", session); r.Status != http.StatusOK {
+		t.Fatalf("a session of 11 minutes answered %d", r.Status)
+	}
+
+	var refreshed bool
+	if err := e.Pool.QueryRow(ctx, "SELECT last_used_at > now() - interval '1 minute' FROM sessions").Scan(&refreshed); err != nil {
+		t.Fatal(err)
+	}
+
+	if !refreshed {
+		t.Fatal("a request after 11 minutes did not refresh the use time")
+	}
+}

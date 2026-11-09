@@ -60,10 +60,13 @@ func NewStore(pool *pgxpool.Pool) *Store {
 
 const userColumns = `u.id, u.business_id, u.email, u.password_hash, u.email_verified_at IS NOT NULL, b.name`
 
-func scanUser(row pgx.Row) (*User, error) {
+// scanUser reads the columns of userColumns, and then any extra columns that the query adds after them
+func scanUser(row pgx.Row, extra ...any) (*User, error) {
 	var u User
 
-	if err := row.Scan(&u.ID, &u.BusinessID, &u.Email, &u.PasswordHash, &u.Verified, &u.BusinessName); err != nil {
+	dest := append([]any{&u.ID, &u.BusinessID, &u.Email, &u.PasswordHash, &u.Verified, &u.BusinessName}, extra...)
+
+	if err := row.Scan(dest...); err != nil {
 		return nil, err //nolint:wrapcheck // the caller tests for pgx.ErrNoRows
 	}
 
@@ -339,15 +342,17 @@ func (s *Store) CreateSession(ctx context.Context, userID string, hash []byte) e
 	return tx.Commit(ctx)
 }
 
-// SessionUser returns the user of a session that is inside both its limits, or ErrNoSession. It refreshes the use time at most
-// every sessionTouchAfter, so a busy client does not write on every request.
+// SessionUser returns the user of a session that is inside both its limits, or ErrNoSession. One query reads the session, the user and
+// the business, because every request that is signed in pays for it and each query takes a connection of a small pool. It refreshes the
+// use time at most every sessionTouchAfter, so a busy client does not write on every request.
 func (s *Store) SessionUser(ctx context.Context, hash []byte) (*User, error) {
-	var userID string
+	var stale bool
 
-	err := s.pool.QueryRow(ctx,
-		`SELECT user_id FROM sessions
-		 WHERE token_hash = $1 AND last_used_at > now() - make_interval(secs => $2) AND created_at > now() - make_interval(secs => $3)`,
-		hash, sessionIdle.Seconds(), sessionAbsolute.Seconds()).Scan(&userID)
+	u, err := scanUser(s.pool.QueryRow(ctx,
+		`SELECT `+userColumns+`, s.last_used_at < now() - make_interval(secs => $4)
+		 FROM sessions s JOIN users u ON u.id = s.user_id JOIN businesses b ON b.id = u.business_id
+		 WHERE s.token_hash = $1 AND s.last_used_at > now() - make_interval(secs => $2) AND s.created_at > now() - make_interval(secs => $3)`,
+		hash, sessionIdle.Seconds(), sessionAbsolute.Seconds(), sessionTouchAfter.Seconds()), &stale)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNoSession
 	}
@@ -356,11 +361,13 @@ func (s *Store) SessionUser(ctx context.Context, hash []byte) (*User, error) {
 		return nil, fmt.Errorf("read the session %w", err)
 	}
 
-	// a failed refresh does not end a request that has a valid session
-	_, _ = s.pool.Exec(ctx, "UPDATE sessions SET last_used_at = now() WHERE token_hash = $1 AND last_used_at < now() - make_interval(secs => $2)",
-		hash, sessionTouchAfter.Seconds())
+	if stale {
+		// a failed refresh does not end a request that has a valid session
+		_, _ = s.pool.Exec(ctx, "UPDATE sessions SET last_used_at = now() WHERE token_hash = $1 AND last_used_at < now() - make_interval(secs => $2)",
+			hash, sessionTouchAfter.Seconds())
+	}
 
-	return s.UserByID(ctx, userID)
+	return u, nil
 }
 
 // DeleteSession ends one session
