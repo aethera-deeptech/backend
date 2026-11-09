@@ -317,6 +317,14 @@ func plans(t *testing.T, pool *pgxpool.Pool, list []statement, out string) {
 			t.Fatal(err)
 		}
 
+		// the service ends the open command of a device before it stores a new one, and the recorded INSERT runs alone here, so the open
+		// commands that the calls left would break the unique index of one open command for each device. The transaction is rolled back.
+		if strings.HasPrefix(head, "INSERT INTO RELAY_COMMANDS") {
+			if _, err := tx.Exec(t.Context(), "UPDATE relay_commands SET status = 'expired' WHERE status IN ('pending', 'sent')"); err != nil {
+				t.Fatal(err)
+			}
+		}
+
 		rows, err := tx.Query(t.Context(), "EXPLAIN (ANALYZE, BUFFERS) "+s.sql, s.args...)
 		if err != nil {
 			fmt.Fprintf(&b, "!! EXPLAIN of this statement failed %v\n", err)
