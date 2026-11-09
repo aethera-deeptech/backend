@@ -38,6 +38,30 @@ const lockNotAvailable = "55P03"
 // pruneEvery is how often a call also deletes the events that no window needs any more, one in this many
 const pruneEvery = 50
 
+// Check says whether the key is under the rule now, and counts nothing. It returns false and the time to wait when the key is over
+// the rule. A caller that charges an event only later, for example for a wrong password, asks here first and then calls Allow.
+func (l *Limiter) Check(ctx context.Context, rule Rule, key string) (bool, time.Duration, error) {
+	sum := sha256.Sum256([]byte(key))
+
+	var (
+		count  int
+		oldest *time.Time
+	)
+
+	err := l.pool.QueryRow(ctx,
+		"SELECT count(*), min(at) FROM rate_limit_events WHERE bucket = $1 AND key = $2 AND at > now() - make_interval(secs => $3)",
+		rule.Bucket, hex.EncodeToString(sum[:16]), rule.Window.Seconds()).Scan(&count, &oldest)
+	if err != nil {
+		return false, 0, fmt.Errorf("count the events %w", err)
+	}
+
+	if count >= rule.Max && oldest != nil {
+		return false, max(time.Until(oldest.Add(rule.Window)), time.Second), nil
+	}
+
+	return true, 0, nil
+}
+
 // Allow counts one event for the key. It returns false and the time to wait when the key is over the rule. A refused event is not
 // counted, so a client that keeps trying does not push its own wait further away. The key is stored as a hash, so the table holds
 // no email and no address.

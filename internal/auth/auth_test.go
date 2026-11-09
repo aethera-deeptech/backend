@@ -1133,3 +1133,25 @@ func TestEveryTableUnderABusinessGoesWithIt(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestOnlyAWrongPasswordUsesUpATryToDeleteAnAccount(t *testing.T) {
+	e := testutil.New(t)
+	session := e.SignUp(t, "budi@example.com")
+
+	for i := range 4 {
+		if r := deleteAccount(t, e, `{"password":"salah"}`, session); r.Status != http.StatusForbidden {
+			t.Fatalf("try %d answered %d", i+1, r.Status)
+		}
+	}
+
+	// a body that the route refuses before the password check uses up nothing
+	for range 10 {
+		if r := deleteAccount(t, e, `{"password":""}`, session); r.Status != http.StatusUnprocessableEntity {
+			t.Fatalf("an empty password answered %d", r.Status)
+		}
+	}
+
+	if r := deleteAccount(t, e, `{"password":"kata sandi baik"}`, session); r.Status != http.StatusNoContent {
+		t.Fatalf("the right password after 4 wrong ones answered %d %v, want 204", r.Status, r.Body)
+	}
+}
