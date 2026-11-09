@@ -39,6 +39,6 @@ The app is in Indonesian, and the API keeps a few of those words in its fields a
 
 **Can a session be ended from the app?** Only by signing out of that session. A session also ends after 30 days without use, after 90 days, or when the owner resets the password. See [Security](security.md).
 
-**How long is the data kept?** Raw readings 30 days and hourly sums 400 days. See [Privacy](privacy.md#how-long-it-stays).
+**How long is the data kept?** Raw readings 30 days, hourly sums 400 days and anomalies 90 days. See [Privacy](privacy.md#how-long-it-stays).
 
 **Which hardware does the firmware guide expect?** An ESP32 gateway that talks to the service over HTTPS, and plug and clamp nodes that send their readings to it over ESP-NOW. See the [firmware guide](firmware-guide.md) and the [API](api.md).
