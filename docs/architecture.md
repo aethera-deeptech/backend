@@ -63,6 +63,8 @@ Every copy of the program starts two timers. Only one copy does a round at a tim
 | Janitor | hour | Deletes what is past its time. That covers sessions, mail tokens and rate limit events, businesses that never verified an email, ended pairings and enrollments, raw readings, hourly sums and relay commands, with the periods in [Data model](data-model.md) |
 | Relay scheduler | minute | Makes the commands of the schedules that have a time that passed, and expires the commands that nobody fetched in time |
 
+A panic in a round of either timer, or in a send of the mail queue, is logged with the name of the task and the type of the value, and goes to Sentry when the reports are on. The round is skipped and the next one starts on time, so the program does not stop.
+
 ## Security in short
 
 The service stores no password and no session token in clear text. A password is hashed, and a session, a mail token and a gateway key are stored as a SHA-256 hash. Every query of the dashboard is limited to the business of the signed in account, and an id of another business answers like an id that does not exist.

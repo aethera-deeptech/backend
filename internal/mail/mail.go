@@ -23,6 +23,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/aethera-deeptech/backend/internal/errorreport"
 )
 
 // The values of the setting SMTP_SECURITY
@@ -285,11 +287,7 @@ func (q *Queue) Close(ctx context.Context) {
 
 func (q *Queue) work() {
 	for j := range q.jobs {
-		ctx, cancel := context.WithTimeout(context.Background(), sendTimeout)
-		err := q.sender.Send(ctx, j.msg)
-
-		cancel()
-
+		err := q.send(j.msg)
 		if err == nil {
 			continue
 		}
@@ -301,6 +299,27 @@ func (q *Queue) work() {
 			q.retry(job{msg: j.msg, attempt: j.attempt + 1}, q.waits[j.attempt])
 		}
 	}
+}
+
+// errPanicked is the error of a send that panicked, so the message gets its new tries and the worker goes on with the next one
+var errPanicked = errors.New("the send panicked")
+
+// send gives one try to the mail server. A panic of the sender is logged, sent to Sentry and turned into an error, because a worker that
+// died of it would end the process.
+func (q *Queue) send(m Message) (err error) {
+	ctx, cancel := context.WithTimeout(context.Background(), sendTimeout)
+	defer cancel()
+
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Error("a background task panicked", "task", "mail worker", "panic_type", fmt.Sprintf("%T", r))
+			errorreport.Panic(r, errorreport.Info{Route: "mail worker"})
+
+			err = errPanicked
+		}
+	}()
+
+	return q.sender.Send(ctx, m)
 }
 
 func (q *Queue) retry(j job, wait time.Duration) {

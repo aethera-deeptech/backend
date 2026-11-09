@@ -257,3 +257,28 @@ func TestScrubEventDropsTheRequestTheBreadcrumbsAndTheContactsOfTheUser(t *testi
 		t.Fatalf("the texts are %q %v", event.Message, event.Tags)
 	}
 }
+
+func TestAContainedPanicOfATaskDoesNotLeaveAndIsReportedByTheNameOfTheTask(t *testing.T) {
+	rec, _ := start(t, 30)
+
+	func() {
+		defer Contain("janitor")
+
+		panic("index out of range for budi.santoso@example.com")
+	}()
+
+	events := rec.all()
+	if len(events) != 1 {
+		t.Fatalf("%d events were sent", len(events))
+	}
+
+	if events[0].Tags["route"] != "janitor" || events[0].Tags["panic"] != "true" || strings.Contains(textsOf(events[0]), "budi.santoso") {
+		t.Fatalf("the tags are %v", events[0].Tags)
+	}
+}
+
+func TestContainDoesNothingWhenTheTaskDoesNotPanic(t *testing.T) {
+	func() {
+		defer Contain("janitor")
+	}()
+}

@@ -10,6 +10,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/aethera-deeptech/backend/internal/errorreport"
 )
 
 const (
@@ -42,7 +44,7 @@ func New(pool *pgxpool.Pool, interval time.Duration, tasks ...Task) *Janitor {
 
 // Run does a round now and then once for each interval, until the context ends
 func (j *Janitor) Run(ctx context.Context) {
-	j.Round(ctx)
+	j.guardedRound(ctx)
 
 	ticker := time.NewTicker(j.interval)
 	defer ticker.Stop()
@@ -52,9 +54,16 @@ func (j *Janitor) Run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			j.Round(ctx)
+			j.guardedRound(ctx)
 		}
 	}
+}
+
+// guardedRound does a round that cannot end the process, so a panic in a task skips that round and the next one starts on time
+func (j *Janitor) guardedRound(ctx context.Context) {
+	defer errorreport.Contain("janitor")
+
+	j.Round(ctx)
 }
 
 // Round does one round of every task when this copy gets the lock. It returns the number of rows that it deleted.

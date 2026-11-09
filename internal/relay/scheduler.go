@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/aethera-deeptech/backend/internal/errorreport"
 )
 
 const (
@@ -31,7 +33,7 @@ func NewScheduler(pool *pgxpool.Pool, every time.Duration) *Scheduler {
 
 // Run does a round now and then once for each interval, until the context ends
 func (s *Scheduler) Run(ctx context.Context) {
-	s.Round(ctx)
+	s.guardedRound(ctx)
 
 	ticker := time.NewTicker(s.every)
 	defer ticker.Stop()
@@ -41,9 +43,16 @@ func (s *Scheduler) Run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			s.Round(ctx)
+			s.guardedRound(ctx)
 		}
 	}
+}
+
+// guardedRound does a round that cannot end the process, so a panic skips that round and the next one starts on time
+func (s *Scheduler) guardedRound(ctx context.Context) {
+	defer errorreport.Contain("relay scheduler")
+
+	s.Round(ctx)
 }
 
 type due struct {
