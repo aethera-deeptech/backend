@@ -21,11 +21,10 @@ type rig struct {
 	seq     int
 }
 
-// business signs a business up, gives it a room and claims a gateway for it
-func business(t *testing.T, e *testutil.Env, email, hardware, seed string) *rig {
+// claimGateway enrolls a gateway with a key made from the seed and claims it for the session, and returns the key and the gateway id
+func claimGateway(t *testing.T, e *testutil.Env, session, hardware, seed string) (string, string) {
 	t.Helper()
 
-	session := e.SignUp(t, email)
 	k := strings.Repeat(seed, 43)[:43]
 	sum := sha256.Sum256([]byte(k))
 
@@ -37,7 +36,17 @@ func business(t *testing.T, e *testutil.Env, email, hardware, seed string) *rig 
 		t.Fatalf("claim answered %d %v", claim.Status, claim.Body)
 	}
 
-	gateway, _ := claim.Body["id"].(string)
+	id, _ := claim.Body["id"].(string)
+
+	return k, id
+}
+
+// business signs a business up, gives it a room and claims a gateway for it
+func business(t *testing.T, e *testutil.Env, email, hardware, seed string) *rig {
+	t.Helper()
+
+	session := e.SignUp(t, email)
+	k, gateway := claimGateway(t, e, session, hardware, seed)
 
 	room := e.Call(t, http.MethodPost, "/v1/rooms", `{"name":"Ruang jahit"}`, session)
 	id, _ := room.Body["id"].(string)
@@ -256,5 +265,49 @@ func TestStartNeedsAGatewayWithAWorkingKey(t *testing.T) {
 
 	if r := g.start(t, "plug"); r.Status != http.StatusConflict || r.Code() != "no_gateway" {
 		t.Fatalf("a search with every key cut answered %d %v", r.Status, r.Body)
+	}
+}
+
+func TestStartAcceptsAWorkingGatewayNextToACutOne(t *testing.T) {
+	g := business(t, testutil.New(t), "budi@example.com", "ESP32-AABBCC", "e")
+	claimGateway(t, g.e, g.session, "ESP32-DDEEFF", "f")
+
+	if r := g.e.Call(t, http.MethodPost, "/v1/gateways/"+g.gateway+"/revoke-key", "", g.session); r.Status != http.StatusNoContent {
+		t.Fatalf("revoke-key answered %d %v", r.Status, r.Body)
+	}
+
+	if r := g.start(t, "plug"); r.Status != http.StatusCreated {
+		t.Fatalf("a search with one working gateway answered %d %v", r.Status, r.Body)
+	}
+}
+
+func TestStartWorksAgainAfterACutGatewayIsClaimedAgain(t *testing.T) {
+	g := business(t, testutil.New(t), "budi@example.com", "ESP32-AABBCC", "e")
+
+	if r := g.e.Call(t, http.MethodPost, "/v1/gateways/"+g.gateway+"/revoke-key", "", g.session); r.Status != http.StatusNoContent {
+		t.Fatalf("revoke-key answered %d %v", r.Status, r.Body)
+	}
+
+	claimGateway(t, g.e, g.session, "ESP32-AABBCC", "g")
+
+	if r := g.start(t, "plug"); r.Status != http.StatusCreated {
+		t.Fatalf("a search after the claim again answered %d %v", r.Status, r.Body)
+	}
+}
+
+func TestAGatewayCutDuringASearchDoesNotGetTheDevice(t *testing.T) {
+	g := business(t, testutil.New(t), "budi@example.com", "ESP32-AABBCC", "e")
+	claimGateway(t, g.e, g.session, "ESP32-DDEEFF", "f")
+
+	id, _ := g.start(t, "plug").Body["id"].(string)
+
+	g.hear(t, "PLUG-0001", "plug")
+
+	if r := g.e.Call(t, http.MethodPost, "/v1/gateways/"+g.gateway+"/revoke-key", "", g.session); r.Status != http.StatusNoContent {
+		t.Fatalf("revoke-key answered %d %v", r.Status, r.Body)
+	}
+
+	if s := g.status(t, id); s.Body["status"] != "searching" || s.Body["deviceId"] != nil {
+		t.Fatalf("a node of a cut gateway became the device %v", s.Body)
 	}
 }
