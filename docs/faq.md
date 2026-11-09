@@ -27,7 +27,7 @@ The app is in Indonesian, and the API keeps a few of those words in its fields a
 
 **Why did no surge anomaly appear on a new device?** The rule compares a reading with the usual high power of the same hour of the day, in UTC, over the last 15 days, and it needs at least 7 such days. Before that only an overload that the node reports and a degradation can be raised.
 
-**Why did the relay command not switch the plug?** The service cannot call a gateway. The command waits until the gateway fetches it in the answer to its next batch, and it expires after 10 minutes. A gateway that is offline never fetches it. The relay view has `gatewayOnline`, which says whether the gateway had a batch stored in the last 15 minutes. See [API](api.md#relay-control).
+**Why did the relay command not switch the plug?** The service cannot call a gateway. The command waits until the gateway fetches it in the answer to its next batch, and it expires after 10 minutes. A gateway that is offline never fetches it. The relay view has `gatewayOnline`, which says whether the gateway had a batch stored, or sent again after a lost answer, in the last 15 minutes. See [API](api.md#relay-control).
 
 **Does a schedule work while the gateway has no internet?** No. The service makes the command at the set time, and a gateway that is away for more than 10 minutes never receives it.
 
