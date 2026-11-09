@@ -151,6 +151,11 @@ func PurgeTasks() []janitor.Task {
 			Query: `DELETE FROM readings_hourly WHERE ctid IN (SELECT ctid FROM readings_hourly WHERE hour < now() - interval '400 days' LIMIT $1)`,
 		},
 		{
+			// every reader of the table looks at the last 24 hours, so 90 days is far more than any screen needs
+			Name:  "anomalies older than 90 days",
+			Query: `DELETE FROM anomalies WHERE ctid IN (SELECT ctid FROM anomalies WHERE at < now() - interval '90 days' LIMIT $1)`,
+		},
+		{
 			Name:  "enrollments and pairings that ended",
 			Query: `DELETE FROM gateway_enrollments WHERE ctid IN (SELECT ctid FROM gateway_enrollments WHERE expires_at < now() - interval '1 day' LIMIT $1)`,
 		},

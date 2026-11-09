@@ -40,6 +40,7 @@ There is no analytics script and no advertising. The service sets one cookie, th
 |:---|:---|
 | Raw readings | 30 days |
 | Hourly sums | 400 days |
+| Anomalies | 90 days |
 | Sessions | 30 days without use, and 90 days in all |
 | Mail tokens | A day after they expire, and a used token for 7 days |
 | Rate limit events | 2 hours |

@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/aethera-deeptech/backend/internal/errorreport"
@@ -65,6 +66,32 @@ type due struct {
 	zone                        string
 }
 
+// lockReleaseTimeout is how long the unlock of the advisory lock and the close of a connection may take
+const lockReleaseTimeout = 5 * time.Second
+
+// closeBounded closes a connection that left the pool. The close sends a termination message, and a stalled write would hold it for
+// ever when the context has no deadline, so it gets one that a stop of the service cannot cancel.
+func closeBounded(ctx context.Context, conn *pgx.Conn) {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), lockReleaseTimeout)
+	defer cancel()
+
+	_ = conn.Close(ctx)
+}
+
+// unlockOrDiscard lets go of the advisory lock before the connection goes back to the pool. The lock belongs to the session. When it
+// cannot be let go, the connection is closed and not given back, because the pool would keep it with the lock and no copy would run a
+// round again. The janitor does the same for its own lock.
+func unlockOrDiscard(ctx context.Context, unlock func(context.Context) error, discard func(context.Context)) {
+	// a stop of the service must not skip the unlock, and a stalled server must not hold the round for ever
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), lockReleaseTimeout)
+	defer cancel()
+
+	if err := unlock(ctx); err != nil {
+		slog.Warn("the relay scheduler could not let go of its lock, so the connection is closed", "error", err)
+		discard(ctx)
+	}
+}
+
 // Round ends the commands that nobody fetched in time, and makes a command for each schedule that has a time that passed since the
 // last round. It returns the number of commands that it made.
 func (s *Scheduler) Round(ctx context.Context) int {
@@ -77,17 +104,26 @@ func (s *Scheduler) Round(ctx context.Context) int {
 	defer conn.Release()
 
 	var got bool
-	if err := conn.QueryRow(ctx, "SELECT pg_try_advisory_lock($1)", int64(lockKey)).Scan(&got); err != nil || !got {
+	if err := conn.QueryRow(ctx, "SELECT pg_try_advisory_lock($1)", int64(lockKey)).Scan(&got); err != nil {
+		// the server may have taken the lock before the answer failed, so the connection must not go back to the pool with it
+		slog.Warn("the relay scheduler could not ask for its lock, so the connection is closed", "error", err)
+
+		closeBounded(ctx, conn.Hijack())
+
 		return 0
 	}
 
-	defer func() {
-		// the lock belongs to the session. When it cannot be let go, the connection is closed and not given back to the pool, because the
-		// pool would keep it with the lock and no copy would run a round again.
-		if _, err := conn.Exec(context.WithoutCancel(ctx), "SELECT pg_advisory_unlock($1)", int64(lockKey)); err != nil {
-			_ = conn.Hijack().Close(context.WithoutCancel(ctx))
-		}
-	}()
+	if !got {
+		return 0
+	}
+
+	defer unlockOrDiscard(ctx,
+		func(ctx context.Context) error {
+			_, err := conn.Exec(ctx, "SELECT pg_advisory_unlock($1)", int64(lockKey))
+
+			return err //nolint:wrapcheck // the caller only tests for a failure
+		},
+		func(ctx context.Context) { closeBounded(ctx, conn.Hijack()) })
 
 	now := s.now()
 
