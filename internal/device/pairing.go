@@ -86,12 +86,12 @@ func (p *Pairings) Start(ctx context.Context, businessID, kind, rawName, roomID 
 	}
 
 	var hasGateway bool
-	if err := p.pool.QueryRow(ctx, "SELECT EXISTS (SELECT 1 FROM gateways WHERE business_id = $1)", businessID).Scan(&hasGateway); err != nil {
+	if err := p.pool.QueryRow(ctx, "SELECT EXISTS (SELECT 1 FROM gateways WHERE business_id = $1 AND key_revoked_at IS NULL)", businessID).Scan(&hasGateway); err != nil {
 		return "", fmt.Errorf("read the gateways %w", err)
 	}
 
 	if !hasGateway {
-		return "", api.NewError(http.StatusConflict, "no_gateway", "The business has no gateway yet")
+		return "", api.NewError(http.StatusConflict, "no_gateway", "The business has no gateway with a working key")
 	}
 
 	tx, err := p.pool.BeginTx(ctx, pgx.TxOptions{})

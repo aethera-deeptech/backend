@@ -17,6 +17,7 @@ type rig struct {
 	session string
 	key     string
 	room    string
+	gateway string
 	seq     int
 }
 
@@ -31,14 +32,17 @@ func business(t *testing.T, e *testutil.Env, email, hardware, seed string) *rig 
 	r := e.CallWith(t, http.MethodPost, "/device/v1/enroll", `{"hardwareId":"`+hardware+`","keyHash":"`+hex.EncodeToString(sum[:])+`"}`, nil)
 	code, _ := r.Body["claimCode"].(string)
 
-	if r := e.Call(t, http.MethodPost, "/v1/gateways", `{"claimCode":"`+code+`","name":"Hub"}`, session); r.Status != http.StatusCreated {
-		t.Fatalf("claim answered %d %v", r.Status, r.Body)
+	claim := e.Call(t, http.MethodPost, "/v1/gateways", `{"claimCode":"`+code+`","name":"Hub"}`, session)
+	if claim.Status != http.StatusCreated {
+		t.Fatalf("claim answered %d %v", claim.Status, claim.Body)
 	}
+
+	gateway, _ := claim.Body["id"].(string)
 
 	room := e.Call(t, http.MethodPost, "/v1/rooms", `{"name":"Ruang jahit"}`, session)
 	id, _ := room.Body["id"].(string)
 
-	return &rig{e: e, session: session, key: k, room: id}
+	return &rig{e: e, session: session, key: k, room: id, gateway: gateway}
 }
 
 // hear sends one reading of a node, so the gateway has heard it
@@ -240,5 +244,17 @@ func TestAnotherBusinessCannotSeeOrTakeASearch(t *testing.T) {
 
 	if r := e.Call(t, http.MethodGet, "/v1/pairings/not-an-id", "", budi.session); r.Status != http.StatusNotFound {
 		t.Fatalf("a bad id answered %d", r.Status)
+	}
+}
+
+func TestStartNeedsAGatewayWithAWorkingKey(t *testing.T) {
+	g := business(t, testutil.New(t), "budi@example.com", "ESP32-AABBCC", "e")
+
+	if r := g.e.Call(t, http.MethodPost, "/v1/gateways/"+g.gateway+"/revoke-key", "", g.session); r.Status != http.StatusNoContent {
+		t.Fatalf("revoke-key answered %d %v", r.Status, r.Body)
+	}
+
+	if r := g.start(t, "plug"); r.Status != http.StatusConflict || r.Code() != "no_gateway" {
+		t.Fatalf("a search with every key cut answered %d %v", r.Status, r.Body)
 	}
 }
