@@ -82,7 +82,7 @@ func (j *Janitor) Round(ctx context.Context) int64 {
 		// the server may have taken the lock before the answer failed, so the connection must not go back to the pool with it
 		slog.Warn("the clean up could not ask for its lock, so the connection is closed", "error", err)
 
-		_ = conn.Hijack().Close(context.WithoutCancel(ctx))
+		closeBounded(ctx, conn.Hijack())
 
 		return 0
 	}
@@ -97,7 +97,7 @@ func (j *Janitor) Round(ctx context.Context) int64 {
 
 			return err //nolint:wrapcheck // the caller only tests for a failure
 		},
-		func(ctx context.Context) { _ = conn.Hijack().Close(ctx) })
+		func(ctx context.Context) { closeBounded(ctx, conn.Hijack()) })
 
 	var total int64
 
@@ -137,11 +137,25 @@ func runContained(ctx context.Context, conn *pgx.Conn, t Task) (n int64, err err
 	return runTask(ctx, conn, t)
 }
 
+// lockReleaseTimeout is how long the unlock of the advisory lock and the close of a connection may take
+const lockReleaseTimeout = 5 * time.Second
+
+// closeBounded closes a connection that left the pool. The close sends a termination message, and a stalled write would hold it for
+// ever when the context has no deadline, so it gets one that a stop of the service cannot cancel.
+func closeBounded(ctx context.Context, conn *pgx.Conn) {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), lockReleaseTimeout)
+	defer cancel()
+
+	_ = conn.Close(ctx)
+}
+
 // unlockOrDiscard lets go of the advisory lock before the connection goes back to the pool. The lock belongs to the session. When it
 // cannot be let go, the connection is closed and not given back, because the pool would keep it with the lock and no copy would run a
 // round again.
 func unlockOrDiscard(ctx context.Context, unlock func(context.Context) error, discard func(context.Context)) {
-	ctx = context.WithoutCancel(ctx)
+	// a stop of the service must not skip the unlock, and a stalled server must not hold the round for ever
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), lockReleaseTimeout)
+	defer cancel()
 
 	if err := unlock(ctx); err != nil {
 		slog.Warn("the clean up could not let go of its lock, so the connection is closed", "error", err)
