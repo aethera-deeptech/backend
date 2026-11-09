@@ -28,12 +28,28 @@ jobs:
         with:
           persist-credentials: false
 
+      # The Vale binary, the review tool and the Google style are all downloaded from GitHub releases, which answered 504 for a while on
+      # 2026-11-09 and failed the required check. They are cached by the hash of this workflow and of the Vale config, so a new Vale
+      # version or a new style release (Renovate raises both) downloads again once, and every other run reads the cache.
+      - name: Restore the Vale tools and the Google style
+        id: cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            /opt/hostedtoolcache/vale
+            /opt/hostedtoolcache/reviewdog
+            .github/vale/styles/Google
+            .github/vale/styles/.vale-config
+          key: vale-${{ runner.os }}-${{ hashFiles('.github/workflows/vale.yaml', '.vale.ini') }}
+
       - name: Vale
         uses: vale-cli/vale-action@518a9136acc6e6668ce7c00d367051e0941e87ff # v3.0.0
         with:
           # Renovate raises this version from the comment below, and it raises the Google style release in .vale.ini too
           # renovate: datasource=github-releases depName=errata-ai/vale
           version: 3.24.0
+          # A restored StylesPath needs no download, and a run without the cache downloads the style as before
+          sync: ${{ steps.cache.outputs.cache-hit != 'true' }}
           # Pull requests from forks get a read-only token and cannot create a check, so they report to the log
           reporter: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'local' || 'github-check' }}
           # Check every file in full on every run, so an old violation in a file that a pull request touches cannot slip past
