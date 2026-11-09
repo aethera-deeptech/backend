@@ -360,6 +360,11 @@ func (s *Service) EndSession(ctx context.Context, userID, token, id string) (boo
 	return wasCurrent, nil
 }
 
+// EndOtherSessions ends every session of the user except the one of the token and returns how many it ended
+func (s *Service) EndOtherSessions(ctx context.Context, userID, token string) (int, error) {
+	return s.store.DeleteOtherSessions(ctx, userID, hashToken(token))
+}
+
 // isHidden reports a control character or a format character, such as a zero width space or a right to left override, which a name
 // has no use for and which can make a name look like another one
 func isHidden(r rune) bool { return unicode.IsControl(r) || unicode.Is(unicode.Cf, r) }

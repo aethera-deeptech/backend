@@ -884,3 +884,72 @@ func TestEndingASessionNeedsTheHeaderAndTheOrigin(t *testing.T) {
 		t.Fatalf("the session ended, it answered %d", r.Status)
 	}
 }
+
+func TestRevokeOthersKeepsThisSessionAndCountsTheRest(t *testing.T) {
+	e := testutil.New(t)
+	laptop := e.SignUp(t, "budi@example.com")
+	phone := signInAs(t, e, "budi@example.com", "Mozilla/5.0 (Linux; Android 14) Firefox/130.0")
+	tablet := signInAs(t, e, "budi@example.com", "Mozilla/5.0 (iPad; CPU OS 18_0 like Mac OS X) Safari/605.1.15")
+	siti := e.SignUp(t, "siti@example.com")
+
+	r := e.Call(t, http.MethodPost, "/v1/auth/sessions/revoke-others", "", laptop)
+	if r.Status != http.StatusOK || r.Body["ended"] != float64(2) {
+		t.Fatalf("revoke answered %d %v", r.Status, r.Body)
+	}
+
+	if r.Cookie != "" {
+		t.Fatalf("revoke changed the cookie to %q", r.Cookie)
+	}
+
+	for name, cookie := range map[string]string{"phone": phone, "tablet": tablet} {
+		if r = e.Call(t, http.MethodGet, "/v1/auth/me", "", cookie); r.Status != http.StatusUnauthorized {
+			t.Fatalf("the %s still works, it answered %d", name, r.Status)
+		}
+	}
+
+	if r = e.Call(t, http.MethodGet, "/v1/auth/me", "", laptop); r.Status != http.StatusOK {
+		t.Fatalf("this session stopped, it answered %d", r.Status)
+	}
+
+	if r = e.Call(t, http.MethodGet, "/v1/auth/me", "", siti); r.Status != http.StatusOK {
+		t.Fatalf("the session of another user ended, it answered %d", r.Status)
+	}
+
+	if items := sessionItems(t, e.Call(t, http.MethodGet, "/v1/auth/sessions", "", laptop)); len(items) != 1 || items[0]["current"] != true {
+		t.Fatalf("the list after the revoke is %v", items)
+	}
+
+	if r = e.Call(t, http.MethodPost, "/v1/auth/sessions/revoke-others", "", laptop); r.Status != http.StatusOK || r.Body["ended"] != float64(0) {
+		t.Fatalf("a second revoke answered %d %v", r.Status, r.Body)
+	}
+}
+
+func TestRevokeOthersNeedsASessionAndTheHeader(t *testing.T) {
+	e := testutil.New(t)
+	laptop := e.SignUp(t, "budi@example.com")
+	phone := signInAs(t, e, "budi@example.com", "Firefox/1")
+
+	if r := e.Call(t, http.MethodPost, "/v1/auth/sessions/revoke-others", "", ""); r.Status != http.StatusUnauthorized {
+		t.Fatalf("a revoke with no session answered %d", r.Status)
+	}
+
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/v1/auth/sessions/revoke-others", nil)
+	req.Header.Set("Cookie", testutil.CookieName+"="+laptop)
+
+	if r := e.Send(t, req); r.Status != http.StatusForbidden {
+		t.Fatalf("a revoke with no CSRF header answered %d", r.Status)
+	}
+
+	req = httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/v1/auth/sessions/revoke-others", nil)
+	req.Header.Set("X-Requested-With", "aethera")
+	req.Header.Set("Origin", "https://other.example")
+	req.Header.Set("Cookie", testutil.CookieName+"="+laptop)
+
+	if r := e.Send(t, req); r.Status != http.StatusForbidden {
+		t.Fatalf("a revoke from another origin answered %d", r.Status)
+	}
+
+	if r := e.Call(t, http.MethodGet, "/v1/auth/me", "", phone); r.Status != http.StatusOK {
+		t.Fatalf("a refused revoke ended the phone, it answered %d", r.Status)
+	}
+}

@@ -429,6 +429,16 @@ func (s *Store) DeleteSessionByID(ctx context.Context, userID, id string, curren
 	return true, bytes.Equal(hash, current), nil
 }
 
+// DeleteOtherSessions ends every session of the user except the one of the request and returns how many it ended
+func (s *Store) DeleteOtherSessions(ctx context.Context, userID string, current []byte) (int, error) {
+	tag, err := s.pool.Exec(ctx, "DELETE FROM sessions WHERE user_id = $1 AND token_hash <> $2", userID, current)
+	if err != nil {
+		return 0, fmt.Errorf("end the other sessions %w", err)
+	}
+
+	return int(tag.RowsAffected()), nil
+}
+
 // DeleteSession ends one session
 func (s *Store) DeleteSession(ctx context.Context, hash []byte) error {
 	if _, err := s.pool.Exec(ctx, "DELETE FROM sessions WHERE token_hash = $1", hash); err != nil {

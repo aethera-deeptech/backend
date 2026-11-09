@@ -14,6 +14,7 @@ The contract is `openapi.yaml` in the root of the repository. The job `OpenAPI l
 - A request that changes data needs the header `X-Requested-With: aethera`, and the service checks the `Origin` header. A page of another origin cannot send that header without a preflight, so a forged form post fails.
 - A session lasts 30 days from its last use and 90 days at most. A reset of the password ends every session of the user.
 - `GET /v1/auth/sessions` lists the devices that are signed in, and `DELETE /v1/auth/sessions/{id}` ends one. The label of a device is the browser and the system from the User-Agent at sign in, and the service stores no address. The session of the request comes first in the list. Ending it works like logout. An id of another user answers 404.
+- `POST /v1/auth/sessions/revoke-others` ends every other session of the user and keeps the one of the request. It answers 200 with `{"ended": n}`, and `n` is 0 when there was no other session.
 - The service has no Redis. Sessions, limits and tokens live in PostgreSQL, so both copies see the same state.
 
 ## Errors
