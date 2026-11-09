@@ -19,7 +19,7 @@ The app is in Indonesian, and the API keeps a few of those words in its fields a
 
 **Why does the app get a 429 on a route?** A route has a limit. The answer carries `retryAfterSeconds` and the header `Retry-After`. The sign in, registration, reset and pairing routes have limits, and so does the relay command, which is 60 commands an hour for a business. The reads have none. See [Errors](errors.md).
 
-**Why does sign in answer 503 with the code `busy`?** The password check has no free slot. A burst of requests that hash a password, such as sign in, registration, a change of the email and a reset, can use them all, and the request should be sent again after the number of seconds in the answer.
+**Why does a route answer 503 with the code `busy`?** Sign in and the other routes that hash a password answer it when the password check has no free slot. Any route under `/v1` or `/device/v1` also answers it when a request ran for 10 seconds and failed, for example while the database is slow. A burst of requests that hash a password, such as sign in, registration, a change of the email and a reset, can use every slot. In both cases the request should be sent again after the number of seconds in the answer.
 
 **Why does a new device show as offline after a short while?** A device is offline when its newest reading is older than 15 minutes, and offline wins over every other status. See [API](api.md).
 
