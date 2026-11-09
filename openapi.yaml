@@ -1572,7 +1572,7 @@ components:
         application/json:
           schema: {$ref: "#/components/schemas/Error"}
     Busy:
-      description: Every slot of the password check is taken, so the service sheds the request (code `busy`). Any route under `/v1` or `/device/v1` also answers it when the request ran for 10 seconds without an answer from the database. `retryAfterSeconds` and the header `Retry-After` say when to try again, which is 2 seconds.
+      description: Every slot of the password check is taken, so the service sheds the request (code `busy`). Every route under `/v1` and `/device/v1` can also answer it, even where the route lists no 503, when the request ran for 10 seconds and failed. A write may have been saved just before the time ran out. `retryAfterSeconds` and the header `Retry-After` say when to try again, which is 2 seconds.
       headers:
         Retry-After: {schema: {type: integer}}
       content:

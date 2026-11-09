@@ -35,7 +35,7 @@ The codes `unauthorized`, `csrf_header_missing` and `origin_not_allowed` apply t
 | `validation_failed` | 422 | A field is not valid, and `fields` says which | Show the message of each field next to it |
 | `bad_request` | 400 or another status that the HTTP server chose | The HTTP server refused the request before a route saw it, and the code does not say more | Check the HTTP status |
 | `rate_limited` | 429 | A limit of the route was passed | Wait `retryAfterSeconds` and send again |
-| `busy` | 503 | The password check has no free slot, or a request under `/v1` or `/device/v1` ran for 10 seconds without an answer from the database. The answer comes with a short retry time | Send the request again after a moment |
+| `busy` | 503 | The password check has no free slot, or a request under `/v1` or `/device/v1` ran for 10 seconds and failed. The answer comes with a short retry time. A write may have been saved just before the time ran out, so the app reads the data again before it sends a write for the second time | Send the request again after a moment |
 | `internal` | 500 | The service failed and has logged it | Show a general failure, and send again later |
 
 ## Account

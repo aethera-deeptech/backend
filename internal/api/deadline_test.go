@@ -27,6 +27,17 @@ func deadlineApp() *fiber.App {
 
 		return errors.Join(errors.New("acquire a connection"), c.Context().Err())
 	})
+	// a layer that hides the deadline, as a rollback does that fails with a closed connection after the query was cut
+	app.Get("/hidden", func(c fiber.Ctx) error {
+		<-c.Context().Done()
+
+		return errors.New("roll back: conn closed")
+	})
+	app.Get("/chosen", func(c fiber.Ctx) error {
+		<-c.Context().Done()
+
+		return api.NotFound()
+	})
 	app.Get("/other", func(fiber.Ctx) error { return errors.New("boom") })
 	app.Get("/fast", func(c fiber.Ctx) error {
 		if _, ok := c.Context().Deadline(); !ok {
@@ -52,10 +63,10 @@ func callDeadline(t *testing.T, path string) *http.Response {
 	return res
 }
 
-// TestARouteThatRunsOutOfTimeAnswers503Busy checks that a deadline error of the context, also when a layer wrapped it, becomes the
-// answer that the app already handles with a retry time
+// TestARouteThatRunsOutOfTimeAnswers503Busy checks that an error after the deadline, also when a layer hid the deadline error,
+// becomes the answer that the app already handles with a retry time
 func TestARouteThatRunsOutOfTimeAnswers503Busy(t *testing.T) {
-	for _, path := range []string{"/stall", "/wrapped"} {
+	for _, path := range []string{"/stall", "/wrapped", "/hidden"} {
 		res := callDeadline(t, path)
 
 		if res.StatusCode != http.StatusServiceUnavailable || res.Header.Get("Retry-After") != "2" {
@@ -73,5 +84,11 @@ func TestARouteInTimeKeepsItsAnswerAndSeesTheDeadline(t *testing.T) {
 func TestAnotherErrorStaysA500(t *testing.T) {
 	if res := callDeadline(t, "/other"); res.StatusCode != http.StatusInternalServerError {
 		t.Fatalf("another error answered %d, want 500", res.StatusCode)
+	}
+}
+
+func TestAnErrorThatTheRouteChoseKeepsItsAnswerAfterTheDeadline(t *testing.T) {
+	if res := callDeadline(t, "/chosen"); res.StatusCode != http.StatusNotFound {
+		t.Fatalf("a chosen error answered %d, want 404", res.StatusCode)
 	}
 }
