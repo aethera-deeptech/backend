@@ -20,7 +20,7 @@ A business is the owner of its data. An account belongs to one business through 
 
 | Table | What it holds | Rules |
 |:---|:---|:---|
-| `gateways` | Name, hardware id, key hash, last sequence number, last seen time | The hardware id and the key hash are unique, and the key hash is 32 bytes |
+| `gateways` | Name, hardware id, key hash, last sequence number, last seen time, time the key was cut off | The hardware id and the key hash are unique, and the key hash is 32 bytes. A cut off key has a random hash that no key matches, and a new claim clears the time |
 | `gateway_enrollments` | The claim code and the poll id, both by hash, and the key hash | A row expires, and it points to the gateway after the owner claims it |
 | `nodes` | A plug or a clamp that a gateway reported, keyed by gateway and node id | The kind is `plug` or `clamp`. It keeps the last sample time, the last energy counter and the relay state |
 | `devices` | A node that the owner paired, with a name, a room and the time of the last energy reset | One device for each node, and the room is required |

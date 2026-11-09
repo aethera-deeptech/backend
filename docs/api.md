@@ -38,7 +38,8 @@ An amount is a whole number of rupiah. A tip shows its saving rounded to the nea
 1. A new gateway makes a random key of its own and calls `POST /device/v1/enroll` with the SHA-256 of the key. The answer holds a claim code and a poll id, and the gateway shows the code. The service never sees the key.
 2. The owner types the code in the app (`POST /v1/gateways`). The gateway polls and learns that it belongs to a business.
 3. From then on the gateway sends its key as a bearer token. The service keeps only the hash of the key, so a copy of the database cannot act as a gateway. TLS protects the key in transit, and the sequence number of a batch makes a retry safe. A signature on every request would add nothing over TLS here, because a party that sees the plain request also sees the key.
-4. The owner starts a pairing in the app. The next unclaimed node of that kind that the gateway reports becomes the device.
+4. The owner can cut off the key of a gateway with `POST /v1/gateways/{id}/revoke-key`, which answers 204. The old key gets 401 `invalid_gateway_key` from then on, and the devices and readings stay. The list shows `keyRevoked` as true until the hardware enrolls again with a new key and the owner claims the new code. The route returns no claim code, because the gateway makes its own, and it removes a claim code that waits for the same hardware, so the gateway has to enroll again with a new key. An id of another business answers 404.
+5. The owner starts a pairing in the app. The next unclaimed node of that kind that the gateway reports becomes the device.
 
 The list and the detail of a device carry `kind`, which is `plug` or `clamp`, so the app can show the relay switch only on a plug. `kindLabel` is the text for the screen and is not meant to be parsed.
 

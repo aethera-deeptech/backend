@@ -26,6 +26,7 @@ func NewHandlers(svc *Service) *Handlers {
 func (h *Handlers) RegisterApp(r fiber.Router, require fiber.Handler) {
 	r.Get("/gateways", require, h.list)
 	r.Post("/gateways", require, h.claim)
+	r.Post("/gateways/:id/revoke-key", require, h.revokeKey)
 }
 
 // RegisterDevice adds the routes of a gateway under /device/v1. They take no cookie and need no CSRF header, because a gateway is
@@ -75,6 +76,14 @@ func (h *Handlers) claim(c fiber.Ctx) error {
 	}
 
 	return c.Status(http.StatusCreated).JSON(gw)
+}
+
+func (h *Handlers) revokeKey(c fiber.Ctx) error {
+	if err := h.svc.RevokeKey(c.Context(), auth.UserFrom(c).BusinessID, c.Params("id")); err != nil {
+		return err
+	}
+
+	return c.SendStatus(http.StatusNoContent)
 }
 
 func (h *Handlers) enroll(c fiber.Ctx) error {

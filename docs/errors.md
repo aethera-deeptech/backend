@@ -68,7 +68,7 @@ These codes are answers to the device routes under `/device/v1`. The [firmware g
 
 | Code | Status | Meaning |
 |:---|:---|:---|
-| `invalid_gateway_key` | 401 | The key in the bearer header is not valid |
+| `invalid_gateway_key` | 401 | The key in the bearer header is not valid, or the owner cut it off |
 | `enrollment_expired` | 410 | The claim code expired, so the gateway enrolls again |
 | `unsupported_encoding` | 415 | The body of a batch is compressed, which the service does not accept |
 | `payload_too_large` | 413 | A batch is over 256 KiB or holds more than 5000 samples |
