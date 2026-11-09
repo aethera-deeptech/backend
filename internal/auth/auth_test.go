@@ -652,3 +652,226 @@ func TestASessionUseTimeIsRefreshedOnlyAfterTenMinutes(t *testing.T) {
 		t.Fatal("a request after 11 minutes did not refresh the use time")
 	}
 }
+
+// signInAs signs in with a User-Agent and returns the session cookie
+func signInAs(t *testing.T, e *testutil.Env, email, userAgent string) string {
+	t.Helper()
+
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/v1/auth/login", strings.NewReader(`{"email":"`+email+`","password":"kata sandi baik"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Requested-With", "aethera")
+	req.Header.Set("Origin", testutil.Origin)
+	req.Header.Set("User-Agent", userAgent)
+
+	r := e.Send(t, req)
+	if r.Status != http.StatusOK || r.Cookie == "" {
+		t.Fatalf("sign in answered %d %v", r.Status, r.Body)
+	}
+
+	return r.Cookie
+}
+
+func sessionItems(t *testing.T, r testutil.Reply) []map[string]any {
+	t.Helper()
+
+	if r.Status != http.StatusOK {
+		t.Fatalf("the list answered %d %v", r.Status, r.Body)
+	}
+
+	raw, ok := r.Body["items"].([]any)
+	if !ok {
+		t.Fatalf("the list has no items %v", r.Body)
+	}
+
+	out := make([]map[string]any, 0, len(raw))
+
+	for _, v := range raw {
+		item, ok := v.(map[string]any)
+		if !ok {
+			t.Fatalf("an item is not an object %v", v)
+		}
+
+		out = append(out, item)
+	}
+
+	return out
+}
+
+func TestTheListOfSessionsNamesTheDevicesAndPutsThisOneFirst(t *testing.T) {
+	e := testutil.New(t)
+	e.SignUp(t, "budi@example.com")
+	signInAs(t, e, "budi@example.com", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36")
+	phone := signInAs(t, e, "budi@example.com", "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Mobile Safari/537.36")
+
+	// the sign in of the first session came from the verification link with no User-Agent, and the laptop used the service last
+	e.Exec(t, "UPDATE sessions SET last_used_at = now() - interval '3 hours' WHERE label = 'Unknown device'")
+	e.Exec(t, "UPDATE sessions SET last_used_at = now() - interval '1 hour' WHERE label = 'Chrome on Windows'")
+
+	items := sessionItems(t, e.Call(t, http.MethodGet, "/v1/auth/sessions", "", phone))
+
+	labels := []any{}
+	for _, i := range items {
+		labels = append(labels, i["label"])
+	}
+
+	want := []any{"Chrome on Android", "Chrome on Windows", "Unknown device"}
+	if len(items) != 3 || labels[0] != want[0] || labels[1] != want[1] || labels[2] != want[2] {
+		t.Fatalf("the labels are %v, want %v", labels, want)
+	}
+
+	for n, i := range items {
+		if i["current"] != (n == 0) {
+			t.Fatalf("item %d has current %v", n, i["current"])
+		}
+
+		if id, _ := i["id"].(string); len(id) != 36 {
+			t.Fatalf("item %d has the id %v", n, i["id"])
+		}
+
+		for _, key := range []string{"createdAt", "lastUsedAt"} {
+			if _, ok := i[key].(string); !ok {
+				t.Fatalf("item %d has no %s", n, key)
+			}
+		}
+	}
+
+	if r := e.Call(t, http.MethodGet, "/v1/auth/sessions", "", ""); r.Status != http.StatusUnauthorized {
+		t.Fatalf("a list with no session answered %d", r.Status)
+	}
+}
+
+func TestTheListOfSessionsHidesTheOnesThatCannotSignInAndOtherUsers(t *testing.T) {
+	e := testutil.New(t)
+	budi := e.SignUp(t, "budi@example.com")
+	signInAs(t, e, "budi@example.com", "Firefox/1")
+	signInAs(t, e, "budi@example.com", "Firefox/2")
+	e.SignUp(t, "siti@example.com")
+
+	e.Exec(t, "UPDATE sessions SET last_used_at = now() - interval '31 days' WHERE label = 'Firefox' AND ctid = (SELECT ctid FROM sessions WHERE label = 'Firefox' LIMIT 1)")
+
+	items := sessionItems(t, e.Call(t, http.MethodGet, "/v1/auth/sessions", "", budi))
+	if len(items) != 2 {
+		t.Fatalf("the list has %d items, want the verification session and one Firefox", len(items))
+	}
+
+	e.Exec(t, "UPDATE sessions SET created_at = now() - interval '91 days' WHERE label = 'Firefox'")
+
+	if items = sessionItems(t, e.Call(t, http.MethodGet, "/v1/auth/sessions", "", budi)); len(items) != 1 {
+		t.Fatalf("the list has %d items after the absolute limit, want 1", len(items))
+	}
+}
+
+func TestEndingAnotherSessionKeepsThisOne(t *testing.T) {
+	e := testutil.New(t)
+	laptop := e.SignUp(t, "budi@example.com")
+	phone := signInAs(t, e, "budi@example.com", "Mozilla/5.0 (Linux; Android 14) Firefox/130.0")
+
+	var phoneID string
+
+	for _, i := range sessionItems(t, e.Call(t, http.MethodGet, "/v1/auth/sessions", "", laptop)) {
+		if i["label"] == "Firefox on Android" {
+			phoneID, _ = i["id"].(string)
+		}
+	}
+
+	if phoneID == "" {
+		t.Fatal("the phone is not in the list")
+	}
+
+	r := e.Call(t, http.MethodDelete, "/v1/auth/sessions/"+phoneID, "", laptop)
+	if r.Status != http.StatusNoContent || r.Cookie != "" || len(r.Raw) != 0 {
+		t.Fatalf("ending the phone answered %d with cookie %q and body %q", r.Status, r.Cookie, r.Raw)
+	}
+
+	if r = e.Call(t, http.MethodGet, "/v1/auth/me", "", phone); r.Status != http.StatusUnauthorized {
+		t.Fatalf("the phone still works, it answered %d", r.Status)
+	}
+
+	if r = e.Call(t, http.MethodGet, "/v1/auth/me", "", laptop); r.Status != http.StatusOK {
+		t.Fatalf("the laptop stopped, it answered %d", r.Status)
+	}
+
+	if r = e.Call(t, http.MethodDelete, "/v1/auth/sessions/"+phoneID, "", laptop); r.Status != http.StatusNotFound || code(r) != "not_found" {
+		t.Fatalf("a second delete answered %d %v", r.Status, r.Body)
+	}
+}
+
+func TestEndingThisSessionWorksLikeLogout(t *testing.T) {
+	e := testutil.New(t)
+	laptop := e.SignUp(t, "budi@example.com")
+
+	items := sessionItems(t, e.Call(t, http.MethodGet, "/v1/auth/sessions", "", laptop))
+	if len(items) != 1 || items[0]["current"] != true {
+		t.Fatalf("the list is %v", items)
+	}
+
+	id, _ := items[0]["id"].(string)
+
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodDelete, "/v1/auth/sessions/"+id, nil)
+	req.Header.Set("X-Requested-With", "aethera")
+	req.Header.Set("Origin", testutil.Origin)
+	req.Header.Set("Cookie", testutil.CookieName+"="+laptop)
+
+	r := e.Send(t, req)
+	if r.Status != http.StatusNoContent {
+		t.Fatalf("ending this session answered %d", r.Status)
+	}
+
+	cleared := false
+
+	for _, c := range (&http.Response{Header: r.Header}).Cookies() {
+		if c.Name == testutil.CookieName && c.MaxAge < 0 {
+			cleared = true
+		}
+	}
+
+	if !cleared {
+		t.Fatalf("the cookie was not cleared, the headers are %v", r.Header)
+	}
+
+	if r = e.Call(t, http.MethodGet, "/v1/auth/me", "", laptop); r.Status != http.StatusUnauthorized {
+		t.Fatalf("the session still works, it answered %d", r.Status)
+	}
+}
+
+func TestASessionOfAnotherUserOrABadIDIsNotFound(t *testing.T) {
+	e := testutil.New(t)
+	budi := e.SignUp(t, "budi@example.com")
+	siti := e.SignUp(t, "siti@example.com")
+
+	items := sessionItems(t, e.Call(t, http.MethodGet, "/v1/auth/sessions", "", siti))
+	sitiID, _ := items[0]["id"].(string)
+
+	for _, id := range []string{sitiID, "00000000-0000-0000-0000-000000000000", "not-a-uuid", "1"} {
+		if r := e.Call(t, http.MethodDelete, "/v1/auth/sessions/"+id, "", budi); r.Status != http.StatusNotFound || code(r) != "not_found" {
+			t.Fatalf("deleting %q answered %d %v", id, r.Status, r.Body)
+		}
+	}
+
+	if r := e.Call(t, http.MethodGet, "/v1/auth/me", "", siti); r.Status != http.StatusOK {
+		t.Fatalf("the session of the other user ended, it answered %d", r.Status)
+	}
+
+	if r := e.Call(t, http.MethodDelete, "/v1/auth/sessions/"+sitiID, "", ""); r.Status != http.StatusUnauthorized {
+		t.Fatalf("a delete with no session answered %d", r.Status)
+	}
+}
+
+func TestEndingASessionNeedsTheHeaderAndTheOrigin(t *testing.T) {
+	e := testutil.New(t)
+	laptop := e.SignUp(t, "budi@example.com")
+
+	items := sessionItems(t, e.Call(t, http.MethodGet, "/v1/auth/sessions", "", laptop))
+	id, _ := items[0]["id"].(string)
+
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodDelete, "/v1/auth/sessions/"+id, nil)
+	req.Header.Set("Cookie", testutil.CookieName+"="+laptop)
+
+	if r := e.Send(t, req); r.Status != http.StatusForbidden {
+		t.Fatalf("a delete with no CSRF header answered %d", r.Status)
+	}
+
+	if r := e.Call(t, http.MethodGet, "/v1/auth/me", "", laptop); r.Status != http.StatusOK {
+		t.Fatalf("the session ended, it answered %d", r.Status)
+	}
+}

@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -321,7 +322,7 @@ func (s *Store) ChangeEmail(ctx context.Context, userID, email string, hash []by
 }
 
 // CreateSession stores a session and keeps at most maxSessionsForUser for the user, so a stolen password cannot fill the table
-func (s *Store) CreateSession(ctx context.Context, userID string, hash []byte) error {
+func (s *Store) CreateSession(ctx context.Context, userID string, hash []byte, label string) error {
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return fmt.Errorf("start the session save %w", err)
@@ -329,7 +330,7 @@ func (s *Store) CreateSession(ctx context.Context, userID string, hash []byte) e
 
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	if _, err := tx.Exec(ctx, "INSERT INTO sessions (token_hash, user_id) VALUES ($1, $2)", hash, userID); err != nil {
+	if _, err := tx.Exec(ctx, "INSERT INTO sessions (token_hash, user_id, label) VALUES ($1, $2, $3)", hash, userID, label); err != nil {
 		return fmt.Errorf("store the session %w", err)
 	}
 
@@ -368,6 +369,64 @@ func (s *Store) SessionUser(ctx context.Context, hash []byte) (*User, error) {
 	}
 
 	return u, nil
+}
+
+// SessionInfo is one open session of a user as the list shows it
+type SessionInfo struct {
+	ID         string    `json:"id"`
+	Label      string    `json:"label"`
+	CreatedAt  time.Time `json:"createdAt"`
+	LastUsedAt time.Time `json:"lastUsedAt"`
+	Current    bool      `json:"current"`
+}
+
+// Sessions lists the sessions of a user that are inside both their limits, the one of the request first and then the others by the
+// newest use. A session past a limit that the clean up has not removed yet is not shown, because it can no longer sign in.
+func (s *Store) Sessions(ctx context.Context, userID string, current []byte) ([]SessionInfo, error) {
+	rows, err := s.pool.Query(ctx,
+		`SELECT id::text, label, created_at, last_used_at, token_hash = $2 FROM sessions
+		 WHERE user_id = $1 AND last_used_at > now() - make_interval(secs => $3) AND created_at > now() - make_interval(secs => $4)
+		 ORDER BY (token_hash = $2) DESC, last_used_at DESC LIMIT $5`,
+		userID, current, sessionIdle.Seconds(), sessionAbsolute.Seconds(), maxSessionsForUser)
+	if err != nil {
+		return nil, fmt.Errorf("list the sessions %w", err)
+	}
+
+	defer rows.Close()
+
+	out := []SessionInfo{}
+
+	for rows.Next() {
+		var i SessionInfo
+		if err := rows.Scan(&i.ID, &i.Label, &i.CreatedAt, &i.LastUsedAt, &i.Current); err != nil {
+			return nil, fmt.Errorf("read a session %w", err)
+		}
+
+		out = append(out, i)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read the sessions %w", err)
+	}
+
+	return out, nil
+}
+
+// DeleteSessionByID ends one session of the user. It reports whether the session existed and whether it was the one of the request,
+// and the id of another user finds nothing.
+func (s *Store) DeleteSessionByID(ctx context.Context, userID, id string, current []byte) (found, wasCurrent bool, err error) {
+	var hash []byte
+
+	err = s.pool.QueryRow(ctx, "DELETE FROM sessions WHERE user_id = $1 AND id = $2 RETURNING token_hash", userID, id).Scan(&hash)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, false, nil
+	}
+
+	if err != nil {
+		return false, false, fmt.Errorf("end the session %w", err)
+	}
+
+	return true, bytes.Equal(hash, current), nil
 }
 
 // DeleteSession ends one session

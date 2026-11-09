@@ -14,6 +14,8 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/google/uuid"
+
 	"github.com/aethera-deeptech/backend/internal/api"
 )
 
@@ -247,7 +249,7 @@ func busyOr(err error) error {
 }
 
 // Login checks the email and the password and starts a session. It returns the session token for the cookie.
-func (s *Service) Login(ctx context.Context, ip, rawEmail, password string) (string, Me, error) {
+func (s *Service) Login(ctx context.Context, ip, rawEmail, password, userAgent string) (string, Me, error) {
 	email, ok := normalizeEmail(rawEmail)
 	if !ok || password == "" {
 		fields := map[string]string{}
@@ -297,7 +299,7 @@ func (s *Service) Login(ctx context.Context, ip, rawEmail, password string) (str
 		return "", Me{}, api.NewError(http.StatusForbidden, "email_not_verified", "The email is not verified")
 	}
 
-	token, err := s.startSession(ctx, user.ID)
+	token, err := s.startSession(ctx, user.ID, userAgent)
 	if err != nil {
 		return "", Me{}, err
 	}
@@ -305,13 +307,13 @@ func (s *Service) Login(ctx context.Context, ip, rawEmail, password string) (str
 	return token, meOf(user), nil
 }
 
-func (s *Service) startSession(ctx context.Context, userID string) (string, error) {
+func (s *Service) startSession(ctx context.Context, userID, userAgent string) (string, error) {
 	raw, hash, err := newToken()
 	if err != nil {
 		return "", err
 	}
 
-	if err := s.store.CreateSession(ctx, userID, hash); err != nil {
+	if err := s.store.CreateSession(ctx, userID, hash, deviceLabel(userAgent)); err != nil {
 		return "", err
 	}
 
@@ -332,6 +334,30 @@ func (s *Service) Logout(ctx context.Context, token string) error {
 	return s.store.DeleteSession(ctx, hashToken(token))
 }
 
+// Sessions lists the open sessions of the user, and marks the one that the token belongs to
+func (s *Service) Sessions(ctx context.Context, userID, token string) ([]SessionInfo, error) {
+	return s.store.Sessions(ctx, userID, hashToken(token))
+}
+
+// EndSession ends one session of the user by its id. It reports whether the session was the one of the token. An id that is not a uuid or
+// that belongs to another user answers not found.
+func (s *Service) EndSession(ctx context.Context, userID, token, id string) (bool, error) {
+	if _, err := uuid.Parse(id); err != nil {
+		return false, api.NotFound()
+	}
+
+	found, wasCurrent, err := s.store.DeleteSessionByID(ctx, userID, id, hashToken(token))
+	if err != nil {
+		return false, err
+	}
+
+	if !found {
+		return false, api.NotFound()
+	}
+
+	return wasCurrent, nil
+}
+
 // isHidden reports a control character or a format character, such as a zero width space or a right to left override, which a name
 // has no use for and which can make a name look like another one
 func isHidden(r rune) bool { return unicode.IsControl(r) || unicode.Is(unicode.Cf, r) }
@@ -339,7 +365,7 @@ func isHidden(r rune) bool { return unicode.IsControl(r) || unicode.Is(unicode.C
 func validToken(t string) bool { return len(t) >= 32 && len(t) <= 128 }
 
 // VerifyEmail uses the token of the link, verifies the email and starts a session
-func (s *Service) VerifyEmail(ctx context.Context, ip, token string) (string, Me, error) {
+func (s *Service) VerifyEmail(ctx context.Context, ip, token, userAgent string) (string, Me, error) {
 	if !validToken(token) {
 		return "", Me{}, api.Validation(map[string]string{"token": "invalid"})
 	}
@@ -362,7 +388,7 @@ func (s *Service) VerifyEmail(ctx context.Context, ip, token string) (string, Me
 		return "", Me{}, err
 	}
 
-	session, err := s.startSession(ctx, userID)
+	session, err := s.startSession(ctx, userID, userAgent)
 	if err != nil {
 		return "", Me{}, err
 	}

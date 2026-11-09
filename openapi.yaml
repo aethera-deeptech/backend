@@ -230,6 +230,43 @@ paths:
         "204":
           description: The session is gone and the cookie is cleared
         "4XX": {$ref: "#/components/responses/Error"}
+  /v1/auth/sessions:
+    get:
+      tags: [Account]
+      operationId: listSessions
+      summary: List the devices that are signed in
+      description: The list holds the sessions of the user that can still sign in, at most 20. The session of this request comes first, and the others follow by the newest use. The label comes from the User-Agent of the sign in, such as `Chrome on Windows`, and the service keeps no address. `lastUsedAt` moves at most every 10 minutes.
+      responses:
+        "200":
+          description: The sessions
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: {$ref: "#/components/schemas/Session"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "4XX": {$ref: "#/components/responses/Error"}
+  /v1/auth/sessions/{id}:
+    delete:
+      tags: [Account]
+      operationId: endSession
+      summary: End one session
+      description: The id may name the session of this request, which then works like logout and also clears the cookie. The id of another user and an id that is not a uuid both answer 404.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        "204":
+          description: The session is gone
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "4XX": {$ref: "#/components/responses/Error"}
   /v1/auth/me:
     get:
       tags: [Account]
@@ -1151,6 +1188,15 @@ components:
         email: {$ref: "#/components/schemas/Email"}
         emailVerified: {type: boolean}
         businessName: {type: string, description: "The name of the business. A Google sign up gets the placeholder `Usaha saya` until the owner sets a name."}
+    Session:
+      type: object
+      required: [id, label, createdAt, lastUsedAt, current]
+      properties:
+        id: {type: string, format: uuid}
+        label: {type: string, minLength: 1, maxLength: 60, examples: [Chrome on Windows], description: "The browser and the system of the sign in. A sign in with no readable User-Agent, and a session that started before this field existed, has `Unknown device`."}
+        createdAt: {type: string, format: date-time}
+        lastUsedAt: {type: string, format: date-time}
+        current: {type: boolean, description: True for the session of this request}
     WorkHours:
       type: object
       required: [days, start, end]

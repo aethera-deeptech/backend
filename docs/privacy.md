@@ -15,7 +15,7 @@ This page describes, from the code, which personal data the backend keeps, who c
 | The work of a business | Tips and the decisions of the owner, anomalies, the pieces made each day, and the relay commands and schedules | `tips`, `anomalies`, `production_records`, `relay_commands` and `relay_schedules` |
 | A client | A short hash of the client address or of the email, with the name of the limit and the time, for two hours. A short hash of an IPv4 address can be guessed, so treat it as pseudonymous | `rate_limit_events` |
 
-The service never stores a password in clear text. A request body is not written to the access log. A session holds no address and no user agent. The data of a gateway shows when the machines of a business run, so treat it as business data.
+The service never stores a password in clear text. A request body is not written to the access log. A session holds no address. It holds a short label of the browser and the system, such as Chrome on Windows, made from the User-Agent at sign in, and the User-Agent itself is not stored. The data of a gateway shows when the machines of a business run, so treat it as business data.
 
 ## Who can read it
 
