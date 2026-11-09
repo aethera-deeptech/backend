@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.14.0](https://github.com/aethera-deeptech/backend/compare/v0.13.0...v0.14.0) (2026-11-09)
+
+
+### Features
+
+* **device:** write the moments of the device and relay views with the business offset ([6e2c8f6](https://github.com/aethera-deeptech/backend/commit/6e2c8f6e75e19730480a2fa78ca50e1a67bf1010))
+* **device:** write the moments of the device and relay views with the business offset ([be4bde1](https://github.com/aethera-deeptech/backend/commit/be4bde1df1c93ce7194c9019442f68a101d1dc0b))
+
+
+### Bug Fixes
+
+* **device:** write the energy reset answer with the business offset ([ee49225](https://github.com/aethera-deeptech/backend/commit/ee49225b6b4dbf9de735bdad1f4ffee11d428308))
+* **gateway:** count a retry of the last batch as a sign of life ([63436a1](https://github.com/aethera-deeptech/backend/commit/63436a170b85671f910a5248d515a7c50b304621))
+* **gateway:** count a retry of the last batch as a sign of life ([ecccab3](https://github.com/aethera-deeptech/backend/commit/ecccab32872053824d2845738b955923105fe750))
+
 ## [0.13.0](https://github.com/aethera-deeptech/backend/compare/v0.12.0...v0.13.0) (2026-11-09)
 
 
