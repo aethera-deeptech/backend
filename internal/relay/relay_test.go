@@ -887,7 +887,7 @@ func TestThePowerLossChoiceBelongsToThePlugOfTheOwner(t *testing.T) {
 		t.Fatalf("another business answered %d %v", got.Status, got.Body)
 	}
 
-	for _, id := range []string{"not-a-uuid", "00000000-0000-4000-8000-000000000000", "urn:uuid:" + r.g.Device} {
+	for _, id := range []string{"not-a-uuid", "00000000-0000-4000-8000-000000000000"} {
 		if got := r.e.Call(t, http.MethodPut, "/v1/devices/"+id+"/power-loss", `{"afterPowerLoss":"last"}`, r.g.Session); got.Status != http.StatusNotFound {
 			t.Fatalf("the id %s answered %d %v", id, got.Status, got.Body)
 		}

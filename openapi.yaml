@@ -878,6 +878,7 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               required: [afterPowerLoss]
               properties:
                 afterPowerLoss: {type: string, enum: [off, last]}
