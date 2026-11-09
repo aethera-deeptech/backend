@@ -193,11 +193,15 @@ func detectAnomaly(ctx context.Context, tx pgx.Tx, gatewayID, nodeID string, sam
 // the power is within what is usual for that hour
 func raise(ctx context.Context, tx pgx.Tx, gatewayID, nodeID, kind string, s *stored, level string) error {
 	// the debounce is for each kind, so a surge does not hide the overload that the node reports a little later. It is checked before the
-	// usual power, so a node inside the window costs one query.
+	// usual power, so a node inside the window costs one query. An overload that a command of the owner or of a schedule has answered does
+	// not hold back the next one. The gateway fetched an applied command to switch the plug on after the overload was stored and before
+	// this sample, so the plug was switched on and cut itself again, and the relay view has to show the new cause.
 	var recent bool
 	if err := tx.QueryRow(ctx,
-		"SELECT EXISTS (SELECT 1 FROM anomalies WHERE gateway_id = $1 AND node_id = $2 AND kind = $3 AND at > $4)",
-		gatewayID, nodeID, kind, s.t.Add(-anomalyDebounce)).Scan(&recent); err != nil {
+		`SELECT EXISTS (SELECT 1 FROM anomalies a WHERE a.gateway_id = $1 AND a.node_id = $2 AND a.kind = $3 AND a.at > $4
+		   AND NOT ($6 AND EXISTS (SELECT 1 FROM relay_commands c WHERE c.gateway_id = a.gateway_id AND c.node_id = a.node_id
+		     AND c.action = 'on' AND c.status = 'applied' AND c.sent_at > a.at AND c.sent_at < $5)))`,
+		gatewayID, nodeID, kind, s.t.Add(-anomalyDebounce), s.t, kind == "overload").Scan(&recent); err != nil {
 		return fmt.Errorf("read the anomalies %w", err)
 	}
 

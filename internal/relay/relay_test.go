@@ -613,3 +613,96 @@ func TestAnOverloadThatArrivesWithTheResultOfACommandIsStillTheCause(t *testing.
 		t.Fatalf("an overload from before the command is shown %v", v)
 	}
 }
+
+func (r *rig) overloads(t *testing.T) int {
+	t.Helper()
+
+	var n int
+	if err := r.e.Pool.QueryRow(t.Context(), "SELECT count(*) FROM anomalies WHERE kind = 'overload'").Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+
+	return n
+}
+
+// TestAnOverloadAfterTheOwnerSwitchedThePlugOnIsStoredAgain checks that the debounce of 6 hours does not hide the second cut of a plug,
+// so the relay view names the new cause
+func TestAnOverloadAfterTheOwnerSwitchedThePlugOnIsStoredAgain(t *testing.T) {
+	r := newRig(t)
+
+	base := time.Now().Unix() - 600
+
+	r.sampleAt(t, base+10, `,"r":1`, "")
+	r.sampleAt(t, base+20, `,"a":3,"r":0`, "")
+
+	if n := r.overloads(t); n != 1 {
+		t.Fatalf("the first overload left %d rows", n)
+	}
+
+	// the owner switches the plug on and the gateway reports the result
+	id, _ := r.command(t, "on").Body["id"].(string)
+
+	r.batch(t, nil, "")
+	r.sampleAt(t, base+30, `,"r":1`, fmt.Sprintf(`[{"id":"%s","ok":true}]`, id))
+
+	// the plug cuts itself again. The sample is a few seconds ahead, so it is newer than the moment that the gateway fetched the command.
+	r.sampleAt(t, time.Now().Unix()+5, `,"a":3,"r":0`, "")
+
+	if n := r.overloads(t); n != 2 {
+		t.Fatalf("an overload after a command that switched the plug on left %d rows, want 2", n)
+	}
+
+	v := r.relayView(t)
+	cut, _ := v["cutByDevice"].(map[string]any)
+
+	if v["state"] != "off" || cut["reason"] != "overload" {
+		t.Fatalf("a plug that cut itself again shows %v", v)
+	}
+}
+
+// TestAnOverloadWithNoCommandThatSwitchedThePlugOnIsStillHeldBack checks that the debounce stays for a repeat of the same overload, also
+// when the only command was one that switched the plug off
+func TestAnOverloadWithNoCommandThatSwitchedThePlugOnIsStillHeldBack(t *testing.T) {
+	r := newRig(t)
+
+	base := time.Now().Unix() - 600
+
+	r.sampleAt(t, base+10, `,"r":1`, "")
+	r.sampleAt(t, base+20, `,"a":3,"r":0`, "")
+	r.sampleAt(t, base+30, `,"a":3,"r":0`, "")
+
+	if n := r.overloads(t); n != 1 {
+		t.Fatalf("a repeat of the overload left %d rows, want 1", n)
+	}
+
+	id, _ := r.command(t, "off").Body["id"].(string)
+
+	r.batch(t, nil, "")
+	r.sampleAt(t, base+40, `,"r":0`, fmt.Sprintf(`[{"id":"%s","ok":true}]`, id))
+	r.sampleAt(t, time.Now().Unix()+5, `,"a":3,"r":0`, "")
+
+	if n := r.overloads(t); n != 1 {
+		t.Fatalf("an overload after a command that switched the plug off left %d rows, want 1", n)
+	}
+}
+
+// TestAnOverloadInTheSameBatchAsTheResultOfTheOnCommandIsStoredAgain checks the order inside one batch. The result of the command is
+// stored before the samples, so the second overload is not held back when it comes together with the result.
+func TestAnOverloadInTheSameBatchAsTheResultOfTheOnCommandIsStoredAgain(t *testing.T) {
+	r := newRig(t)
+
+	base := time.Now().Unix() - 600
+
+	r.sampleAt(t, base+10, `,"r":1`, "")
+	r.sampleAt(t, base+20, `,"a":3,"r":0`, "")
+
+	id, _ := r.command(t, "on").Body["id"].(string)
+
+	// the gateway fetches the command, and the next batch has the result and the new overload together
+	r.batch(t, nil, "")
+	r.sampleAt(t, time.Now().Unix()+5, `,"a":3,"r":0`, fmt.Sprintf(`[{"id":"%s","ok":true}]`, id))
+
+	if n := r.overloads(t); n != 2 {
+		t.Fatalf("an overload that came with the result left %d rows, want 2", n)
+	}
+}
