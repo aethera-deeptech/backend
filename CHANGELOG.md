@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.12.0](https://github.com/aethera-deeptech/backend/compare/v0.11.0...v0.12.0) (2026-11-09)
+
+
+### Features
+
+* **gateway:** let the owner cut off the key of a gateway ([bee4e18](https://github.com/aethera-deeptech/backend/commit/bee4e182cdd0a0196a2b7dbfae0237869a8a94d3))
+
+
+### Bug Fixes
+
+* **gateway:** lock the waiting codes before the gateway on revoke ([50b45d3](https://github.com/aethera-deeptech/backend/commit/50b45d3dd3e74a70c5882da3be6cb58335cc70ff))
+* **monitoring:** leave unmatched paths out of the busy rule ([28ed437](https://github.com/aethera-deeptech/backend/commit/28ed437356da468fc9e89c747c6bca89f3985c8f))
+
 ## [0.11.0](https://github.com/aethera-deeptech/backend/compare/v0.10.0...v0.11.0) (2026-11-09)
 
 
