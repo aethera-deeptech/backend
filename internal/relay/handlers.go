@@ -25,6 +25,7 @@ func (h *Handlers) Register(r fiber.Router, require fiber.Handler) {
 	r.Post("/devices/:id/relay", require, h.send)
 	r.Put("/devices/:id/schedule", require, h.setSchedule)
 	r.Delete("/devices/:id/schedule", require, h.deleteSchedule)
+	r.Put("/devices/:id/power-loss", require, h.setPowerLoss)
 }
 
 func (h *Handlers) get(c fiber.Ctx) error {
@@ -61,6 +62,21 @@ func (h *Handlers) setSchedule(c fiber.Ctx) error {
 	}
 
 	out, err := h.svc.SetSchedule(c.Context(), auth.UserFrom(c).BusinessID, c.Params("id"), in)
+	if err != nil {
+		return err
+	}
+
+	return c.JSON(out)
+}
+
+func (h *Handlers) setPowerLoss(c fiber.Ctx) error {
+	var in PowerLossPatch
+
+	if err := api.Decode(c, &in); err != nil {
+		return err
+	}
+
+	out, err := h.svc.SetPowerLoss(c.Context(), auth.UserFrom(c).BusinessID, c.Params("id"), in)
 	if err != nil {
 		return err
 	}

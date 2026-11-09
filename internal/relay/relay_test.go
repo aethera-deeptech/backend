@@ -808,3 +808,104 @@ func TestTheMomentsOfTheRelayCarryTheOffsetOfTheBusiness(t *testing.T) {
 		}
 	}
 }
+
+func (r *rig) powerLoss(t *testing.T, body string) testutil.Reply {
+	t.Helper()
+
+	return r.e.Call(t, http.MethodPut, "/v1/devices/"+r.g.Device+"/power-loss", body, r.g.Session)
+}
+
+func TestThePowerLossChoiceStartsOnOffAndTheOwnerChangesIt(t *testing.T) {
+	r := newRig(t)
+
+	if got := r.relayView(t)["afterPowerLoss"]; got != "off" {
+		t.Fatalf("a new plug has the choice %v, want off", got)
+	}
+
+	if got := r.powerLoss(t, `{"afterPowerLoss":"last"}`); got.Status != http.StatusOK || got.Body["afterPowerLoss"] != "last" {
+		t.Fatalf("the choice answered %d %v", got.Status, got.Body)
+	}
+
+	if got := r.relayView(t)["afterPowerLoss"]; got != "last" {
+		t.Fatalf("the view shows %v after the choice, want last", got)
+	}
+
+	// the same value again and the way back are fine
+	for _, v := range []string{"last", "off"} {
+		if got := r.powerLoss(t, `{"afterPowerLoss":"`+v+`"}`); got.Status != http.StatusOK || got.Body["afterPowerLoss"] != v {
+			t.Fatalf("the value %s answered %d %v", v, got.Status, got.Body)
+		}
+	}
+
+	if got := r.relayView(t)["afterPowerLoss"]; got != "off" {
+		t.Fatalf("the view shows %v at the end, want off", got)
+	}
+}
+
+func TestThePowerLossChoiceIsChecked(t *testing.T) {
+	r := newRig(t)
+
+	// the table refuses a value that the route would refuse, so a later route cannot store one by mistake
+	if _, err := r.e.Pool.Exec(t.Context(), "UPDATE devices SET after_power_loss = 'on'"); err == nil {
+		t.Fatal("the table accepted the value on")
+	}
+
+	for name, tc := range map[string]struct {
+		body   string
+		status int
+		code   string
+		field  string
+	}{
+		"unknown value": {`{"afterPowerLoss":"on"}`, http.StatusUnprocessableEntity, "validation_failed", "invalid"},
+		"upper case":    {`{"afterPowerLoss":"OFF"}`, http.StatusUnprocessableEntity, "validation_failed", "invalid"},
+		"empty":         {`{"afterPowerLoss":""}`, http.StatusUnprocessableEntity, "validation_failed", "required"},
+		"missing":       {`{}`, http.StatusUnprocessableEntity, "validation_failed", "required"},
+		"unknown field": {`{"afterPowerLoss":"off","extra":1}`, http.StatusBadRequest, "invalid_json", ""},
+		"not a string":  {`{"afterPowerLoss":1}`, http.StatusBadRequest, "invalid_json", ""},
+		"no body":       {``, http.StatusBadRequest, "invalid_json", ""},
+	} {
+		got := r.powerLoss(t, tc.body)
+		if got.Status != tc.status || got.Code() != tc.code {
+			t.Fatalf("%s answered %d %v, want %d %s", name, got.Status, got.Body, tc.status, tc.code)
+		}
+
+		if fields, _ := got.Body["fields"].(map[string]any); tc.field != "" && fields["afterPowerLoss"] != tc.field {
+			t.Fatalf("%s names the fields %v, want %s", name, got.Body["fields"], tc.field)
+		}
+	}
+
+	if got := r.relayView(t)["afterPowerLoss"]; got != "off" {
+		t.Fatalf("a refused call changed the choice to %v", got)
+	}
+}
+
+func TestThePowerLossChoiceBelongsToThePlugOfTheOwner(t *testing.T) {
+	r := newRig(t)
+	other := r.e.SeedDevice(t, "siti@example.com", strings.Repeat("j", 40))
+
+	if got := r.e.Call(t, http.MethodPut, "/v1/devices/"+r.g.Device+"/power-loss", `{"afterPowerLoss":"last"}`, other.Session); got.Status != http.StatusNotFound {
+		t.Fatalf("another business answered %d %v", got.Status, got.Body)
+	}
+
+	for _, id := range []string{"not-a-uuid", "00000000-0000-4000-8000-000000000000"} {
+		if got := r.e.Call(t, http.MethodPut, "/v1/devices/"+id+"/power-loss", `{"afterPowerLoss":"last"}`, r.g.Session); got.Status != http.StatusNotFound {
+			t.Fatalf("the id %s answered %d %v", id, got.Status, got.Body)
+		}
+	}
+
+	if got := r.e.Call(t, http.MethodPut, "/v1/devices/"+r.g.Device+"/power-loss", `{"afterPowerLoss":"last"}`, ""); got.Status != http.StatusUnauthorized {
+		t.Fatalf("no session answered %d", got.Status)
+	}
+
+	if got := r.relayView(t)["afterPowerLoss"]; got != "off" {
+		t.Fatalf("a refused call changed the choice to %v", got)
+	}
+
+	// a clamp has no relay
+	r.e.Exec(t, "UPDATE devices SET kind = 'clamp'")
+	r.e.Exec(t, "UPDATE nodes SET kind = 'clamp'")
+
+	if got := r.powerLoss(t, `{"afterPowerLoss":"last"}`); got.Status != http.StatusConflict || got.Code() != "no_relay" {
+		t.Fatalf("a clamp answered %d %v", got.Status, got.Body)
+	}
+}
