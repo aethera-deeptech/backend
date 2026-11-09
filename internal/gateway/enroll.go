@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -54,6 +55,8 @@ type Gateway struct {
 	Name string `json:"name"`
 	// LastSeenAt is the time of the last batch, and the time of the claim for a gateway that never sent one
 	LastSeenAt time.Time `json:"lastSeenAt"`
+	// KeyRevoked is true from the time the owner cut off the key until the hardware is claimed again with a new key
+	KeyRevoked bool `json:"keyRevoked"`
 }
 
 // Service holds the rules of the gateways
@@ -321,7 +324,7 @@ func (s *Service) Claim(ctx context.Context, businessID, rawCode, rawName string
 		return Gateway{}, api.NewError(http.StatusConflict, "gateway_claimed_elsewhere", "This gateway belongs to another business")
 	default:
 		err = tx.QueryRow(ctx,
-			"UPDATE gateways SET name = $3, key_hash = $2 WHERE hardware_id = $1 RETURNING id, name, COALESCE(last_seen_at, created_at)",
+			"UPDATE gateways SET name = $3, key_hash = $2, key_revoked_at = NULL WHERE hardware_id = $1 RETURNING id, name, COALESCE(last_seen_at, created_at)",
 			hardwareID, keyHash, name).Scan(&gw.ID, &gw.Name, &gw.LastSeenAt)
 	}
 
@@ -347,7 +350,7 @@ func (s *Service) Claim(ctx context.Context, businessID, rawCode, rawName string
 
 // List returns the gateways of a business by name
 func (s *Service) List(ctx context.Context, businessID string) ([]Gateway, error) {
-	rows, err := s.pool.Query(ctx, "SELECT id, name, COALESCE(last_seen_at, created_at) FROM gateways WHERE business_id = $1 ORDER BY lower(name), id", businessID)
+	rows, err := s.pool.Query(ctx, "SELECT id, name, COALESCE(last_seen_at, created_at), key_revoked_at IS NOT NULL FROM gateways WHERE business_id = $1 ORDER BY lower(name), id", businessID)
 	if err != nil {
 		return nil, fmt.Errorf("list the gateways %w", err)
 	}
@@ -357,7 +360,7 @@ func (s *Service) List(ctx context.Context, businessID string) ([]Gateway, error
 
 	for rows.Next() {
 		var g Gateway
-		if err := rows.Scan(&g.ID, &g.Name, &g.LastSeenAt); err != nil {
+		if err := rows.Scan(&g.ID, &g.Name, &g.LastSeenAt, &g.KeyRevoked); err != nil {
 			return nil, fmt.Errorf("read a gateway %w", err)
 		}
 
@@ -365,4 +368,61 @@ func (s *Service) List(ctx context.Context, businessID string) ([]Gateway, error
 	}
 
 	return out, rows.Err()
+}
+
+// RevokeKey cuts off the key of a gateway of the business. The key hash becomes 32 random bytes that no key hashes to, so the old key
+// gets 401 from then on, and the hash stays unique and the right length. The devices and the readings stay. The hardware gets a new key
+// when it enrolls again and the owner claims its new code. The same call twice is fine. An id of another business, an unknown id and
+// an id that is not a uuid all answer not found.
+func (s *Service) RevokeKey(ctx context.Context, businessID, id string) error {
+	// the parser also accepts forms such as urn:uuid: and braces, so only the plain lower case form counts as one
+	parsed, err := uuid.Parse(id)
+	if err != nil || parsed.String() != id {
+		return api.NotFound()
+	}
+
+	unusable := make([]byte, sha256.Size)
+	if _, err := rand.Read(unusable); err != nil {
+		return fmt.Errorf("make an unusable key hash %w", err)
+	}
+
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return fmt.Errorf("start the cut off %w", err)
+	}
+
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	// the rows are locked in the order of Claim, the waiting codes first and the gateway after them, so a revoke and a claim of the same
+	// hardware wait for each other and never deadlock. The hardware id is read without a lock, because a gateway never changes it.
+	var hardwareID string
+
+	err = tx.QueryRow(ctx, "SELECT hardware_id FROM gateways WHERE id = $1 AND business_id = $2", parsed.String(), businessID).Scan(&hardwareID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return api.NotFound()
+	}
+
+	if err != nil {
+		return fmt.Errorf("read the gateway %w", err)
+	}
+
+	// a code that waits for this hardware may hold the hash of the key that was cut off, and a claim of it would bring that key back
+	if _, err := tx.Exec(ctx, "DELETE FROM gateway_enrollments WHERE gateway_id IS NULL AND hardware_id = $1", hardwareID); err != nil {
+		return fmt.Errorf("remove the waiting codes %w", err)
+	}
+
+	tag, err := tx.Exec(ctx, "UPDATE gateways SET key_hash = $3, key_revoked_at = now() WHERE id = $1 AND business_id = $2", parsed.String(), businessID, unusable)
+	if err != nil {
+		return fmt.Errorf("cut off the key %w", err)
+	}
+
+	if tag.RowsAffected() == 0 {
+		return api.NotFound()
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("finish the cut off %w", err)
+	}
+
+	return nil
 }

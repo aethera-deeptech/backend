@@ -11,7 +11,7 @@ The gateway builds against this REST API.
 3. It polls `GET /device/v1/enroll/{pollId}` until the owner has typed the code in the app.
 4. From then on it sends `POST /device/v1/readings` with its key as a bearer token, for ever.
 
-A gateway that loses its flash makes a new key and enrolls again, and the owner claims the new code. A gateway keeps its sequence number on the service side, so the first batch after a new enroll with the same hardware id can answer 409 with a higher `expectedSeq`, and the gateway continues from that number (see the answer to a batch below).
+A gateway that loses its flash, or whose key the owner cut off, makes a new key and enrolls again, and the owner claims the new code. A gateway keeps its sequence number on the service side, so the first batch after a new enroll with the same hardware id can answer 409 with a higher `expectedSeq`, and the gateway continues from that number (see the answer to a batch below).
 
 ## 1. Enroll
 
@@ -89,7 +89,7 @@ Authorization: Bearer <the key text>
 - `serverTime` is the clock of the service. Use it to set the clock of the gateway when the clock is unset or far off.
 - `commands` holds the relay commands that wait for this gateway, see the next section.
 - The answer 409 with `expectedSeq` means that the batch skips a number or that its number is lower than the one that the service stored last. A gateway that lost its counter (a reset or a new key) learns from this where to continue. Send the batch again with `seq` equal to `expectedSeq`, and renumber the batches that are still in the buffer.
-- The answer 401 means that the service does not know the key. A sensible policy is to stop and enroll again. The answer 413 means that the batch is too large, so send fewer samples. The answer 422 names the fields that are not valid. The answer 400 `invalid_json` means that the body is not JSON, is empty or holds a field that the service does not know, so do not add fields of your own. The answer 429 names the wait in `retryAfterSeconds`, so wait that many seconds.
+- The answer 401 means that the service does not know the key. The owner can also cut off a key in the app, and the old key then gets this answer too, while the enroll route and its poll never answer 401. A sensible policy is to stop and enroll again. The answer 413 means that the batch is too large, so send fewer samples. The answer 422 names the fields that are not valid. The answer 400 `invalid_json` means that the body is not JSON, is empty or holds a field that the service does not know, so do not add fields of your own. The answer 429 names the wait in `retryAfterSeconds`, so wait that many seconds.
 - A network error or a 5xx answer is a retry of the same batch with the same `seq`, after a pause that grows from 5 seconds to 5 minutes.
 
 ## 4. Relay commands

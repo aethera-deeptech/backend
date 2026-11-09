@@ -529,3 +529,145 @@ func TestTheJanitorKeepsRecentReadingsAndDeletesOldOnes(t *testing.T) {
 		t.Fatalf("the anomaly that is left has the peak %v, want the one of 89 days with 600", keptPeak)
 	}
 }
+
+func gatewayItem(t *testing.T, g rig) map[string]any {
+	t.Helper()
+
+	list := g.e.Call(t, http.MethodGet, "/v1/gateways", "", g.session)
+	items, _ := list.Body["items"].([]any)
+
+	if len(items) != 1 {
+		t.Fatalf("the list is %v", list.Body)
+	}
+
+	item, _ := items[0].(map[string]any)
+
+	return item
+}
+
+func TestRevokingTheKeyCutsOffTheOldKeyAndKeepsTheData(t *testing.T) {
+	g := enrolled(t, "budi@example.com", "ESP32-AABBCC", "a")
+
+	if r := g.send(t, batch(1, "NODE-0001", "plug", sample(0, 310))); r.Status != http.StatusOK {
+		t.Fatalf("the first batch answered %d %v", r.Status, r.Body)
+	}
+
+	if item := gatewayItem(t, g); item["keyRevoked"] != false {
+		t.Fatalf("a new gateway shows keyRevoked %v", item["keyRevoked"])
+	}
+
+	r := g.e.Call(t, http.MethodPost, "/v1/gateways/"+g.gateway+"/revoke-key", "", g.session)
+	if r.Status != http.StatusNoContent || len(r.Raw) != 0 {
+		t.Fatalf("revoke answered %d %q", r.Status, r.Raw)
+	}
+
+	if r = g.send(t, batch(2, "NODE-0001", "plug", sample(0, 310))); r.Status != http.StatusUnauthorized || r.Code() != "invalid_gateway_key" {
+		t.Fatalf("the old key answered %d %v, want 401 invalid_gateway_key", r.Status, r.Body)
+	}
+
+	if item := gatewayItem(t, g); item["keyRevoked"] != true || item["id"] != g.gateway {
+		t.Fatalf("the list after the revoke is %v", item)
+	}
+
+	var readings, gateways int
+	if err := g.e.Pool.QueryRow(t.Context(), "SELECT (SELECT count(*) FROM readings), (SELECT count(*) FROM gateways)").Scan(&readings, &gateways); err != nil || readings != 1 || gateways != 1 {
+		t.Fatalf("after the revoke there are %d readings and %d gateways (%v), want 1 and 1", readings, gateways, err)
+	}
+
+	// the same call again is fine
+	if r = g.e.Call(t, http.MethodPost, "/v1/gateways/"+g.gateway+"/revoke-key", "", g.session); r.Status != http.StatusNoContent {
+		t.Fatalf("a second revoke answered %d", r.Status)
+	}
+
+	// the hardware enrolls again with a new key, which no step of this answers 401 for, and the owner claims it
+	newKey, hash := key("n")
+
+	r = g.e.CallWith(t, http.MethodPost, "/device/v1/enroll", `{"hardwareId":"ESP32-AABBCC","keyHash":"`+hash+`"}`, nil)
+	if r.Status != http.StatusCreated {
+		t.Fatalf("enroll after the revoke answered %d %v", r.Status, r.Body)
+	}
+
+	code, _ := r.Body["claimCode"].(string)
+	poll, _ := r.Body["pollId"].(string)
+
+	if r = g.e.CallWith(t, http.MethodGet, "/device/v1/enroll/"+poll, "", nil); r.Status != http.StatusAccepted {
+		t.Fatalf("the poll before the claim answered %d", r.Status)
+	}
+
+	r = g.e.Call(t, http.MethodPost, "/v1/gateways", `{"claimCode":"`+code+`","name":"Hub baru"}`, g.session)
+	if r.Status != http.StatusCreated || r.Body["id"] != g.gateway || r.Body["keyRevoked"] != false {
+		t.Fatalf("the claim answered %d %v", r.Status, r.Body)
+	}
+
+	if item := gatewayItem(t, g); item["keyRevoked"] != false {
+		t.Fatalf("after the claim the list shows keyRevoked %v", item["keyRevoked"])
+	}
+
+	// the counter is kept, so the probe of the gateway learns the next number
+	probe := g.e.CallWith(t, http.MethodPost, "/device/v1/readings", batch(2147483647, "NODE-0001", "plug", sample(0, 5)), bearer(newKey))
+	if probe.Status != http.StatusConflict || probe.Body["expectedSeq"] != float64(2) {
+		t.Fatalf("the probe answered %d %v, want 409 with expectedSeq 2", probe.Status, probe.Body)
+	}
+
+	if r = g.e.CallWith(t, http.MethodPost, "/device/v1/readings", batch(2, "NODE-0001", "plug", sample(0, 5)), bearer(newKey)); r.Status != http.StatusOK {
+		t.Fatalf("the new key answered %d %v", r.Status, r.Body)
+	}
+}
+
+func TestRevokingTheKeyRemovesACodeThatWaitsForTheSameHardware(t *testing.T) {
+	g := enrolled(t, "budi@example.com", "ESP32-AABBCC", "a")
+
+	// the gateway asks for a code again with its old key, and the owner cuts the key off before the code is claimed
+	_, oldHash := key("a")
+
+	r := g.e.CallWith(t, http.MethodPost, "/device/v1/enroll", `{"hardwareId":"ESP32-AABBCC","keyHash":"`+oldHash+`"}`, nil)
+	code, _ := r.Body["claimCode"].(string)
+
+	if r = g.e.Call(t, http.MethodPost, "/v1/gateways/"+g.gateway+"/revoke-key", "", g.session); r.Status != http.StatusNoContent {
+		t.Fatalf("revoke answered %d", r.Status)
+	}
+
+	if r = g.e.Call(t, http.MethodPost, "/v1/gateways", `{"claimCode":"`+code+`","name":"Hub"}`, g.session); r.Status != http.StatusNotFound || r.Code() != "claim_code_unknown" {
+		t.Fatalf("the waiting code answered %d %v, want 404 claim_code_unknown", r.Status, r.Body)
+	}
+
+	if r = g.send(t, batch(1, "NODE-0001", "plug", sample(0, 5))); r.Status != http.StatusUnauthorized {
+		t.Fatalf("the old key answered %d", r.Status)
+	}
+}
+
+func TestOnlyTheOwnerCanRevokeAKeyAndABadIDIsNotFound(t *testing.T) {
+	g := enrolled(t, "budi@example.com", "ESP32-AABBCC", "a")
+	other := g.e.SignUp(t, "ani@example.com")
+
+	for _, id := range []string{"00000000-0000-4000-8000-000000000000", "not-a-uuid", "1", "urn:uuid:" + g.gateway, strings.ToUpper(g.gateway), "{" + g.gateway + "}"} {
+		if r := g.e.Call(t, http.MethodPost, "/v1/gateways/"+id+"/revoke-key", "", g.session); r.Status != http.StatusNotFound || r.Code() != "not_found" {
+			t.Fatalf("revoking %q answered %d %v", id, r.Status, r.Body)
+		}
+	}
+
+	if r := g.e.Call(t, http.MethodPost, "/v1/gateways/"+g.gateway+"/revoke-key", "", other); r.Status != http.StatusNotFound || r.Code() != "not_found" {
+		t.Fatalf("another business answered %d %v", r.Status, r.Body)
+	}
+
+	if r := g.send(t, batch(1, "NODE-0001", "plug", sample(0, 5))); r.Status != http.StatusOK {
+		t.Fatalf("the key stopped after refused revokes, it answered %d %v", r.Status, r.Body)
+	}
+}
+
+func TestRevokingAKeyNeedsASessionAndTheHeader(t *testing.T) {
+	g := enrolled(t, "budi@example.com", "ESP32-AABBCC", "a")
+
+	if r := g.e.Call(t, http.MethodPost, "/v1/gateways/"+g.gateway+"/revoke-key", "", ""); r.Status != http.StatusUnauthorized {
+		t.Fatalf("a revoke with no session answered %d", r.Status)
+	}
+
+	r := g.e.CallWith(t, http.MethodPost, "/v1/gateways/"+g.gateway+"/revoke-key", "", map[string]string{"Cookie": testutil.CookieName + "=" + g.session})
+	if r.Status != http.StatusForbidden {
+		t.Fatalf("a revoke with no CSRF header answered %d", r.Status)
+	}
+
+	if r := g.send(t, batch(1, "NODE-0001", "plug", sample(0, 5))); r.Status != http.StatusOK {
+		t.Fatalf("the key stopped after refused revokes, it answered %d %v", r.Status, r.Body)
+	}
+}
