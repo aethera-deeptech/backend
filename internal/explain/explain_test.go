@@ -176,6 +176,7 @@ func TestExplainThePlansOfTheQueriesToWatch(t *testing.T) {
 		{"the relay of a device", http.MethodGet, "/v1/devices/" + device + "/relay", "", false, 200},
 		{"a relay command of the owner", http.MethodPost, "/v1/devices/" + device + "/relay", `{"state":"off"}`, false, 202},
 		{"a schedule of a device", http.MethodPut, "/v1/devices/" + device + "/schedule", `{"offAt":"17:30","onAt":"08:00","days":"mon-sat"}`, false, 200},
+		{"the choice after a power loss", http.MethodPut, "/v1/devices/" + device + "/power-loss", `{"afterPowerLoss":"last"}`, false, 200},
 	}
 
 	for _, c := range calls {

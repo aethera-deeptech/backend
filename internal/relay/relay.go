@@ -98,6 +98,47 @@ type View struct {
 	Pending     *Pending  `json:"pending"`
 	Last        *Last     `json:"last"`
 	Schedule    *Schedule `json:"schedule"`
+	// AfterPowerLoss is the choice of the owner for what the plug does after it loses its own power, off or last
+	AfterPowerLoss string `json:"afterPowerLoss"`
+}
+
+// The two choices for a plug that lost its own power, to stay off or to go back to the state that it had
+const (
+	PowerLossOff  = "off"
+	PowerLossLast = "last"
+)
+
+// PowerLossPatch is the body of the call that sets the choice
+type PowerLossPatch struct {
+	AfterPowerLoss string `json:"afterPowerLoss"`
+}
+
+// SetPowerLoss stores what a plug does after it loses its own power. Only a plug has a relay, so a clamp answers no_relay.
+func (s *Service) SetPowerLoss(ctx context.Context, businessID, deviceID string, p PowerLossPatch) (PowerLossPatch, error) {
+	id, _, _, err := s.plug(ctx, s.pool, businessID, deviceID)
+	if err != nil {
+		return PowerLossPatch{}, err
+	}
+
+	switch p.AfterPowerLoss {
+	case PowerLossOff, PowerLossLast:
+	case "":
+		return PowerLossPatch{}, api.Validation(map[string]string{"afterPowerLoss": "required"})
+	default:
+		return PowerLossPatch{}, api.Validation(map[string]string{"afterPowerLoss": "invalid"})
+	}
+
+	tag, err := s.pool.Exec(ctx, "UPDATE devices SET after_power_loss = $3 WHERE id = $1 AND business_id = $2", id, businessID, p.AfterPowerLoss)
+	if err != nil {
+		return PowerLossPatch{}, fmt.Errorf("store the choice after a power loss %w", err)
+	}
+
+	// the device was deleted after it was found, so the answer must not say that the choice is stored
+	if tag.RowsAffected() == 0 {
+		return PowerLossPatch{}, api.NotFound()
+	}
+
+	return p, nil
 }
 
 // Service holds the rules of the relay
@@ -315,6 +356,10 @@ func (s *Service) Get(ctx context.Context, businessID, deviceID string) (View, e
 	}
 
 	out.Schedule = sched
+
+	if err := s.pool.QueryRow(ctx, "SELECT after_power_loss FROM devices WHERE id = $1", deviceID).Scan(&out.AfterPowerLoss); err != nil {
+		return View{}, fmt.Errorf("read the choice after a power loss %w", err)
+	}
 
 	if out.ReportedAt != nil {
 		local := out.ReportedAt.In(loc)
