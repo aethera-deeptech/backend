@@ -505,17 +505,20 @@ func TestTheJanitorKeepsRecentReadingsAndDeletesOldOnes(t *testing.T) {
 	g.e.Exec(t, "INSERT INTO readings_hourly (gateway_id, node_id, hour, samples, sum_watts, max_watts, min_watts) SELECT gateway_id, node_id, date_trunc('hour', now() - interval '401 days'), 1, 5, 5, 5 FROM nodes")
 	g.e.Exec(t, "INSERT INTO readings_hourly (gateway_id, node_id, hour, samples, sum_watts, max_watts, min_watts) SELECT gateway_id, node_id, date_trunc('hour', now() - interval '300 days'), 1, 5, 5, 5 FROM nodes")
 
+	g.e.Exec(t, "INSERT INTO anomalies (gateway_id, node_id, at, peak_watts, kind) SELECT gateway_id, node_id, now() - interval '91 days', 500, 'surge' FROM nodes")
+	g.e.Exec(t, "INSERT INTO anomalies (gateway_id, node_id, at, peak_watts, kind) SELECT gateway_id, node_id, now() - interval '89 days', 500, 'surge' FROM nodes")
+
 	j := janitor.New(g.e.Pool, time.Hour, gateway.PurgeTasks()...)
-	if deleted := j.Round(t.Context()); deleted != 2 {
-		t.Fatalf("the round deleted %d rows, want 2", deleted)
+	if deleted := j.Round(t.Context()); deleted != 3 {
+		t.Fatalf("the round deleted %d rows, want 3", deleted)
 	}
 
-	var raw, hourly int
-	if err := g.e.Pool.QueryRow(t.Context(), "SELECT (SELECT count(*) FROM readings), (SELECT count(*) FROM readings_hourly WHERE hour < now() - interval '1 day')").Scan(&raw, &hourly); err != nil {
+	var raw, hourly, anomalies int
+	if err := g.e.Pool.QueryRow(t.Context(), "SELECT (SELECT count(*) FROM readings), (SELECT count(*) FROM readings_hourly WHERE hour < now() - interval '1 day'), (SELECT count(*) FROM anomalies)").Scan(&raw, &hourly, &anomalies); err != nil {
 		t.Fatal(err)
 	}
 
-	if raw != 1 || hourly != 1 {
-		t.Fatalf("%d raw rows and %d old hourly rows are left, want 1 and 1", raw, hourly)
+	if raw != 1 || hourly != 1 || anomalies != 1 {
+		t.Fatalf("%d raw rows, %d old hourly rows and %d anomalies are left, want 1, 1 and 1", raw, hourly, anomalies)
 	}
 }
