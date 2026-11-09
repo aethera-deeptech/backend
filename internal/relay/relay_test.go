@@ -706,3 +706,53 @@ func TestAnOverloadInTheSameBatchAsTheResultOfTheOnCommandIsStoredAgain(t *testi
 		t.Fatalf("an overload that came with the result left %d rows, want 2", n)
 	}
 }
+
+// TestARoundOfTheSchedulerLetsGoOfItsLockBeforeTheConnectionGoesBack runs a round and then takes the lock on three connections of the
+// pool. A connection that still held the lock would make the next one fail, because the lock belongs to the session.
+func TestARoundOfTheSchedulerLetsGoOfItsLockBeforeTheConnectionGoesBack(t *testing.T) {
+	r := newRig(t)
+
+	// the number of the advisory lock of the scheduler, the same as in the package
+	const lockKey = 7261990002
+
+	relay.NewScheduler(r.e.Pool, time.Minute).Round(t.Context())
+
+	for i := range 3 {
+		conn, err := r.e.Pool.Acquire(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		defer conn.Release()
+
+		var got bool
+		if err := conn.QueryRow(t.Context(), "SELECT pg_try_advisory_lock($1)", int64(lockKey)).Scan(&got); err != nil {
+			t.Fatal(err)
+		}
+
+		if !got {
+			t.Fatalf("connection %d could not take the lock after a round, so a round kept it", i)
+		}
+
+		if _, err := conn.Exec(t.Context(), "SELECT pg_advisory_unlock($1)", int64(lockKey)); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestCloseBoundedClosesAHijackedConnection(t *testing.T) {
+	r := newRig(t)
+
+	conn, err := r.e.Pool.Acquire(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	raw := conn.Hijack()
+
+	relay.CloseBounded(t.Context(), raw)
+
+	if !raw.IsClosed() {
+		t.Fatal("the connection is still open after the close")
+	}
+}
