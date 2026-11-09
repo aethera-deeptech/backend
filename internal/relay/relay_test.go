@@ -845,6 +845,11 @@ func TestThePowerLossChoiceStartsOnOffAndTheOwnerChangesIt(t *testing.T) {
 func TestThePowerLossChoiceIsChecked(t *testing.T) {
 	r := newRig(t)
 
+	// the table refuses a value that the route would refuse, so a later route cannot store one by mistake
+	if _, err := r.e.Pool.Exec(t.Context(), "UPDATE devices SET after_power_loss = 'on'"); err == nil {
+		t.Fatal("the table accepted the value on")
+	}
+
 	for name, tc := range map[string]struct {
 		body   string
 		status int

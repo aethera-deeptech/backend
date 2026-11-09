@@ -871,7 +871,7 @@ paths:
       tags: [Alat]
       operationId: setPowerLossChoice
       summary: Choose what a plug does after it loses its own power
-      description: "`off` keeps the plug off and `last` brings it back to the state that it had. A new plug is on `off`. The service stores the choice and shows it in the relay view. The way the choice reaches the plug is not part of the protocol of the gateway yet. A call with the same value answers 200 as well."
+      description: "`off` keeps the plug off and `last` brings it back to the state that it had. A new plug is on `off`. The service stores the choice and shows it in the relay view. A call with the same value answers 200 as well."
       requestBody:
         required: true
         content:

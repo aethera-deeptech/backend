@@ -113,8 +113,7 @@ type PowerLossPatch struct {
 	AfterPowerLoss string `json:"afterPowerLoss"`
 }
 
-// SetPowerLoss stores what a plug does after it loses its own power. The service only keeps the choice, and the plug has to be told
-// separately. Only a plug has a relay, so a clamp answers no_relay.
+// SetPowerLoss stores what a plug does after it loses its own power. Only a plug has a relay, so a clamp answers no_relay.
 func (s *Service) SetPowerLoss(ctx context.Context, businessID, deviceID string, p PowerLossPatch) (PowerLossPatch, error) {
 	id, _, _, err := s.plug(ctx, s.pool, businessID, deviceID)
 	if err != nil {
@@ -129,8 +128,14 @@ func (s *Service) SetPowerLoss(ctx context.Context, businessID, deviceID string,
 		return PowerLossPatch{}, api.Validation(map[string]string{"afterPowerLoss": "invalid"})
 	}
 
-	if _, err := s.pool.Exec(ctx, "UPDATE devices SET after_power_loss = $2 WHERE id = $1", id, p.AfterPowerLoss); err != nil {
+	tag, err := s.pool.Exec(ctx, "UPDATE devices SET after_power_loss = $3 WHERE id = $1 AND business_id = $2", id, businessID, p.AfterPowerLoss)
+	if err != nil {
 		return PowerLossPatch{}, fmt.Errorf("store the choice after a power loss %w", err)
+	}
+
+	// the device was deleted after it was found, so the answer must not say that the choice is stored
+	if tag.RowsAffected() == 0 {
+		return PowerLossPatch{}, api.NotFound()
 	}
 
 	return p, nil
