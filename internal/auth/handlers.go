@@ -53,6 +53,7 @@ func (h *Handlers) Register(r fiber.Router) {
 	g.Get("/me", h.Require(), h.me)
 	g.Get("/sessions", h.Require(), h.sessions)
 	g.Delete("/sessions/:id", h.Require(), h.endSession)
+	g.Post("/sessions/revoke-others", h.Require(), h.endOtherSessions)
 	g.Post("/verify-email", h.verifyEmail)
 	g.Post("/resend-verification", h.resend)
 	g.Post("/change-email", h.changeEmail)
@@ -176,6 +177,16 @@ func (h *Handlers) endSession(c fiber.Ctx) error {
 	}
 
 	return c.SendStatus(http.StatusNoContent)
+}
+
+// endOtherSessions signs every other device out and keeps the one of the request
+func (h *Handlers) endOtherSessions(c fiber.Ctx) error {
+	ended, err := h.svc.EndOtherSessions(c.Context(), UserFrom(c).ID, c.Cookies(h.cookie.Name))
+	if err != nil {
+		return err
+	}
+
+	return c.JSON(fiber.Map{"ended": ended})
 }
 
 func (h *Handlers) me(c fiber.Ctx) error {
