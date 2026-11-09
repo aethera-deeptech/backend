@@ -108,3 +108,21 @@ func TestRunSurvivesARoundThatPanics(t *testing.T) {
 		t.Fatal("Run did not return after a round that panicked")
 	}
 }
+
+func TestAFailedUnlockClosesTheConnectionAndASuccessfulOneDoesNot(t *testing.T) {
+	var closed int
+
+	discard := func(context.Context) { closed++ }
+
+	unlockOrDiscard(context.Background(), func(context.Context) error { return errors.New("conn busy") }, discard)
+
+	if closed != 1 {
+		t.Fatalf("a failed unlock closed the connection %d times, want 1", closed)
+	}
+
+	unlockOrDiscard(context.Background(), func(context.Context) error { return nil }, discard)
+
+	if closed != 1 {
+		t.Fatalf("a successful unlock closed the connection, the count is %d", closed)
+	}
+}
