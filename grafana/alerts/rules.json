@@ -249,6 +249,89 @@
     ]
   },
   {
+    "title": "Requests are shed as busy",
+    "ruleGroup": "aethera",
+    "folderUID": "aethera",
+    "orgID": 1,
+    "for": "10m",
+    "condition": "C",
+    "noDataState": "OK",
+    "execErrState": "Error",
+    "isPaused": false,
+    "labels": {
+      "severity": "warning",
+      "service": "aethera-api"
+    },
+    "annotations": {
+      "summary": "More than 2 percent of the requests of the API routes were answered 503 for 10 minutes. The service answers 503 busy when a request runs past its 10 second limit or when the password check has no free slot, so look at the latency, the database pool and the slow routes before the 5xx ratio rule fires"
+    },
+    "data": [
+      {
+        "refId": "A",
+        "relativeTimeRange": {
+          "from": 600,
+          "to": 0
+        },
+        "datasourceUid": "__PROMETHEUS_UID__",
+        "model": {
+          "refId": "A",
+          "expr": "(sum(rate(aethera_http_requests_total{status=\"503\",route!~\"/(healthz|readyz)|unmatched\"}[10m])) or vector(0)) / clamp_min(sum(rate(aethera_http_requests_total{route!~\"/(healthz|readyz)|unmatched\"}[10m])), 0.001)",
+          "instant": true,
+          "intervalMs": 60000,
+          "maxDataPoints": 43200
+        }
+      },
+      {
+        "refId": "B",
+        "datasourceUid": "__expr__",
+        "relativeTimeRange": {
+          "from": 0,
+          "to": 0
+        },
+        "model": {
+          "refId": "B",
+          "type": "reduce",
+          "expression": "A",
+          "reducer": "last",
+          "settings": {
+            "mode": "dropNN"
+          },
+          "datasource": {
+            "type": "__expr__",
+            "uid": "__expr__"
+          }
+        }
+      },
+      {
+        "refId": "C",
+        "datasourceUid": "__expr__",
+        "relativeTimeRange": {
+          "from": 0,
+          "to": 0
+        },
+        "model": {
+          "refId": "C",
+          "type": "threshold",
+          "expression": "B",
+          "conditions": [
+            {
+              "evaluator": {
+                "type": "gt",
+                "params": [
+                  0.02
+                ]
+              }
+            }
+          ],
+          "datasource": {
+            "type": "__expr__",
+            "uid": "__expr__"
+          }
+        }
+      }
+    ]
+  },
+  {
     "title": "p95 latency is high",
     "ruleGroup": "aethera",
     "folderUID": "aethera",
