@@ -447,9 +447,34 @@ func (s *Store) DeleteOtherSessions(ctx context.Context, userID string, current 
 	return ended, nil
 }
 
-// DeleteBusiness deletes the business, and every table under it goes with it because the keys cascade. This is the whole of the
-// deletion, so it is one statement and it either happens fully or not at all.
+// deleteBatch is the number of rows that one statement removes from a big table before the business row goes
+const deleteBatch = 5000
+
+// bigTablesOfABusiness are the tables that can hold millions of rows for one business, with the statement that removes one batch of them
+var bigTablesOfABusiness = []string{
+	"DELETE FROM readings WHERE ctid IN (SELECT ctid FROM readings WHERE gateway_id IN (SELECT id FROM gateways WHERE business_id = $1) LIMIT $2)",
+	"DELETE FROM readings_hourly WHERE ctid IN (SELECT ctid FROM readings_hourly WHERE gateway_id IN (SELECT id FROM gateways WHERE business_id = $1) LIMIT $2)",
+	"DELETE FROM anomalies WHERE ctid IN (SELECT ctid FROM anomalies WHERE gateway_id IN (SELECT id FROM gateways WHERE business_id = $1) LIMIT $2)",
+}
+
+// DeleteBusiness deletes the business, and every other table under it goes with it because the keys cascade. A business can hold millions
+// of readings, and one statement for all of them could run past the deadline of the request every time, so the big tables go first in
+// batches that each commit by themselves, as the janitor does. A call that stops half way has deleted a part of the readings and
+// nothing else, and the next call goes on from there. The business row goes last, in one statement.
 func (s *Store) DeleteBusiness(ctx context.Context, businessID string) error {
+	for _, query := range bigTablesOfABusiness {
+		for {
+			tag, err := s.pool.Exec(ctx, query, businessID, deleteBatch)
+			if err != nil {
+				return fmt.Errorf("delete a batch of rows of the business %w", err)
+			}
+
+			if tag.RowsAffected() < deleteBatch {
+				break
+			}
+		}
+	}
+
 	if _, err := s.pool.Exec(ctx, "DELETE FROM businesses WHERE id = $1", businessID); err != nil {
 		return fmt.Errorf("delete the business %w", err)
 	}

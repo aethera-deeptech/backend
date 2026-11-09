@@ -968,6 +968,14 @@ func TestDeletingTheAccountRemovesTheBusinessAndEverythingUnderIt(t *testing.T) 
 	budi := e.SeedDevice(t, "budi@example.com", "ESP32-AABBCC")
 	siti := e.SeedDevice(t, "siti@example.com", "ESP32-DDEEFF")
 
+	// more raw readings than one batch removes, and one hourly row, for each of the two businesses, so the batches have to loop
+	for _, b := range []*testutil.Seeded{budi, siti} {
+		e.Exec(t, `INSERT INTO readings (gateway_id, node_id, t, watts)
+			SELECT g.id, 'PLUG-0001', now() - make_interval(secs => i), 100 FROM gateways g, generate_series(1, 5200) i WHERE g.business_id = $1`, b.Business)
+		e.Exec(t, `INSERT INTO readings_hourly (gateway_id, node_id, hour, samples, sum_watts, max_watts, min_watts)
+			SELECT g.id, 'PLUG-0001', date_trunc('hour', now(), 'UTC'), 1, 100, 100, 100 FROM gateways g WHERE g.business_id = $1`, b.Business)
+	}
+
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodDelete, "/v1/account", strings.NewReader(`{"password":"kata sandi baik"}`))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Requested-With", "aethera")
@@ -1005,6 +1013,11 @@ func TestDeletingTheAccountRemovesTheBusinessAndEverythingUnderIt(t *testing.T) 
 		if err := e.Pool.QueryRow(t.Context(), "SELECT count(*) FROM "+table).Scan(&n); err != nil || n != 1 {
 			t.Fatalf("the table %s has %d rows (%v), want 1 row of the other business", table, n, err)
 		}
+	}
+
+	var readings, hourly int
+	if err := e.Pool.QueryRow(t.Context(), "SELECT (SELECT count(*) FROM readings), (SELECT count(*) FROM readings_hourly)").Scan(&readings, &hourly); err != nil || readings != 5200 || hourly != 1 {
+		t.Fatalf("there are %d readings and %d hourly rows (%v), want 5200 and 1 of the other business", readings, hourly, err)
 	}
 
 	var businesses int
@@ -1083,5 +1096,40 @@ func TestTheTriesToDeleteAnAccountAreLimitedForEachUser(t *testing.T) {
 
 	if r.Header.Get("Retry-After") == "" {
 		t.Fatal("the 429 has no Retry-After")
+	}
+}
+
+// TestEveryTableUnderABusinessGoesWithIt keeps a table that is added later from being left behind by the delete of an account. A table
+// that holds a business, a user or a gateway must have a key to it that cascades.
+func TestEveryTableUnderABusinessGoesWithIt(t *testing.T) {
+	e := testutil.New(t)
+
+	rows, err := e.Pool.Query(t.Context(), `
+		SELECT c.table_name, c.column_name
+		FROM information_schema.columns c
+		JOIN information_schema.tables t ON t.table_schema = c.table_schema AND t.table_name = c.table_name
+		WHERE c.table_schema = 'public' AND t.table_type = 'BASE TABLE' AND c.column_name IN ('business_id', 'user_id', 'gateway_id')
+		  AND NOT EXISTS (
+		    SELECT 1 FROM pg_constraint k
+		    JOIN pg_attribute a ON a.attrelid = k.conrelid AND a.attnum = ANY (k.conkey)
+		    WHERE k.contype = 'f' AND k.confdeltype = 'c' AND k.conrelid = format('public.%I', c.table_name)::regclass AND a.attname = c.column_name)
+		ORDER BY 1, 2`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer rows.Close()
+
+	for rows.Next() {
+		var table, column string
+		if err := rows.Scan(&table, &column); err != nil {
+			t.Fatal(err)
+		}
+
+		t.Errorf("the table %s has the column %s with no key that cascades, so the delete of an account would leave its rows behind", table, column)
+	}
+
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
 	}
 }

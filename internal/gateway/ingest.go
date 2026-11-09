@@ -155,6 +155,11 @@ func (s *Service) Ingest(ctx context.Context, p *Principal, b Batch, now time.Ti
 
 	var last int64
 	if err := tx.QueryRow(ctx, "SELECT last_seq FROM gateways WHERE id = $1 FOR UPDATE", p.GatewayID).Scan(&last); err != nil {
+		// the owner deleted the account after the key was checked, so the gateway is gone and its key is not valid any more
+		if errors.Is(err, pgx.ErrNoRows) {
+			return Ack{}, invalidKey()
+		}
+
 		return Ack{}, fmt.Errorf("lock the gateway %w", err)
 	}
 

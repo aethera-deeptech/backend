@@ -19,7 +19,7 @@ The contract is `openapi.yaml` in the root of the repository. The job `OpenAPI l
 
 ## Deleting the account
 
-`DELETE /v1/account` takes `{"password": "..."}` and deletes the business with everything under it, then clears the cookie and answers 204. The password is checked again so that a stolen session cannot do it alone, a wrong one answers 403 `invalid_credentials` and not 401, and a user has 5 tries an hour. The delete is one statement, so a 503 `busy` means that nothing was deleted and the same call can be repeated. It cannot be undone.
+`DELETE /v1/account` takes `{"password": "..."}` and deletes the business with everything under it, then clears the cookie and answers 204. The password is checked again so that a stolen session cannot do it alone, a wrong one answers 403 `invalid_credentials` and not 401, and a user has 5 tries an hour. The readings, the hourly sums and the anomalies go first in batches, and the business row goes last. A 503 `busy` can therefore come after a part of the readings was deleted, and the same call can be repeated until it ends with 204. A 401 on the repeat means that the account is gone. It cannot be undone.
 
 ## Errors
 
