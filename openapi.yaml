@@ -645,7 +645,7 @@ paths:
                   id: {type: string, format: uuid}
         "401": {$ref: "#/components/responses/Unauthorized"}
         "409":
-          description: "A pairing is running (code `pairing_running`, with the id of that search in `pairingId` when it is available, otherwise wait for it to end), or the business has no gateway (code `no_gateway`)"
+          description: "A pairing is running (code `pairing_running`, with the id of that search in `pairingId` when it is available, otherwise wait for it to end), or the business has no gateway with a working key (code `no_gateway`), which is the case when it has none or when the owner cut the key of every one"
           content:
             application/json:
               schema: {$ref: "#/components/schemas/Error"}
@@ -862,6 +862,44 @@ paths:
           content:
             application/json:
               schema: {$ref: "#/components/schemas/Error"}
+        "4XX": {$ref: "#/components/responses/Error"}
+
+  /v1/devices/{id}/power-loss:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+    put:
+      tags: [Alat]
+      operationId: setPowerLossChoice
+      summary: Choose what a plug does after it loses its own power
+      description: "`off` keeps the plug off and `last` brings it back to the state that it had. A new plug is on `off`. The service stores the choice and shows it in the relay view. A call with the same value answers 200 as well."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [afterPowerLoss]
+              properties:
+                afterPowerLoss: {type: string, enum: [off, last]}
+      responses:
+        "200":
+          description: The choice that is stored now
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [afterPowerLoss]
+                properties:
+                  afterPowerLoss: {type: string, enum: [off, last]}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409":
+          description: The device is a clamp and has no relay (code `no_relay`)
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+        "422": {$ref: "#/components/responses/Validation"}
         "4XX": {$ref: "#/components/responses/Error"}
 
   /v1/beranda:
@@ -1560,8 +1598,9 @@ components:
         energyPerPiece: {$ref: "#/components/schemas/EnergyPerPiece"}
     Relay:
       type: object
-      required: [state, reportedAt, gatewayOnline, cutByDevice, pending, last, schedule]
+      required: [state, reportedAt, gatewayOnline, cutByDevice, pending, last, schedule, afterPowerLoss]
       properties:
+        afterPowerLoss: {type: string, enum: [off, last], description: "The choice of the owner for what the plug does after it loses its own power. A new plug is on `off`."}
         state: {type: string, enum: [on, off, unknown]}
         reportedAt: {type: [string, "null"], format: date-time, description: When the state was reported or confirmed}
         gatewayOnline: {type: boolean, description: "True when the gateway of the plug had a batch stored, or sent again after a lost answer, in the last 15 minutes, the same time limit as the status offline of a device. It describes the gateway and not the plug, so it can be true while the device is offline. A command is queued also when this is false, and it expires after 10 minutes if the gateway stays away"}
