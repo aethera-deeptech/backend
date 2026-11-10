@@ -180,6 +180,7 @@ if FULL:
         owner("PUT", "/v1/production/" + today, {"quantity": 10, "unit": "potong"}),
         owner("PUT", f"/v1/devices/{device}/schedule", {"offAt": "17:30", "days": "mon-fri"}),
         owner("POST", f"/v1/devices/{device}/relay", {"state": "off"}),
+        owner("PUT", f"/v1/devices/{device}/power-loss", {"afterPowerLoss": "last"}),
         owner("POST", f"/v1/devices/{device}/energy-reset"),
         {"method": "GET", "path": "/device/v1/enroll/" + enroll["pollId"]},
         {"method": "POST", "path": "/v1/auth/forgot-password", "app": True, "body": {"email": EMAIL}},
