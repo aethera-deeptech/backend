@@ -426,3 +426,77 @@ func (s *Service) RevokeKey(ctx context.Context, businessID, id string) error {
 
 	return nil
 }
+
+// deleteBatch is how many rows one statement removes from a big table
+const deleteBatch = 5000
+
+// bigTablesOfAGateway are the tables that can hold millions of rows for one gateway, with the statement that removes one batch of them
+var bigTablesOfAGateway = []string{
+	"DELETE FROM readings WHERE ctid IN (SELECT ctid FROM readings WHERE gateway_id = $1 LIMIT $2)",
+	"DELETE FROM readings_hourly WHERE ctid IN (SELECT ctid FROM readings_hourly WHERE gateway_id = $1 LIMIT $2)",
+	"DELETE FROM anomalies WHERE ctid IN (SELECT ctid FROM anomalies WHERE gateway_id = $1 LIMIT $2)",
+}
+
+// Delete removes a gateway of the business, and its nodes, devices, tips, relay commands and schedules go with it because the keys
+// cascade. The key is cut first, so the hardware stops adding rows while the big tables are emptied, and the checks of RevokeKey give
+// the same not found answers. The readings, the hourly sums and the anomalies then go in batches that each commit by themselves, as in
+// the delete of an account, and the gateway row goes last. A call that stops half way leaves a gateway with a cut key and fewer rows, and
+// the same call goes on from there until it ends, after which the id answers not found. The hardware gets 401 invalid_gateway_key
+// and can enroll again from the start.
+func (s *Service) Delete(ctx context.Context, businessID, id string) error {
+	if err := s.RevokeKey(ctx, businessID, id); err != nil {
+		return err
+	}
+
+	for _, query := range bigTablesOfAGateway {
+		for {
+			tag, err := s.pool.Exec(ctx, query, id, deleteBatch)
+			if err != nil {
+				return fmt.Errorf("delete a batch of rows of the gateway %w", err)
+			}
+
+			if tag.RowsAffected() < deleteBatch {
+				break
+			}
+		}
+	}
+
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return fmt.Errorf("start the delete of the gateway %w", err)
+	}
+
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	// the lock order of Claim and RevokeKey, the waiting codes of the hardware first and the gateway after them
+	var hardwareID string
+
+	err = tx.QueryRow(ctx, "SELECT hardware_id FROM gateways WHERE id = $1 AND business_id = $2", id, businessID).Scan(&hardwareID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return api.NotFound()
+	}
+
+	if err != nil {
+		return fmt.Errorf("read the gateway %w", err)
+	}
+
+	// the hardware may have enrolled again while the rows went, and a claim of that code would bring a gateway back that the owner removed
+	if _, err := tx.Exec(ctx, "DELETE FROM gateway_enrollments WHERE gateway_id IS NULL AND hardware_id = $1", hardwareID); err != nil {
+		return fmt.Errorf("remove the waiting codes %w", err)
+	}
+
+	tag, err := tx.Exec(ctx, "DELETE FROM gateways WHERE id = $1 AND business_id = $2", id, businessID)
+	if err != nil {
+		return fmt.Errorf("delete the gateway %w", err)
+	}
+
+	if tag.RowsAffected() == 0 {
+		return api.NotFound()
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("finish the delete of the gateway %w", err)
+	}
+
+	return nil
+}

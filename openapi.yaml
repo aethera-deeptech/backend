@@ -616,6 +616,24 @@ paths:
         "401": {$ref: "#/components/responses/Unauthorized"}
         "404": {$ref: "#/components/responses/NotFound"}
         "4XX": {$ref: "#/components/responses/Error"}
+  /v1/gateways/{id}:
+    delete:
+      tags: [Pasang alat]
+      operationId: deleteGateway
+      summary: Remove a gateway
+      description: "The gateway goes with its nodes, devices, readings, hourly sums, anomalies, tips, relay commands and schedules. It cannot be undone. The rooms stay. The service cuts the key first, so the hardware stops adding rows, and then deletes the big tables in batches and the gateway row last. A 503 `busy` can therefore come after a part of the rows was deleted, and the same call can be repeated until it ends with 204. A 404 on the repeat means that the delete finished or that the id is not a gateway of the business, and the app cannot tell the two apart. The hardware gets 401 `invalid_gateway_key` from then on and can enroll again from the start, and a claim code that waits for the same hardware is removed. An id of another business, an unknown id and an id that is not a plain lower case uuid all answer 404."
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        "204":
+          description: The gateway and everything under it is deleted
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "503": {$ref: "#/components/responses/Busy"}
+        "4XX": {$ref: "#/components/responses/Error"}
   /v1/pairings:
     post:
       tags: [Pasang alat]

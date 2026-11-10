@@ -717,3 +717,126 @@ func TestARetryOfTheLastBatchKeepsTheGatewayOnlineAndAWrongNumberDoesNot(t *test
 		t.Fatalf("there are %d readings (%v), a retry must not store them again", readings, err)
 	}
 }
+
+func TestDeletingAGatewayRemovesItsRowsAndStopsTheHardware(t *testing.T) {
+	g := enrolled(t, "budi@example.com", "ESP32-AABBCC", "a")
+
+	if r := g.send(t, batch(1, "NODE-0001", "plug", sample(0, 310))); r.Status != http.StatusOK {
+		t.Fatalf("the first batch answered %d %v", r.Status, r.Body)
+	}
+
+	room, _ := g.e.Call(t, http.MethodPost, "/v1/rooms", `{"name":"Gudang"}`, g.session).Body["id"].(string)
+	if _, err := g.e.Pool.Exec(t.Context(),
+		"INSERT INTO devices (business_id, gateway_id, node_id, kind, name, room_id) SELECT business_id, id, 'NODE-0001', 'plug', 'Mesin', $2 FROM gateways WHERE id = $1",
+		g.gateway, room); err != nil {
+		t.Fatal(err)
+	}
+
+	r := g.e.Call(t, http.MethodDelete, "/v1/gateways/"+g.gateway, "", g.session)
+	if r.Status != http.StatusNoContent || len(r.Raw) != 0 {
+		t.Fatalf("delete answered %d %v", r.Status, r.Body)
+	}
+
+	var gateways, nodes, devices, readings, hourly int
+	if err := g.e.Pool.QueryRow(t.Context(),
+		"SELECT (SELECT count(*) FROM gateways), (SELECT count(*) FROM nodes), (SELECT count(*) FROM devices), (SELECT count(*) FROM readings), (SELECT count(*) FROM readings_hourly)").
+		Scan(&gateways, &nodes, &devices, &readings, &hourly); err != nil {
+		t.Fatal(err)
+	}
+
+	if gateways+nodes+devices+readings+hourly != 0 {
+		t.Fatalf("after the delete there are %d gateways, %d nodes, %d devices, %d readings and %d hourly rows", gateways, nodes, devices, readings, hourly)
+	}
+
+	// the room belongs to the business and stays
+	if r := g.e.Call(t, http.MethodGet, "/v1/rooms", "", g.session); r.Status != http.StatusOK {
+		t.Fatalf("the rooms answered %d", r.Status)
+	}
+
+	// the hardware gets the answer of a key that is not known, and the id is gone
+	if r := g.send(t, batch(2, "NODE-0001", "plug", sample(0, 5))); r.Status != http.StatusUnauthorized || r.Code() != "invalid_gateway_key" {
+		t.Fatalf("the hardware answered %d %v, want 401 invalid_gateway_key", r.Status, r.Body)
+	}
+
+	if r := g.e.Call(t, http.MethodDelete, "/v1/gateways/"+g.gateway, "", g.session); r.Status != http.StatusNotFound {
+		t.Fatalf("a second delete answered %d, want 404", r.Status)
+	}
+
+	if list := g.e.Call(t, http.MethodGet, "/v1/gateways", "", g.session); list.Status != http.StatusOK || len(list.Body["items"].([]any)) != 0 {
+		t.Fatalf("the list after the delete is %d %v", list.Status, list.Body)
+	}
+}
+
+func TestDeletingAGatewayLeavesTheGatewayOfAnotherBusinessAlone(t *testing.T) {
+	e := testutil.New(t)
+	mine := enrolledOn(t, e, "budi@example.com", "ESP32-AABBCC", "a")
+	other := enrolledOn(t, e, "ani@example.com", "ESP32-DDEEFF", "b")
+
+	if r := other.send(t, batch(1, "NODE-0001", "plug", sample(0, 310))); r.Status != http.StatusOK {
+		t.Fatalf("the batch of the other answered %d %v", r.Status, r.Body)
+	}
+
+	if r := mine.e.Call(t, http.MethodDelete, "/v1/gateways/"+other.gateway, "", mine.session); r.Status != http.StatusNotFound {
+		t.Fatalf("a delete of the gateway of another business answered %d, want 404", r.Status)
+	}
+
+	// the refused delete did not cut the key either
+	if r := other.send(t, batch(2, "NODE-0001", "plug", sample(0, 5))); r.Status != http.StatusOK {
+		t.Fatalf("the other gateway answered %d %v after a refused delete", r.Status, r.Body)
+	}
+
+	if r := mine.e.Call(t, http.MethodDelete, "/v1/gateways/"+mine.gateway, "", mine.session); r.Status != http.StatusNoContent {
+		t.Fatalf("delete answered %d %v", r.Status, r.Body)
+	}
+
+	var readings int
+	if err := e.Pool.QueryRow(t.Context(), "SELECT count(*) FROM readings").Scan(&readings); err != nil || readings != 2 {
+		t.Fatalf("after the delete there are %d readings (%v), the two of the other gateway must stay", readings, err)
+	}
+}
+
+func TestDeletingAGatewayRemovesACodeThatWaitsForTheSameHardware(t *testing.T) {
+	g := enrolled(t, "budi@example.com", "ESP32-AABBCC", "a")
+
+	_, oldHash := key("a")
+
+	r := g.e.CallWith(t, http.MethodPost, "/device/v1/enroll", `{"hardwareId":"ESP32-AABBCC","keyHash":"`+oldHash+`"}`, nil)
+	code, _ := r.Body["claimCode"].(string)
+
+	if r = g.e.Call(t, http.MethodDelete, "/v1/gateways/"+g.gateway, "", g.session); r.Status != http.StatusNoContent {
+		t.Fatalf("delete answered %d", r.Status)
+	}
+
+	if r = g.e.Call(t, http.MethodPost, "/v1/gateways", `{"claimCode":"`+code+`","name":"Hub"}`, g.session); r.Status != http.StatusNotFound || r.Code() != "claim_code_unknown" {
+		t.Fatalf("the waiting code answered %d %v, want 404 claim_code_unknown", r.Status, r.Body)
+	}
+
+	// the hardware can start again from nothing
+	_, hash := key("n")
+
+	enroll := g.e.CallWith(t, http.MethodPost, "/device/v1/enroll", `{"hardwareId":"ESP32-AABBCC","keyHash":"`+hash+`"}`, nil)
+	fresh, _ := enroll.Body["claimCode"].(string)
+
+	if r = g.e.Call(t, http.MethodPost, "/v1/gateways", `{"claimCode":"`+fresh+`","name":"Hub baru"}`, g.session); r.Status != http.StatusCreated || r.Body["id"] == g.gateway {
+		t.Fatalf("a new claim answered %d %v, want 201 with a new id", r.Status, r.Body)
+	}
+}
+
+func TestOnlyASignedInOwnerCanDeleteAGatewayAndABadIDIsNotFound(t *testing.T) {
+	g := enrolled(t, "budi@example.com", "ESP32-AABBCC", "a")
+
+	if r := g.e.Call(t, http.MethodDelete, "/v1/gateways/"+g.gateway, "", ""); r.Status != http.StatusUnauthorized {
+		t.Fatalf("a delete with no session answered %d, want 401", r.Status)
+	}
+
+	for _, id := range []string{"nope", "00000000-0000-4000-8000-000000000000", "urn:uuid:" + g.gateway, strings.ToUpper(g.gateway)} {
+		if r := g.e.Call(t, http.MethodDelete, "/v1/gateways/"+id, "", g.session); r.Status != http.StatusNotFound {
+			t.Errorf("a delete of %q answered %d, want 404", id, r.Status)
+		}
+	}
+
+	// nothing of this cut the key
+	if r := g.send(t, batch(1, "NODE-0001", "plug", sample(0, 5))); r.Status != http.StatusOK {
+		t.Fatalf("the gateway answered %d %v after refused deletes", r.Status, r.Body)
+	}
+}
