@@ -1133,3 +1133,49 @@ func TestEveryTableUnderABusinessGoesWithIt(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestOnlyAWrongPasswordUsesUpATryToDeleteAnAccount(t *testing.T) {
+	e := testutil.New(t)
+	session := e.SignUp(t, "budi@example.com")
+
+	for i := range 4 {
+		if r := deleteAccount(t, e, `{"password":"salah"}`, session); r.Status != http.StatusForbidden {
+			t.Fatalf("try %d answered %d", i+1, r.Status)
+		}
+	}
+
+	if r := deleteAccount(t, e, `{"password":"kata sandi baik"}`, session); r.Status != http.StatusNoContent {
+		t.Fatalf("the right password after 4 wrong ones answered %d %v, want 204", r.Status, r.Body)
+	}
+}
+
+func TestACheckOfTheLimiterCountsNothing(t *testing.T) {
+	e := testutil.New(t)
+	limiter := auth.NewLimiter(e.Pool)
+	rule := auth.Rule{Bucket: "check-test", Max: 2, Window: time.Hour}
+
+	for range 5 {
+		if ok, _, err := limiter.Check(t.Context(), rule, "key"); err != nil || !ok {
+			t.Fatalf("a check of an unused key answered %v %v", ok, err)
+		}
+	}
+
+	var rows int
+	if err := e.Pool.QueryRow(t.Context(), "SELECT count(*) FROM rate_limit_events WHERE bucket = $1", rule.Bucket).Scan(&rows); err != nil || rows != 0 {
+		t.Fatalf("a check left %d rows, err %v", rows, err)
+	}
+
+	for range 2 {
+		if ok, _, err := limiter.Allow(t.Context(), rule, "key"); err != nil || !ok {
+			t.Fatalf("an event under the rule answered %v %v", ok, err)
+		}
+	}
+
+	if ok, wait, err := limiter.Check(t.Context(), rule, "key"); err != nil || ok || wait < time.Second {
+		t.Fatalf("a check over the rule answered %v %v %v", ok, wait, err)
+	}
+
+	if ok, _, err := limiter.Check(t.Context(), rule, "other"); err != nil || !ok {
+		t.Fatalf("a check of another key answered %v %v", ok, err)
+	}
+}

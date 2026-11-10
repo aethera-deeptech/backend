@@ -140,6 +140,20 @@ func cleanName(raw string, maxRunes int) (string, string) {
 	}
 }
 
+// check returns the 429 error when the key is over the rule and counts nothing
+func (s *Service) check(ctx context.Context, rule Rule, key string) error {
+	ok, wait, err := s.limiter.Check(ctx, rule, key)
+	if err != nil {
+		return err
+	}
+
+	if !ok {
+		return api.RateLimited("", int(wait.Seconds()+0.5))
+	}
+
+	return nil
+}
+
 // allow checks one rule and returns the 429 error when the key is over it
 func (s *Service) allow(ctx context.Context, rule Rule, key, code string) error {
 	ok, wait, err := s.limiter.Allow(ctx, rule, key)
@@ -336,13 +350,14 @@ func (s *Service) Logout(ctx context.Context, token string) error {
 }
 
 // DeleteAccount deletes the business of the user, and with it everything under the business, after the password is checked again so a
-// stolen session cannot do it alone. The tries are limited for each user, because the session is all that a guesser needs.
+// stolen session cannot do it alone. The tries are limited for each user, because the session is all that a guesser needs. Only a wrong
+// password uses up a try, so a call that ends in 503 busy or with the right password does not.
 func (s *Service) DeleteAccount(ctx context.Context, user *User, password string) error {
 	if password == "" {
 		return api.Validation(map[string]string{"password": "required"})
 	}
 
-	if err := s.allow(ctx, ruleDeleteAccount, user.ID, ""); err != nil {
+	if err := s.check(ctx, ruleDeleteAccount, user.ID); err != nil {
 		return err
 	}
 
@@ -363,7 +378,18 @@ func (s *Service) DeleteAccount(ctx context.Context, user *User, password string
 
 	// 403 and not 401, because the session is fine and a 401 tells the app that the user is signed out
 	if !matches {
+		// the try is charged after the hash, and a refusal here means that parallel tries filled the budget in the meantime, so a wrong
+		// guess and a right one get the same 429 and the answer tells nothing about the password
+		if err := s.allow(ctx, ruleDeleteAccount, user.ID, ""); err != nil {
+			return err
+		}
+
 		return api.NewError(http.StatusForbidden, "invalid_credentials", "The password is wrong")
+	}
+
+	// the budget is read again, because parallel wrong tries may have spent it while this hash ran
+	if err := s.check(ctx, ruleDeleteAccount, user.ID); err != nil {
+		return err
 	}
 
 	return s.store.DeleteBusiness(ctx, user.BusinessID)
