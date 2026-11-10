@@ -86,12 +86,12 @@ func (p *Pairings) Start(ctx context.Context, businessID, kind, rawName, roomID 
 	}
 
 	var hasGateway bool
-	if err := p.pool.QueryRow(ctx, "SELECT EXISTS (SELECT 1 FROM gateways WHERE business_id = $1)", businessID).Scan(&hasGateway); err != nil {
+	if err := p.pool.QueryRow(ctx, "SELECT EXISTS (SELECT 1 FROM gateways WHERE business_id = $1 AND key_revoked_at IS NULL)", businessID).Scan(&hasGateway); err != nil {
 		return "", fmt.Errorf("read the gateways %w", err)
 	}
 
 	if !hasGateway {
-		return "", api.NewError(http.StatusConflict, "no_gateway", "The business has no gateway yet")
+		return "", api.NewError(http.StatusConflict, "no_gateway", "The business has no gateway with a working key")
 	}
 
 	tx, err := p.pool.BeginTx(ctx, pgx.TxOptions{})
@@ -224,13 +224,14 @@ func (p *Pairings) Get(ctx context.Context, businessID, id string) (Pairing, err
 }
 
 // claimNode makes a device of the unclaimed node of the kind that a gateway of the business heard most recently. A node that went
-// quiet more than a few minutes before the search began is left alone, so a forgotten plug does not become the new device.
+// quiet more than a few minutes before the search began is left alone, so a forgotten plug does not become the new device. A gateway
+// with a cut key is left out too, because it can no longer send readings or fetch commands for the device.
 func claimNode(ctx context.Context, tx pgx.Tx, businessID, kind, name, roomID string, since time.Time) (string, bool, error) {
 	var gatewayID, nodeID string
 
 	err := tx.QueryRow(ctx,
 		`SELECT n.gateway_id, n.node_id FROM nodes n JOIN gateways g ON g.id = n.gateway_id
-		 WHERE g.business_id = $1 AND n.kind = $2 AND n.last_seen_at > $3
+		 WHERE g.business_id = $1 AND g.key_revoked_at IS NULL AND n.kind = $2 AND n.last_seen_at > $3
 		   AND NOT EXISTS (SELECT 1 FROM devices d WHERE d.gateway_id = n.gateway_id AND d.node_id = n.node_id)
 		 ORDER BY n.first_seen_at DESC LIMIT 1 FOR NO KEY UPDATE OF n`,
 		businessID, kind, since.Add(-nodeLookback)).Scan(&gatewayID, &nodeID)
