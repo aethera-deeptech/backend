@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.15.0](https://github.com/aethera-deeptech/backend/compare/v0.14.0...v0.15.0) (2026-11-10)
+
+
+### Features
+
+* **relay:** let the owner choose what a plug does after a power loss ([61b7bae](https://github.com/aethera-deeptech/backend/commit/61b7baed58531ce37667130fb9c67af5abeae337))
+* **relay:** let the owner choose what a plug does after a power loss ([8688310](https://github.com/aethera-deeptech/backend/commit/8688310dc2505aacebff75e74307531472a6b16a))
+
+
+### Bug Fixes
+
+* **auth:** charge and read the budget again after the password check ([e6c41de](https://github.com/aethera-deeptech/backend/commit/e6c41de9300e22a5afa6aa387a7520a50825172f))
+* **auth:** only a wrong password uses up a try to delete the account ([0d97cad](https://github.com/aethera-deeptech/backend/commit/0d97cad1841619fb97ee32347e02b248dfc2d1b0))
+* **auth:** only a wrong password uses up a try to delete the account ([669fa8b](https://github.com/aethera-deeptech/backend/commit/669fa8bdd110cfc51265a901422f34955e1bebb6))
+* **device:** a pairing needs a gateway with a working key ([cc59511](https://github.com/aethera-deeptech/backend/commit/cc59511432d03497e112bd0e54756bb023334f02))
+* **device:** a pairing needs a gateway with a working key ([91b91d1](https://github.com/aethera-deeptech/backend/commit/91b91d1a49161e7442718d7ce07e100df056a2a9))
+* **device:** leave a gateway with a cut key out of the node a pairing claims ([53a8348](https://github.com/aethera-deeptech/backend/commit/53a834883f79997d9cedb42f38d4a5cd29428c27))
+* **relay:** drop the urn id case from the power loss test and close the body schema ([d4f7902](https://github.com/aethera-deeptech/backend/commit/d4f79022de517f61d58e52d6cbbd555054afbc16))
+* **relay:** keep the hub out of the docs, scope the update and test the check ([ea7cf80](https://github.com/aethera-deeptech/backend/commit/ea7cf80c8e9cc6a91b85c1ee8bf3b619b9634a7f))
+
 ## [0.14.0](https://github.com/aethera-deeptech/backend/compare/v0.13.0...v0.14.0) (2026-11-09)
 
 
