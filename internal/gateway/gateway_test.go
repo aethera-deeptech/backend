@@ -14,6 +14,9 @@ import (
 	"github.com/aethera-deeptech/backend/internal/testutil"
 )
 
+// ownerPassword is the body of a delete that asks for the password, the one that SignUp gives every account
+const ownerPassword = `{"password":"kata sandi baik"}`
+
 // key makes a gateway key of the right length and the hash that the gateway sends when it enrolls
 func key(seed string) (string, string) {
 	k := strings.Repeat(seed, 43)[:43]
@@ -715,5 +718,240 @@ func TestARetryOfTheLastBatchKeepsTheGatewayOnlineAndAWrongNumberDoesNot(t *test
 	var readings int
 	if err := g.e.Pool.QueryRow(t.Context(), "SELECT count(*) FROM readings").Scan(&readings); err != nil || readings != 1 {
 		t.Fatalf("there are %d readings (%v), a retry must not store them again", readings, err)
+	}
+}
+
+func TestDeletingAGatewayRemovesItsRowsAndStopsTheHardware(t *testing.T) {
+	g := enrolled(t, "budi@example.com", "ESP32-AABBCC", "a")
+
+	if r := g.send(t, batch(1, "NODE-0001", "plug", sample(0, 310))); r.Status != http.StatusOK {
+		t.Fatalf("the first batch answered %d %v", r.Status, r.Body)
+	}
+
+	room, _ := g.e.Call(t, http.MethodPost, "/v1/rooms", `{"name":"Gudang"}`, g.session).Body["id"].(string)
+	if _, err := g.e.Pool.Exec(t.Context(),
+		"INSERT INTO devices (business_id, gateway_id, node_id, kind, name, room_id) SELECT business_id, id, 'NODE-0001', 'plug', 'Mesin', $2 FROM gateways WHERE id = $1",
+		g.gateway, room); err != nil {
+		t.Fatal(err)
+	}
+
+	r := g.e.Call(t, http.MethodDelete, "/v1/gateways/"+g.gateway, ownerPassword, g.session)
+	if r.Status != http.StatusNoContent || len(r.Raw) != 0 {
+		t.Fatalf("delete answered %d %v", r.Status, r.Body)
+	}
+
+	var gateways, nodes, devices, readings, hourly int
+	if err := g.e.Pool.QueryRow(t.Context(),
+		"SELECT (SELECT count(*) FROM gateways), (SELECT count(*) FROM nodes), (SELECT count(*) FROM devices), (SELECT count(*) FROM readings), (SELECT count(*) FROM readings_hourly)").
+		Scan(&gateways, &nodes, &devices, &readings, &hourly); err != nil {
+		t.Fatal(err)
+	}
+
+	if gateways+nodes+devices+readings+hourly != 0 {
+		t.Fatalf("after the delete there are %d gateways, %d nodes, %d devices, %d readings and %d hourly rows", gateways, nodes, devices, readings, hourly)
+	}
+
+	// the room belongs to the business and stays
+	if r := g.e.Call(t, http.MethodGet, "/v1/rooms", "", g.session); r.Status != http.StatusOK {
+		t.Fatalf("the rooms answered %d", r.Status)
+	}
+
+	// the hardware gets the answer of a key that is not known, and the id is gone
+	if r := g.send(t, batch(2, "NODE-0001", "plug", sample(0, 5))); r.Status != http.StatusUnauthorized || r.Code() != "invalid_gateway_key" {
+		t.Fatalf("the hardware answered %d %v, want 401 invalid_gateway_key", r.Status, r.Body)
+	}
+
+	if r := g.e.Call(t, http.MethodDelete, "/v1/gateways/"+g.gateway, ownerPassword, g.session); r.Status != http.StatusNotFound {
+		t.Fatalf("a second delete answered %d, want 404", r.Status)
+	}
+
+	if list := g.e.Call(t, http.MethodGet, "/v1/gateways", "", g.session); list.Status != http.StatusOK || len(list.Body["items"].([]any)) != 0 {
+		t.Fatalf("the list after the delete is %d %v", list.Status, list.Body)
+	}
+}
+
+func TestDeletingAGatewayLeavesTheGatewayOfAnotherBusinessAlone(t *testing.T) {
+	e := testutil.New(t)
+	mine := enrolledOn(t, e, "budi@example.com", "ESP32-AABBCC", "a")
+	other := enrolledOn(t, e, "ani@example.com", "ESP32-DDEEFF", "b")
+
+	if r := mine.send(t, batch(1, "NODE-0001", "plug", sample(10, 120))); r.Status != http.StatusOK {
+		t.Fatalf("the batch of mine answered %d %v", r.Status, r.Body)
+	}
+
+	// the two batches of the other gateway use different seconds, because a sample with the same time is stored once
+	if r := other.send(t, batch(1, "NODE-0001", "plug", sample(10, 310))); r.Status != http.StatusOK {
+		t.Fatalf("the batch of the other answered %d %v", r.Status, r.Body)
+	}
+
+	if r := mine.e.Call(t, http.MethodDelete, "/v1/gateways/"+other.gateway, ownerPassword, mine.session); r.Status != http.StatusNotFound {
+		t.Fatalf("a delete of the gateway of another business answered %d, want 404", r.Status)
+	}
+
+	// the refused delete did not cut the key either
+	if r := other.send(t, batch(2, "NODE-0001", "plug", sample(0, 5))); r.Status != http.StatusOK {
+		t.Fatalf("the other gateway answered %d %v after a refused delete", r.Status, r.Body)
+	}
+
+	if r := mine.e.Call(t, http.MethodDelete, "/v1/gateways/"+mine.gateway, ownerPassword, mine.session); r.Status != http.StatusNoContent {
+		t.Fatalf("delete answered %d %v", r.Status, r.Body)
+	}
+
+	var readings, mineLeft int
+	if err := e.Pool.QueryRow(t.Context(), "SELECT count(*), count(*) FILTER (WHERE gateway_id = $1) FROM readings", mine.gateway).Scan(&readings, &mineLeft); err != nil || readings != 2 || mineLeft != 0 {
+		t.Fatalf("after the delete there are %d readings and %d of the deleted gateway (%v), the two of the other gateway must stay and none of mine", readings, mineLeft, err)
+	}
+}
+
+func TestDeletingAGatewayRemovesACodeThatWaitsForTheSameHardware(t *testing.T) {
+	g := enrolled(t, "budi@example.com", "ESP32-AABBCC", "a")
+
+	_, oldHash := key("a")
+
+	r := g.e.CallWith(t, http.MethodPost, "/device/v1/enroll", `{"hardwareId":"ESP32-AABBCC","keyHash":"`+oldHash+`"}`, nil)
+	code, _ := r.Body["claimCode"].(string)
+
+	if r = g.e.Call(t, http.MethodDelete, "/v1/gateways/"+g.gateway, ownerPassword, g.session); r.Status != http.StatusNoContent {
+		t.Fatalf("delete answered %d", r.Status)
+	}
+
+	if r = g.e.Call(t, http.MethodPost, "/v1/gateways", `{"claimCode":"`+code+`","name":"Hub"}`, g.session); r.Status != http.StatusNotFound || r.Code() != "claim_code_unknown" {
+		t.Fatalf("the waiting code answered %d %v, want 404 claim_code_unknown", r.Status, r.Body)
+	}
+
+	// the hardware can start again from nothing
+	_, hash := key("n")
+
+	enroll := g.e.CallWith(t, http.MethodPost, "/device/v1/enroll", `{"hardwareId":"ESP32-AABBCC","keyHash":"`+hash+`"}`, nil)
+	fresh, _ := enroll.Body["claimCode"].(string)
+
+	if r = g.e.Call(t, http.MethodPost, "/v1/gateways", `{"claimCode":"`+fresh+`","name":"Hub baru"}`, g.session); r.Status != http.StatusCreated || r.Body["id"] == g.gateway {
+		t.Fatalf("a new claim answered %d %v, want 201 with a new id", r.Status, r.Body)
+	}
+}
+
+func TestOnlyASignedInOwnerCanDeleteAGatewayAndABadIDIsNotFound(t *testing.T) {
+	g := enrolled(t, "budi@example.com", "ESP32-AABBCC", "a")
+
+	if r := g.e.Call(t, http.MethodDelete, "/v1/gateways/"+g.gateway, ownerPassword, ""); r.Status != http.StatusUnauthorized {
+		t.Fatalf("a delete with no session answered %d, want 401", r.Status)
+	}
+
+	for _, id := range []string{"nope", "00000000-0000-4000-8000-000000000000", "urn:uuid:" + g.gateway, strings.ToUpper(g.gateway)} {
+		if r := g.e.Call(t, http.MethodDelete, "/v1/gateways/"+id, ownerPassword, g.session); r.Status != http.StatusNotFound {
+			t.Errorf("a delete of %q answered %d, want 404", id, r.Status)
+		}
+	}
+
+	// nothing of this cut the key
+	if r := g.send(t, batch(1, "NODE-0001", "plug", sample(0, 5))); r.Status != http.StatusOK {
+		t.Fatalf("the gateway answered %d %v after refused deletes", r.Status, r.Body)
+	}
+}
+
+func TestDeletingAGatewayEmptiesMoreRowsThanOneBatch(t *testing.T) {
+	g := enrolled(t, "budi@example.com", "ESP32-AABBCC", "a")
+
+	if r := g.send(t, batch(1, "NODE-0001", "plug", sample(0, 310))); r.Status != http.StatusOK {
+		t.Fatalf("the first batch answered %d %v", r.Status, r.Body)
+	}
+
+	// more rows than the 5000 of one batch, so the loop has to run more than once
+	if _, err := g.e.Pool.Exec(t.Context(),
+		"INSERT INTO readings (gateway_id, node_id, t, watts) SELECT $1, 'NODE-0001', now() - make_interval(secs => 100 + n), 10 FROM generate_series(1, 12000) AS n",
+		g.gateway); err != nil {
+		t.Fatal(err)
+	}
+
+	if r := g.e.Call(t, http.MethodDelete, "/v1/gateways/"+g.gateway, ownerPassword, g.session); r.Status != http.StatusNoContent {
+		t.Fatalf("delete answered %d %v", r.Status, r.Body)
+	}
+
+	var readings int
+	if err := g.e.Pool.QueryRow(t.Context(), "SELECT count(*) FROM readings").Scan(&readings); err != nil || readings != 0 {
+		t.Fatalf("after the delete there are %d readings (%v)", readings, err)
+	}
+}
+
+func TestDeletingAGatewayNeedsTheRightPassword(t *testing.T) {
+	g := enrolled(t, "budi@example.com", "ESP32-AABBCC", "a")
+
+	for name, tc := range map[string]struct {
+		body   string
+		status int
+		code   string
+	}{
+		"no body":        {``, http.StatusBadRequest, "invalid_json"},
+		"no password":    {`{}`, http.StatusUnprocessableEntity, "validation_failed"},
+		"wrong password": {`{"password":"bukan kata sandi"}`, http.StatusForbidden, "invalid_credentials"},
+	} {
+		r := g.e.Call(t, http.MethodDelete, "/v1/gateways/"+g.gateway, tc.body, g.session)
+		if r.Status != tc.status || r.Code() != tc.code {
+			t.Errorf("%s answered %d %v, want %d %s", name, r.Status, r.Body, tc.status, tc.code)
+		}
+	}
+
+	// nothing of this cut the key or removed the gateway or its rows
+	if r := g.send(t, batch(1, "NODE-0001", "plug", sample(0, 5))); r.Status != http.StatusOK {
+		t.Fatalf("the gateway answered %d %v after refused deletes", r.Status, r.Body)
+	}
+
+	var gateways, readings int
+	if err := g.e.Pool.QueryRow(t.Context(), "SELECT (SELECT count(*) FROM gateways), (SELECT count(*) FROM readings)").Scan(&gateways, &readings); err != nil || gateways != 1 || readings != 1 {
+		t.Fatalf("after the refused deletes there are %d gateways and %d readings (%v), want 1 and 1", gateways, readings, err)
+	}
+
+	// the session is still fine
+	if r := g.e.Call(t, http.MethodGet, "/v1/auth/me", "", g.session); r.Status != http.StatusOK {
+		t.Fatalf("the session answered %d after refused deletes", r.Status)
+	}
+}
+
+func TestTheWrongPasswordsOfAGatewayDeleteSpendTheBudgetOfTheAccountDelete(t *testing.T) {
+	g := enrolled(t, "budi@example.com", "ESP32-AABBCC", "a")
+
+	for i := range 5 {
+		if r := g.e.Call(t, http.MethodDelete, "/v1/gateways/"+g.gateway, `{"password":"salah"}`, g.session); r.Status != http.StatusForbidden {
+			t.Fatalf("try %d answered %d", i+1, r.Status)
+		}
+	}
+
+	// the right password is refused once the budget is spent, and so is the delete of the account
+	r := g.e.Call(t, http.MethodDelete, "/v1/gateways/"+g.gateway, ownerPassword, g.session)
+	if r.Status != http.StatusTooManyRequests || r.Code() != "rate_limited" || r.Body["retryAfterSeconds"] == nil {
+		t.Fatalf("the right password with the budget spent answered %d %v, want 429", r.Status, r.Body)
+	}
+
+	if r := g.e.Call(t, http.MethodDelete, "/v1/account", ownerPassword, g.session); r.Status != http.StatusTooManyRequests {
+		t.Fatalf("the delete of the account answered %d, want 429 from the shared budget", r.Status)
+	}
+
+	if r := g.send(t, batch(1, "NODE-0001", "plug", sample(0, 5))); r.Status != http.StatusOK {
+		t.Fatalf("the gateway answered %d %v", r.Status, r.Body)
+	}
+}
+
+func TestARightPasswordDoesNotUseUpATryAndTheAccountDeleteSpendsTheSameBudget(t *testing.T) {
+	g := enrolled(t, "budi@example.com", "ESP32-AABBCC", "a")
+
+	// 4 wrong tries of the account delete, then a right gateway delete that works, then one more wrong try that is still a 403
+	for i := range 4 {
+		if r := g.e.Call(t, http.MethodDelete, "/v1/account", `{"password":"salah"}`, g.session); r.Status != http.StatusForbidden {
+			t.Fatalf("try %d answered %d", i+1, r.Status)
+		}
+	}
+
+	if r := g.e.Call(t, http.MethodDelete, "/v1/gateways/"+g.gateway, ownerPassword, g.session); r.Status != http.StatusNoContent {
+		t.Fatalf("the right password after 4 wrong ones answered %d %v, want 204", r.Status, r.Body)
+	}
+
+	if r := g.e.Call(t, http.MethodDelete, "/v1/gateways/"+g.gateway, `{"password":"salah"}`, g.session); r.Status != http.StatusForbidden {
+		t.Fatalf("the fifth wrong try answered %d %v, want 403 because the right one cost nothing", r.Status, r.Body)
+	}
+
+	// the budget is now spent by the account delete tries and the gateway route shows it
+	r := g.e.Call(t, http.MethodDelete, "/v1/gateways/"+g.gateway, ownerPassword, g.session)
+	if r.Status != http.StatusTooManyRequests {
+		t.Fatalf("the sixth call answered %d %v, want 429", r.Status, r.Body)
 	}
 }

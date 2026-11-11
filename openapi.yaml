@@ -226,7 +226,7 @@ paths:
       tags: [Account]
       operationId: deleteAccount
       summary: Delete the account and the business with everything under it
-      description: "The password is checked again, so a stolen session cannot delete the account alone. The delete takes the business and everything under it. That covers the user, the sessions, the gateways with their keys, the nodes, the devices, the readings, the anomalies, the tips, the relay commands and schedules, the rooms and the production records. It cannot be undone. The answer clears the cookie like logout. A wrong password answers 403 `invalid_credentials`, and not 401, because the session is still valid. A user has 5 wrong passwords an hour, and only a wrong password uses up a try, so a call that ends in 503 `busy` or with the right password does not. After the fifth wrong one the route answers 429 for every call, also with the right password. The big tables go first in batches, so a 503 `busy` can come after a part of the readings was deleted, or after the whole delete when the time ran out just after the commit. The same call can be repeated until it ends with 204. A 401 on the repeat means that the session is gone, which a finished delete causes, and so does a session that ended in the meantime. The app cannot tell the two apart from the answer, so it sends the user to the sign in page. A sign in with the right password works only while the account still exists, and a failed sign in proves nothing, because a wrong password gives the same answer."
+      description: "The password is checked again, so a stolen session cannot delete the account alone. The delete takes the business and everything under it. That covers the user, the sessions, the gateways with their keys, the nodes, the devices, the readings, the anomalies, the tips, the relay commands and schedules, the rooms and the production records. It cannot be undone. The answer clears the cookie like logout. A wrong password answers 403 `invalid_credentials`, and not 401, because the session is still valid. A user has 5 wrong passwords an hour, shared with `DELETE /v1/gateways/{id}`, and only a wrong password uses up a try, so a call that ends in 503 `busy` or with the right password does not. After the fifth wrong one the route answers 429 for every call, also with the right password. The big tables go first in batches, so a 503 `busy` can come after a part of the readings was deleted, or after the whole delete when the time ran out just after the commit. The same call can be repeated until it ends with 204. A 401 on the repeat means that the session is gone, which a finished delete causes, and so does a session that ended in the meantime. The app cannot tell the two apart from the answer, so it sends the user to the sign in page. A sign in with the right password works only while the account still exists, and a failed sign in proves nothing, because a wrong password gives the same answer."
       requestBody:
         required: true
         content:
@@ -616,6 +616,41 @@ paths:
         "401": {$ref: "#/components/responses/Unauthorized"}
         "404": {$ref: "#/components/responses/NotFound"}
         "4XX": {$ref: "#/components/responses/Error"}
+  /v1/gateways/{id}:
+    delete:
+      tags: [Pasang alat]
+      operationId: deleteGateway
+      summary: Remove a gateway
+      description: "The password is checked again, so a stolen session cannot remove a gateway alone. It is the same check and the same budget as `DELETE /v1/account`, so a user has 5 wrong passwords an hour for both routes together, only a wrong password uses up a try, and after the fifth wrong one the route answers 429 for every call, also with the right password. The check comes first, so a repeat of the call sends the password again. The gateway goes with its nodes, devices, readings, hourly sums, anomalies, tips, relay commands and schedules. It cannot be undone. The rooms stay. The service cuts the key first, so the hardware stops adding batches, apart from one that was already running, and then deletes the big tables in batches and the gateway row last. A 503 `busy` can therefore come after a part of the rows was deleted, and the same call can be repeated until it ends with 204. A 404 on the repeat means that the delete finished or that the id is not a gateway of the business, and the app cannot tell the two apart. The hardware gets 401 `invalid_gateway_key` from then on and can enroll again from the start, and a claim code that waits for the same hardware is removed. An id of another business, an unknown id and an id that is not a plain lower case uuid all answer 404."
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              additionalProperties: false
+              properties:
+                password: {type: string, minLength: 1}
+      responses:
+        "204":
+          description: The gateway and everything under it is deleted
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403":
+          description: The password is wrong (code `invalid_credentials`), or the CSRF header or the origin is missing
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "422": {$ref: "#/components/responses/Validation"}
+        "429": {$ref: "#/components/responses/RateLimited"}
+        "503": {$ref: "#/components/responses/Busy"}
+        "4XX": {$ref: "#/components/responses/Error"}
   /v1/pairings:
     post:
       tags: [Pasang alat]
@@ -659,7 +694,7 @@ paths:
       tags: [Pasang alat]
       operationId: getPairing
       summary: Read the state of a pairing
-      description: The app asks again every 3 seconds while the status is `searching`. `failed` covers a search that timed out after 3 minutes and a search that the owner stopped. `connected` has the id of the new device. The device exists as soon as the first reading of the node has arrived, so there is no state between `searching` and `connected`.
+      description: The app asks again every 3 seconds while the status is `searching`. `failed` covers a search that timed out after 3 minutes and a search that the owner stopped. `connected` has the id of the new device, or null when the device was deleted later, for example with its gateway. The device exists as soon as the first reading of the node has arrived, so there is no state between `searching` and `connected`.
       responses:
         "200":
           description: The pairing

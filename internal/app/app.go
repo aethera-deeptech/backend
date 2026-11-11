@@ -71,7 +71,7 @@ func New(d Deps) *fiber.App {
 	business.NewHandlers(business.NewStore(d.Pool)).Register(v1, require)
 	production.NewHandlers(production.NewStore(d.Pool)).Register(v1, require)
 
-	gateways := gateway.NewHandlers(gateway.NewService(d.Pool, limiter))
+	gateways := gateway.NewHandlers(gateway.NewService(d.Pool, limiter), accounts.ConfirmPassword)
 	gateways.RegisterApp(v1, require)
 	gateways.RegisterDevice(app.Group("/device/v1"))
 	device.NewHandlers(device.NewPairings(d.Pool, limiter)).Register(v1, require)
