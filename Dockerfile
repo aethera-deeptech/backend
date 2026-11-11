@@ -1,5 +1,5 @@
 # The build runs on the machine that builds the image and cross-compiles for the target, so an arm64 image needs no emulation
-FROM --platform=$BUILDPLATFORM golang:1.27.4-alpine@sha256:0a5f7fe796599ff487605987432e7619ae45beeb2fba4c2ce0b907879932aebf AS build
+FROM --platform=$BUILDPLATFORM golang:1.27-alpine@sha256:eb61c3873c97416fff0116553fff65d67a3549f72e11d9758849a689cdd8b523 AS build
 
 WORKDIR /src
 
