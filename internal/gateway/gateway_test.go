@@ -14,10 +14,10 @@ import (
 	"github.com/aethera-deeptech/backend/internal/testutil"
 )
 
-// key makes a gateway key of the right length and the hash that the gateway sends when it enrolls
 // ownerPassword is the body of a delete that asks for the password, the one that SignUp gives every account
 const ownerPassword = `{"password":"kata sandi baik"}`
 
+// key makes a gateway key of the right length and the hash that the gateway sends when it enrolls
 func key(seed string) (string, string) {
 	k := strings.Repeat(seed, 43)[:43]
 	sum := sha256.Sum256([]byte(k))
@@ -891,9 +891,14 @@ func TestDeletingAGatewayNeedsTheRightPassword(t *testing.T) {
 		}
 	}
 
-	// nothing of this cut the key or removed the gateway
+	// nothing of this cut the key or removed the gateway or its rows
 	if r := g.send(t, batch(1, "NODE-0001", "plug", sample(0, 5))); r.Status != http.StatusOK {
 		t.Fatalf("the gateway answered %d %v after refused deletes", r.Status, r.Body)
+	}
+
+	var gateways, readings int
+	if err := g.e.Pool.QueryRow(t.Context(), "SELECT (SELECT count(*) FROM gateways), (SELECT count(*) FROM readings)").Scan(&gateways, &readings); err != nil || gateways != 1 || readings != 1 {
+		t.Fatalf("after the refused deletes there are %d gateways and %d readings (%v), want 1 and 1", gateways, readings, err)
 	}
 
 	// the session is still fine
@@ -923,5 +928,30 @@ func TestTheWrongPasswordsOfAGatewayDeleteSpendTheBudgetOfTheAccountDelete(t *te
 
 	if r := g.send(t, batch(1, "NODE-0001", "plug", sample(0, 5))); r.Status != http.StatusOK {
 		t.Fatalf("the gateway answered %d %v", r.Status, r.Body)
+	}
+}
+
+func TestARightPasswordDoesNotUseUpATryAndTheAccountDeleteSpendsTheSameBudget(t *testing.T) {
+	g := enrolled(t, "budi@example.com", "ESP32-AABBCC", "a")
+
+	// 4 wrong tries of the account delete, then a right gateway delete that works, then one more wrong try that is still a 403
+	for i := range 4 {
+		if r := g.e.Call(t, http.MethodDelete, "/v1/account", `{"password":"salah"}`, g.session); r.Status != http.StatusForbidden {
+			t.Fatalf("try %d answered %d", i+1, r.Status)
+		}
+	}
+
+	if r := g.e.Call(t, http.MethodDelete, "/v1/gateways/"+g.gateway, ownerPassword, g.session); r.Status != http.StatusNoContent {
+		t.Fatalf("the right password after 4 wrong ones answered %d %v, want 204", r.Status, r.Body)
+	}
+
+	if r := g.e.Call(t, http.MethodDelete, "/v1/gateways/"+g.gateway, `{"password":"salah"}`, g.session); r.Status != http.StatusForbidden {
+		t.Fatalf("the fifth wrong try answered %d %v, want 403 because the right one cost nothing", r.Status, r.Body)
+	}
+
+	// the budget is now spent by the account delete tries and the gateway route shows it
+	r := g.e.Call(t, http.MethodDelete, "/v1/gateways/"+g.gateway, ownerPassword, g.session)
+	if r.Status != http.StatusTooManyRequests {
+		t.Fatalf("the sixth call answered %d %v, want 429", r.Status, r.Body)
 	}
 }
