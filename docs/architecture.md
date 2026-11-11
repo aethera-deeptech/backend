@@ -9,7 +9,7 @@ The backend is one Go program that serves a JSON API for the dashboard under `/v
 | API server | A Fiber v3 HTTP server that handles routing, security headers and errors |
 | PostgreSQL | The only store. It holds accounts, sessions, readings, tips and every rate limit counter, and the program talks to it through pgx |
 | Migrations | SQL files that are embedded in the binary and applied when the program starts, see [Data model](data-model.md) |
-| Mail | Sends the verification and reset mails over SMTP. A request never waits for the mail server |
+| Mail | Sends the verification, reset and account deleted mails over SMTP. A request never waits for the mail server |
 | Metrics listener | An optional second listener that serves the Prometheus text format, see [Monitoring](monitoring.md) |
 | Error reports | Optional reports of a 5xx and a panic to Sentry, with a scrubbed text |
 

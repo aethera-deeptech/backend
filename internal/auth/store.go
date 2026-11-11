@@ -490,16 +490,17 @@ func (s *Store) CutOffGateways(ctx context.Context, businessID string) error {
 // of readings, and one statement for all of them could run past the deadline of the request every time, so the big tables go first in
 // batches that each commit by themselves, as the janitor does. The hubs are cut off first. A call that stops half way has cut the hubs and
 // deleted a part of the readings and nothing else, and the next call goes on from there. The business row goes last, in one statement.
-func (s *Store) DeleteBusiness(ctx context.Context, businessID string) error {
+// It reports whether this call deleted the row, which is false when another call got there first.
+func (s *Store) DeleteBusiness(ctx context.Context, businessID string) (bool, error) {
 	if err := s.CutOffGateways(ctx, businessID); err != nil {
-		return err
+		return false, err
 	}
 
 	for _, query := range bigTablesOfABusiness {
 		for {
 			tag, err := s.pool.Exec(ctx, query, businessID, deleteBatch)
 			if err != nil {
-				return fmt.Errorf("delete a batch of rows of the business %w", err)
+				return false, fmt.Errorf("delete a batch of rows of the business %w", err)
 			}
 
 			// a batch can come back short when a concurrent writer took rows of it, so only an empty batch ends the loop
@@ -510,11 +511,12 @@ func (s *Store) DeleteBusiness(ctx context.Context, businessID string) error {
 		}
 	}
 
-	if _, err := s.pool.Exec(ctx, "DELETE FROM businesses WHERE id = $1", businessID); err != nil {
-		return fmt.Errorf("delete the business %w", err)
+	tag, err := s.pool.Exec(ctx, "DELETE FROM businesses WHERE id = $1", businessID)
+	if err != nil {
+		return false, fmt.Errorf("delete the business %w", err)
 	}
 
-	return nil
+	return tag.RowsAffected() == 1, nil
 }
 
 // DeleteSession ends one session

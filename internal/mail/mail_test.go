@@ -172,3 +172,31 @@ func TestAPanicOfTheSenderIsContainedAndTheMessageIsTriedAgain(t *testing.T) {
 
 	q.Close(ctx)
 }
+
+func TestTheEmailOfADeletedAccountHasNoLinkAndGoesToTheAddress(t *testing.T) {
+	f := &flaky{sent: make(chan Message, 1)}
+	q := NewQueue(f, 1, 4)
+
+	NewOutbox(q).AccountDeleted("budi@example.com")
+
+	var m Message
+
+	select {
+	case m = <-f.sent:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the email of a deleted account was not sent")
+	}
+
+	if m.To != "budi@example.com" || m.Subject == "" || m.Text == "" || m.HTML == "" {
+		t.Fatalf("the message is %+v", m)
+	}
+
+	if strings.Contains(m.Text, "http") || strings.Contains(m.HTML, "http") || strings.Contains(m.HTML, "<a ") {
+		t.Fatalf("the message of a deleted account holds a link %+v", m)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	q.Close(ctx)
+}
