@@ -115,6 +115,67 @@ func TestEnrollClaimAndSendReadings(t *testing.T) {
 	}
 }
 
+func TestTheLastSeenTimeOfAGatewayCarriesTheOffsetOfTheBusinessZone(t *testing.T) {
+	g := enrolled(t, "budi@example.com", "ESP32-AABBCC", "a")
+
+	lastSeen := func(call func() testutil.Reply) time.Time {
+		t.Helper()
+
+		r := call()
+		if r.Status != http.StatusOK && r.Status != http.StatusCreated {
+			t.Fatalf("answered %d %v", r.Status, r.Body)
+		}
+
+		text := r.Body["lastSeenAt"]
+		if items, ok := r.Body["items"].([]any); ok {
+			text = items[0].(map[string]any)["lastSeenAt"]
+		}
+
+		parsed, err := time.Parse(time.RFC3339Nano, text.(string))
+		if err != nil {
+			t.Fatalf("the time %v does not parse %v", text, err)
+		}
+
+		return parsed
+	}
+
+	list := func() testutil.Reply { return g.e.Call(t, http.MethodGet, "/v1/gateways", "", g.session) }
+
+	got := lastSeen(list)
+	if _, offset := got.Zone(); offset != 7*3600 {
+		t.Fatalf("the default zone gave the offset %d seconds, want 25200", offset)
+	}
+
+	var stored time.Time
+	if err := g.e.Pool.QueryRow(t.Context(), "SELECT COALESCE(last_seen_at, created_at) FROM gateways WHERE id = $1", g.gateway).Scan(&stored); err != nil {
+		t.Fatal(err)
+	}
+
+	if !got.Equal(stored) {
+		t.Fatalf("the answer is the instant %v and the row holds %v", got, stored)
+	}
+
+	g.e.Exec(t, "UPDATE businesses SET time_zone = 'Asia/Makassar'")
+
+	if _, offset := lastSeen(list).Zone(); offset != 8*3600 {
+		t.Fatalf("Makassar gave the offset %d seconds, want 28800", offset)
+	}
+
+	// the claim answer of a second hub is written in the same zone
+	_, hash := key("b")
+
+	r := g.e.CallWith(t, http.MethodPost, "/device/v1/enroll", `{"hardwareId":"ESP32-DDEEFF","firmware":"0.1.0","keyHash":"`+hash+`"}`, nil)
+	code, _ := r.Body["claimCode"].(string)
+
+	claim := func() testutil.Reply {
+		return g.e.Call(t, http.MethodPost, "/v1/gateways", `{"claimCode":"`+code+`","name":"Hub kedua"}`, g.session)
+	}
+
+	if _, offset := lastSeen(claim).Zone(); offset != 8*3600 {
+		t.Fatalf("the claim answer gave the offset %d seconds, want 28800", offset)
+	}
+}
+
 func TestACodeWorksOnceAndOnlyForTheRightFormat(t *testing.T) {
 	e := testutil.New(t)
 	session := e.SignUp(t, "budi@example.com")

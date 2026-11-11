@@ -115,6 +115,15 @@ func TestTheOwnerDecidesAndTheStatesFollowTheRules(t *testing.T) {
 		}
 	}
 
+	// the moment of the rejection is written in the zone of the business, in the detail as well as in the answer of the decision
+	g.e.Exec(t, "UPDATE businesses SET time_zone = 'Asia/Makassar'")
+
+	detail := g.e.Call(t, http.MethodGet, "/v1/recommendations/"+id, "", g.Session)
+
+	if at, _ := detail.Body["rejectedAt"].(string); !strings.HasSuffix(at, "+08:00") {
+		t.Fatalf("rejectedAt is %v, want the offset +08:00", detail.Body["rejectedAt"])
+	}
+
 	// a rejected tip is final, and the refresh does not bring it back or change it
 	g.hours(t, 9*24, 8*24+1, 100, 0.1)
 
@@ -150,6 +159,11 @@ func TestAnAppliedTipShowsItsDayAndIsVerifiedAfterFourteenDays(t *testing.T) {
 	v, _ := r.Body["verification"].(map[string]any)
 	if v["collectedDays"] != 1.0 || v["neededDays"] != 14.0 || r.Body["appliedAt"] == nil {
 		t.Fatalf("a new applied tip is %v", r.Body)
+	}
+
+	// the moment is written in the zone of the business, which is Asia/Jakarta by default
+	if at, _ := r.Body["appliedAt"].(string); !strings.HasSuffix(at, "+07:00") {
+		t.Fatalf("appliedAt is %q, want the offset +07:00", at)
 	}
 
 	// with no production records the check cannot run, so the tip stays applied after the 14 days
