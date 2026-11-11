@@ -469,7 +469,8 @@ func (s *Store) DeleteBusiness(ctx context.Context, businessID string) error {
 				return fmt.Errorf("delete a batch of rows of the business %w", err)
 			}
 
-			if tag.RowsAffected() < deleteBatch {
+			// a batch can come back short when a concurrent writer took rows of it, so only an empty batch ends the loop
+			if tag.RowsAffected() == 0 {
 				break
 			}
 		}
