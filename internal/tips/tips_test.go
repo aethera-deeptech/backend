@@ -152,6 +152,11 @@ func TestAnAppliedTipShowsItsDayAndIsVerifiedAfterFourteenDays(t *testing.T) {
 		t.Fatalf("a new applied tip is %v", r.Body)
 	}
 
+	// the moment is written in the zone of the business, which is Asia/Jakarta by default
+	if at, _ := r.Body["appliedAt"].(string); !strings.HasSuffix(at, "+07:00") {
+		t.Fatalf("appliedAt is %q, want the offset +07:00", at)
+	}
+
 	// with no production records the check cannot run, so the tip stays applied after the 14 days
 	g.e.Exec(t, "UPDATE tips SET applied_at = now() - interval '15 days'")
 	g.e.Exec(t, "UPDATE businesses SET tips_refreshed_at = NULL")

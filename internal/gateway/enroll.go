@@ -291,8 +291,8 @@ func (s *Service) Claim(ctx context.Context, businessID, rawCode, rawName string
 	}
 
 	// the business is locked first and the count is a statement of its own, so two claims at the same time count one after the other
-	var locked int
-	if err := tx.QueryRow(ctx, "SELECT 1 FROM businesses WHERE id = $1 FOR UPDATE", businessID).Scan(&locked); err != nil {
+	var zone string
+	if err := tx.QueryRow(ctx, "SELECT time_zone FROM businesses WHERE id = $1 FOR UPDATE", businessID).Scan(&zone); err != nil {
 		return Gateway{}, fmt.Errorf("lock the business %w", err)
 	}
 
@@ -345,12 +345,27 @@ func (s *Service) Claim(ctx context.Context, businessID, rawCode, rawName string
 		return Gateway{}, fmt.Errorf("finish the claim %w", err)
 	}
 
+	gw.LastSeenAt = gw.LastSeenAt.In(zoneOf(zone))
+
 	return gw, nil
 }
 
-// List returns the gateways of a business by name
+// zoneOf loads the time zone of a business, which the moments of an answer are written in. It is the same instant and only the offset
+// in the text changes. A name that cannot be loaded falls back to UTC.
+func zoneOf(name string) *time.Location {
+	loc, err := time.LoadLocation(name)
+	if err != nil {
+		return time.UTC
+	}
+
+	return loc
+}
+
+// List returns the gateways of a business by name, with the time of the last batch in the time zone of the business
 func (s *Service) List(ctx context.Context, businessID string) ([]Gateway, error) {
-	rows, err := s.pool.Query(ctx, "SELECT id, name, COALESCE(last_seen_at, created_at), key_revoked_at IS NOT NULL FROM gateways WHERE business_id = $1 ORDER BY lower(name), id", businessID)
+	rows, err := s.pool.Query(ctx,
+		`SELECT g.id, g.name, COALESCE(g.last_seen_at, g.created_at), g.key_revoked_at IS NOT NULL, b.time_zone
+		 FROM gateways g JOIN businesses b ON b.id = g.business_id WHERE g.business_id = $1 ORDER BY lower(g.name), g.id`, businessID)
 	if err != nil {
 		return nil, fmt.Errorf("list the gateways %w", err)
 	}
@@ -359,10 +374,16 @@ func (s *Service) List(ctx context.Context, businessID string) ([]Gateway, error
 	out := []Gateway{}
 
 	for rows.Next() {
-		var g Gateway
-		if err := rows.Scan(&g.ID, &g.Name, &g.LastSeenAt, &g.KeyRevoked); err != nil {
+		var (
+			g    Gateway
+			zone string
+		)
+
+		if err := rows.Scan(&g.ID, &g.Name, &g.LastSeenAt, &g.KeyRevoked, &zone); err != nil {
 			return nil, fmt.Errorf("read a gateway %w", err)
 		}
+
+		g.LastSeenAt = g.LastSeenAt.In(zoneOf(zone))
 
 		out = append(out, g)
 	}

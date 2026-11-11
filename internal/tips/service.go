@@ -590,7 +590,7 @@ func (s *Service) detail(ctx context.Context, businessID, id string) (Detail, er
 	t := f.all()
 
 	out := Detail{ID: r.id, Title: t.Title, DeviceName: r.deviceName, Status: r.status, SavingPerMonthRp: r.savingRp(p),
-		TariffIsDefault: p.tariffDefault, WhatToDo: t.WhatToDo, Why: t.Why, HowCalculated: t.How, AppliedAt: r.appliedAt, RejectedAt: r.rejectedAt}
+		TariffIsDefault: p.tariffDefault, WhatToDo: t.WhatToDo, Why: t.Why, HowCalculated: t.How, AppliedAt: inZone(r.appliedAt, p.loc), RejectedAt: inZone(r.rejectedAt, p.loc)}
 
 	if r.status == StatusApplied {
 		out.Verification = &Progress{CollectedDays: r.elapsed(p, s.now()), NeededDays: VerifyDays}
@@ -602,6 +602,17 @@ func (s *Service) detail(ctx context.Context, businessID, id string) (Detail, er
 	}
 
 	return out, nil
+}
+
+// inZone writes a moment in the time zone of the business. It is the same instant and only the offset in the text changes.
+func inZone(t *time.Time, loc *time.Location) *time.Time {
+	if t == nil {
+		return nil
+	}
+
+	local := t.In(loc)
+
+	return &local
 }
 
 var transitions = map[string]struct {
