@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"context"
 	"net/http"
 	"strings"
 	"time"
@@ -13,13 +14,17 @@ import (
 
 // Handlers are the routes that the app calls to manage its gateways and the routes that a gateway calls
 type Handlers struct {
-	svc *Service
-	now func() time.Time
+	svc     *Service
+	confirm PasswordCheck
+	now     func() time.Time
 }
 
-// NewHandlers returns the routes
-func NewHandlers(svc *Service) *Handlers {
-	return &Handlers{svc: svc, now: time.Now}
+// PasswordCheck asks a signed in user for the password again and answers nil only for the right one
+type PasswordCheck func(ctx context.Context, user *auth.User, password string) error
+
+// NewHandlers returns the routes. The confirm function guards the routes that cannot be undone.
+func NewHandlers(svc *Service, confirm PasswordCheck) *Handlers {
+	return &Handlers{svc: svc, confirm: confirm, now: time.Now}
 }
 
 // RegisterApp adds the routes of the app under /v1 behind the middleware that needs a signed in user
@@ -27,7 +32,7 @@ func (h *Handlers) RegisterApp(r fiber.Router, require fiber.Handler) {
 	r.Get("/gateways", require, h.list)
 	r.Post("/gateways", require, h.claim)
 	r.Post("/gateways/:id/revoke-key", require, h.revokeKey)
-	r.Delete("/gateways/:id", require, h.deleteGateway)
+	r.Delete("/gateways/:id", api.BodyLimit(maxConfirmBody), require, h.deleteGateway)
 }
 
 // RegisterDevice adds the routes of a gateway under /device/v1. They take no cookie and need no CSRF header, because a gateway is
@@ -48,6 +53,9 @@ func refuseEncoding(c fiber.Ctx) error {
 
 	return c.Next()
 }
+
+// maxConfirmBody is the largest body of a request that asks for the password again
+const maxConfirmBody = 2 << 10
 
 // maxEnrollBody is the largest body of an enroll request, which has a hardware id, a version and a hash
 const maxEnrollBody = 2 << 10
@@ -87,8 +95,23 @@ func (h *Handlers) revokeKey(c fiber.Ctx) error {
 	return c.SendStatus(http.StatusNoContent)
 }
 
+// deleteGateway removes a gateway after a check of the password, which is the same check and the same budget as the delete of an account
 func (h *Handlers) deleteGateway(c fiber.Ctx) error {
-	if err := h.svc.Delete(c.Context(), auth.UserFrom(c).BusinessID, c.Params("id")); err != nil {
+	var in struct {
+		Password string `json:"password"`
+	}
+
+	if err := api.Decode(c, &in); err != nil {
+		return err
+	}
+
+	user := auth.UserFrom(c)
+
+	if err := h.confirm(c.Context(), user, in.Password); err != nil {
+		return err
+	}
+
+	if err := h.svc.Delete(c.Context(), user.BusinessID, c.Params("id")); err != nil {
 		return err
 	}
 

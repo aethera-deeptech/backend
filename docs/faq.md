@@ -37,7 +37,7 @@ The app is in Indonesian, and the API keeps a few of those words in its fields a
 
 **Can an owner delete an account?** Yes. `DELETE /v1/account` with the password deletes the business and everything under it, and it cannot be undone. See [Privacy](privacy.md#deleting-an-account).
 
-**Can an owner remove a gateway?** Yes. `DELETE /v1/gateways/{id}` removes the gateway with its devices and readings, and it cannot be undone. The hardware gets 401 and can enroll again from the start. See [API](api.md).
+**Can an owner remove a gateway?** Yes. `DELETE /v1/gateways/{id}` with the password removes the gateway with its devices and readings, and it cannot be undone. The hardware gets 401 and can enroll again from the start. See [API](api.md).
 
 **Can a session be ended from the app?** Yes. The owner can list the signed in devices, end one of them, or end all the others, and signing out ends the session of that device. A session also ends after 30 days without use, after 90 days, or when the owner resets the password. See [Security](security.md).
 

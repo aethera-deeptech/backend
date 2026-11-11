@@ -15,6 +15,9 @@ import (
 )
 
 // key makes a gateway key of the right length and the hash that the gateway sends when it enrolls
+// ownerPassword is the body of a delete that asks for the password, the one that SignUp gives every account
+const ownerPassword = `{"password":"kata sandi baik"}`
+
 func key(seed string) (string, string) {
 	k := strings.Repeat(seed, 43)[:43]
 	sum := sha256.Sum256([]byte(k))
@@ -732,7 +735,7 @@ func TestDeletingAGatewayRemovesItsRowsAndStopsTheHardware(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	r := g.e.Call(t, http.MethodDelete, "/v1/gateways/"+g.gateway, "", g.session)
+	r := g.e.Call(t, http.MethodDelete, "/v1/gateways/"+g.gateway, ownerPassword, g.session)
 	if r.Status != http.StatusNoContent || len(r.Raw) != 0 {
 		t.Fatalf("delete answered %d %v", r.Status, r.Body)
 	}
@@ -758,7 +761,7 @@ func TestDeletingAGatewayRemovesItsRowsAndStopsTheHardware(t *testing.T) {
 		t.Fatalf("the hardware answered %d %v, want 401 invalid_gateway_key", r.Status, r.Body)
 	}
 
-	if r := g.e.Call(t, http.MethodDelete, "/v1/gateways/"+g.gateway, "", g.session); r.Status != http.StatusNotFound {
+	if r := g.e.Call(t, http.MethodDelete, "/v1/gateways/"+g.gateway, ownerPassword, g.session); r.Status != http.StatusNotFound {
 		t.Fatalf("a second delete answered %d, want 404", r.Status)
 	}
 
@@ -781,7 +784,7 @@ func TestDeletingAGatewayLeavesTheGatewayOfAnotherBusinessAlone(t *testing.T) {
 		t.Fatalf("the batch of the other answered %d %v", r.Status, r.Body)
 	}
 
-	if r := mine.e.Call(t, http.MethodDelete, "/v1/gateways/"+other.gateway, "", mine.session); r.Status != http.StatusNotFound {
+	if r := mine.e.Call(t, http.MethodDelete, "/v1/gateways/"+other.gateway, ownerPassword, mine.session); r.Status != http.StatusNotFound {
 		t.Fatalf("a delete of the gateway of another business answered %d, want 404", r.Status)
 	}
 
@@ -790,7 +793,7 @@ func TestDeletingAGatewayLeavesTheGatewayOfAnotherBusinessAlone(t *testing.T) {
 		t.Fatalf("the other gateway answered %d %v after a refused delete", r.Status, r.Body)
 	}
 
-	if r := mine.e.Call(t, http.MethodDelete, "/v1/gateways/"+mine.gateway, "", mine.session); r.Status != http.StatusNoContent {
+	if r := mine.e.Call(t, http.MethodDelete, "/v1/gateways/"+mine.gateway, ownerPassword, mine.session); r.Status != http.StatusNoContent {
 		t.Fatalf("delete answered %d %v", r.Status, r.Body)
 	}
 
@@ -808,7 +811,7 @@ func TestDeletingAGatewayRemovesACodeThatWaitsForTheSameHardware(t *testing.T) {
 	r := g.e.CallWith(t, http.MethodPost, "/device/v1/enroll", `{"hardwareId":"ESP32-AABBCC","keyHash":"`+oldHash+`"}`, nil)
 	code, _ := r.Body["claimCode"].(string)
 
-	if r = g.e.Call(t, http.MethodDelete, "/v1/gateways/"+g.gateway, "", g.session); r.Status != http.StatusNoContent {
+	if r = g.e.Call(t, http.MethodDelete, "/v1/gateways/"+g.gateway, ownerPassword, g.session); r.Status != http.StatusNoContent {
 		t.Fatalf("delete answered %d", r.Status)
 	}
 
@@ -830,12 +833,12 @@ func TestDeletingAGatewayRemovesACodeThatWaitsForTheSameHardware(t *testing.T) {
 func TestOnlyASignedInOwnerCanDeleteAGatewayAndABadIDIsNotFound(t *testing.T) {
 	g := enrolled(t, "budi@example.com", "ESP32-AABBCC", "a")
 
-	if r := g.e.Call(t, http.MethodDelete, "/v1/gateways/"+g.gateway, "", ""); r.Status != http.StatusUnauthorized {
+	if r := g.e.Call(t, http.MethodDelete, "/v1/gateways/"+g.gateway, ownerPassword, ""); r.Status != http.StatusUnauthorized {
 		t.Fatalf("a delete with no session answered %d, want 401", r.Status)
 	}
 
 	for _, id := range []string{"nope", "00000000-0000-4000-8000-000000000000", "urn:uuid:" + g.gateway, strings.ToUpper(g.gateway)} {
-		if r := g.e.Call(t, http.MethodDelete, "/v1/gateways/"+id, "", g.session); r.Status != http.StatusNotFound {
+		if r := g.e.Call(t, http.MethodDelete, "/v1/gateways/"+id, ownerPassword, g.session); r.Status != http.StatusNotFound {
 			t.Errorf("a delete of %q answered %d, want 404", id, r.Status)
 		}
 	}
@@ -860,12 +863,65 @@ func TestDeletingAGatewayEmptiesMoreRowsThanOneBatch(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if r := g.e.Call(t, http.MethodDelete, "/v1/gateways/"+g.gateway, "", g.session); r.Status != http.StatusNoContent {
+	if r := g.e.Call(t, http.MethodDelete, "/v1/gateways/"+g.gateway, ownerPassword, g.session); r.Status != http.StatusNoContent {
 		t.Fatalf("delete answered %d %v", r.Status, r.Body)
 	}
 
 	var readings int
 	if err := g.e.Pool.QueryRow(t.Context(), "SELECT count(*) FROM readings").Scan(&readings); err != nil || readings != 0 {
 		t.Fatalf("after the delete there are %d readings (%v)", readings, err)
+	}
+}
+
+func TestDeletingAGatewayNeedsTheRightPassword(t *testing.T) {
+	g := enrolled(t, "budi@example.com", "ESP32-AABBCC", "a")
+
+	for name, tc := range map[string]struct {
+		body   string
+		status int
+		code   string
+	}{
+		"no body":        {``, http.StatusBadRequest, "invalid_json"},
+		"no password":    {`{}`, http.StatusUnprocessableEntity, "validation_failed"},
+		"wrong password": {`{"password":"bukan kata sandi"}`, http.StatusForbidden, "invalid_credentials"},
+	} {
+		r := g.e.Call(t, http.MethodDelete, "/v1/gateways/"+g.gateway, tc.body, g.session)
+		if r.Status != tc.status || r.Code() != tc.code {
+			t.Errorf("%s answered %d %v, want %d %s", name, r.Status, r.Body, tc.status, tc.code)
+		}
+	}
+
+	// nothing of this cut the key or removed the gateway
+	if r := g.send(t, batch(1, "NODE-0001", "plug", sample(0, 5))); r.Status != http.StatusOK {
+		t.Fatalf("the gateway answered %d %v after refused deletes", r.Status, r.Body)
+	}
+
+	// the session is still fine
+	if r := g.e.Call(t, http.MethodGet, "/v1/auth/me", "", g.session); r.Status != http.StatusOK {
+		t.Fatalf("the session answered %d after refused deletes", r.Status)
+	}
+}
+
+func TestTheWrongPasswordsOfAGatewayDeleteSpendTheBudgetOfTheAccountDelete(t *testing.T) {
+	g := enrolled(t, "budi@example.com", "ESP32-AABBCC", "a")
+
+	for i := range 5 {
+		if r := g.e.Call(t, http.MethodDelete, "/v1/gateways/"+g.gateway, `{"password":"salah"}`, g.session); r.Status != http.StatusForbidden {
+			t.Fatalf("try %d answered %d", i+1, r.Status)
+		}
+	}
+
+	// the right password is refused once the budget is spent, and so is the delete of the account
+	r := g.e.Call(t, http.MethodDelete, "/v1/gateways/"+g.gateway, ownerPassword, g.session)
+	if r.Status != http.StatusTooManyRequests || r.Code() != "rate_limited" || r.Body["retryAfterSeconds"] == nil {
+		t.Fatalf("the right password with the budget spent answered %d %v, want 429", r.Status, r.Body)
+	}
+
+	if r := g.e.Call(t, http.MethodDelete, "/v1/account", ownerPassword, g.session); r.Status != http.StatusTooManyRequests {
+		t.Fatalf("the delete of the account answered %d, want 429 from the shared budget", r.Status)
+	}
+
+	if r := g.send(t, batch(1, "NODE-0001", "plug", sample(0, 5))); r.Status != http.StatusOK {
+		t.Fatalf("the gateway answered %d %v", r.Status, r.Body)
 	}
 }

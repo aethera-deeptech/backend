@@ -52,7 +52,7 @@ var (
 	ruleForgotIP      = Rule{Bucket: "forgot-ip", Max: 20, Window: time.Hour}
 	ruleChangeIP      = Rule{Bucket: "change-ip", Max: 10, Window: time.Hour}
 	ruleChangeEmail   = Rule{Bucket: "change-email", Max: 5, Window: time.Hour}
-	ruleDeleteAccount = Rule{Bucket: "delete-account", Max: 5, Window: time.Hour}
+	ruleDeleteAccount = Rule{Bucket: "delete-account", Max: 5, Window: time.Hour} // shared by every action that asks for the password again
 )
 
 // Service holds the rules of the accounts
@@ -350,9 +350,20 @@ func (s *Service) Logout(ctx context.Context, token string) error {
 }
 
 // DeleteAccount deletes the business of the user, and with it everything under the business, after the password is checked again so a
-// stolen session cannot do it alone. The tries are limited for each user, because the session is all that a guesser needs. Only a wrong
-// password uses up a try, so a call that ends in 503 busy or with the right password does not.
+// stolen session cannot do it alone, see ConfirmPassword.
 func (s *Service) DeleteAccount(ctx context.Context, user *User, password string) error {
+	if err := s.ConfirmPassword(ctx, user, password); err != nil {
+		return err
+	}
+
+	return s.store.DeleteBusiness(ctx, user.BusinessID)
+}
+
+// ConfirmPassword asks the user for the password again before an action that cannot be undone, so a stolen session cannot do it alone.
+// It answers nil only for the right password. The tries are limited for each user and the budget is shared by every such action,
+// because the session is all that a guesser needs and two routes must not give a guesser two budgets. Only a wrong password uses up a
+// try, so a call that ends in 503 busy or with the right password does not.
+func (s *Service) ConfirmPassword(ctx context.Context, user *User, password string) error {
 	if password == "" {
 		return api.Validation(map[string]string{"password": "required"})
 	}
@@ -388,11 +399,7 @@ func (s *Service) DeleteAccount(ctx context.Context, user *User, password string
 	}
 
 	// the budget is read again, because parallel wrong tries may have spent it while this hash ran
-	if err := s.check(ctx, ruleDeleteAccount, user.ID); err != nil {
-		return err
-	}
-
-	return s.store.DeleteBusiness(ctx, user.BusinessID)
+	return s.check(ctx, ruleDeleteAccount, user.ID)
 }
 
 // Sessions lists the open sessions of the user, and marks the one that the token belongs to
