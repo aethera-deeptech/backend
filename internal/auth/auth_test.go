@@ -1170,6 +1170,66 @@ func TestDeletingTheAccountSendsOneEmailAndAWrongPasswordSendsNone(t *testing.T)
 	}
 }
 
+func TestOnlyTheFirstDeleteOfABusinessReportsThatItDeletedTheRow(t *testing.T) {
+	e := testutil.New(t)
+	budi := e.SeedDevice(t, "budi@example.com", "ESP32-AABBCC")
+	store := auth.NewStore(e.Pool)
+
+	if deleted, err := store.DeleteBusiness(t.Context(), budi.Business); err != nil || !deleted {
+		t.Fatalf("the first delete answered %v %v, want true", deleted, err)
+	}
+
+	if deleted, err := store.DeleteBusiness(t.Context(), budi.Business); err != nil || deleted {
+		t.Fatalf("the second delete answered %v %v, want false", deleted, err)
+	}
+}
+
+func TestCuttingOffTheGatewaysOfABusinessStopsOnlyItsOwnHubs(t *testing.T) {
+	e := testutil.New(t)
+	budi := e.SeedDevice(t, "budi@example.com", "ESP32-AABBCC")
+	siti := e.SeedDevice(t, "siti@example.com", "ESP32-DDEEFF")
+
+	// a code that waits for the hardware of the first business
+	e.Exec(t, `INSERT INTO gateway_enrollments (poll_hash, code_hash, hardware_id, key_hash, expires_at)
+		VALUES (sha256('poll'), sha256('code'), 'ESP32-AABBCC', sha256('key'), now() + interval '1 hour')`)
+
+	if err := auth.NewStore(e.Pool).CutOffGateways(t.Context(), budi.Business); err != nil {
+		t.Fatal(err)
+	}
+
+	cut := func(business string) int {
+		var n int
+		if err := e.Pool.QueryRow(t.Context(), "SELECT count(*) FROM gateways WHERE business_id = $1 AND key_revoked_at IS NOT NULL", business).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+
+		return n
+	}
+
+	if cut(budi.Business) != 1 || cut(siti.Business) != 0 {
+		t.Fatalf("the cut off reached %d hubs of the first business and %d of the second, want 1 and 0", cut(budi.Business), cut(siti.Business))
+	}
+
+	var waiting int
+	if err := e.Pool.QueryRow(t.Context(), "SELECT count(*) FROM gateway_enrollments").Scan(&waiting); err != nil || waiting != 0 {
+		t.Fatalf("%d codes still wait, err %v", waiting, err)
+	}
+
+	// a second cut off keeps the time of the first
+	var first, second time.Time
+	if err := e.Pool.QueryRow(t.Context(), "SELECT key_revoked_at FROM gateways WHERE business_id = $1", budi.Business).Scan(&first); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := auth.NewStore(e.Pool).CutOffGateways(t.Context(), budi.Business); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := e.Pool.QueryRow(t.Context(), "SELECT key_revoked_at FROM gateways WHERE business_id = $1", budi.Business).Scan(&second); err != nil || !second.Equal(first) {
+		t.Fatalf("the second cut off moved the time from %v to %v, err %v", first, second, err)
+	}
+}
+
 func TestACheckOfTheLimiterCountsNothing(t *testing.T) {
 	e := testutil.New(t)
 	limiter := auth.NewLimiter(e.Pool)

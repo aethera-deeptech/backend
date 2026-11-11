@@ -179,7 +179,14 @@ func TestTheEmailOfADeletedAccountHasNoLinkAndGoesToTheAddress(t *testing.T) {
 
 	NewOutbox(q).AccountDeleted("budi@example.com")
 
-	m := <-f.sent
+	var m Message
+
+	select {
+	case m = <-f.sent:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the email of a deleted account was not sent")
+	}
+
 	if m.To != "budi@example.com" || m.Subject == "" || m.Text == "" || m.HTML == "" {
 		t.Fatalf("the message is %+v", m)
 	}

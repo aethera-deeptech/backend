@@ -67,7 +67,7 @@ Every setting is an environment variable, and [.env.example](.env.example) lists
 | `DB_HOST`, `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD` | required | The PostgreSQL connection. `DB_PORT` is 5432 unless it is set |
 | `DB_SSL_MODE` | `require`, and `disable` in the example | The mode of the connection. Use `disable` only on a private Docker network or on your own machine |
 | `DB_MAX_CONNS` | `8` | The pool size of one copy |
-| `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURITY`, `SMTP_FROM_ADDRESS` | see the file | The mail server for the verification and reset mails |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURITY`, `SMTP_FROM_ADDRESS` | see the file | The mail server for the verification, reset and account deleted mails |
 | `SENTRY_DSN` | empty | An empty value switches error reports off |
 | `METRICS_ADDRESS` | empty | The address of the Prometheus listener. Empty switches it off |
 

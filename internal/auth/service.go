@@ -357,12 +357,16 @@ func (s *Service) DeleteAccount(ctx context.Context, user *User, password string
 		return err
 	}
 
-	if err := s.store.DeleteBusiness(ctx, user.BusinessID); err != nil {
+	deleted, err := s.store.DeleteBusiness(ctx, user.BusinessID)
+	if err != nil {
 		return err
 	}
 
-	// the address lives only in memory for this one email, and a mail that cannot be queued does not undo a delete that is done
-	s.mailer.AccountDeleted(user.Email)
+	// only the call that deleted the row sends the email, so a double click sends one. The address lives only in memory for this email,
+	// and a mail that cannot be queued does not undo a delete that is done.
+	if deleted {
+		s.mailer.AccountDeleted(user.Email)
+	}
 
 	return nil
 }
