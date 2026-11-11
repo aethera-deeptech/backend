@@ -470,6 +470,7 @@ func (s *Store) DeleteBusiness(ctx context.Context, businessID string) error {
 			}
 
 			// a batch can come back short when a concurrent writer took rows of it, so only an empty batch ends the loop
+			// and any row that is left goes with the cascade of the business row
 			if tag.RowsAffected() == 0 {
 				break
 			}
