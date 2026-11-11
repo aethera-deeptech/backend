@@ -36,6 +36,7 @@ type Outbox struct {
 	mu     sync.Mutex
 	verify map[string]string
 	reset  map[string]string
+	gone   map[string]int
 }
 
 // Verification keeps the link of a verification email
@@ -52,6 +53,22 @@ func (o *Outbox) PasswordReset(to, link string) {
 	defer o.mu.Unlock()
 
 	o.reset[to] = link
+}
+
+// AccountDeleted counts the emails that say an account is gone
+func (o *Outbox) AccountDeleted(to string) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+
+	o.gone[to]++
+}
+
+// DeletedEmails returns how many emails told the address that the account is gone
+func (o *Outbox) DeletedEmails(to string) int {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+
+	return o.gone[to]
 }
 
 // VerifyLink returns the last link of a verification email to the address, and whether there is one
@@ -108,7 +125,7 @@ func New(t *testing.T) *Env {
 func NewOn(t *testing.T, pool *pgxpool.Pool) *Env {
 	t.Helper()
 
-	mail := &Outbox{verify: map[string]string{}, reset: map[string]string{}}
+	mail := &Outbox{verify: map[string]string{}, reset: map[string]string{}, gone: map[string]int{}}
 
 	cfg := config.Config{AppEnv: config.EnvProduction, AppOrigin: Origin}
 

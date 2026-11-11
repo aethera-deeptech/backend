@@ -1149,6 +1149,27 @@ func TestOnlyAWrongPasswordUsesUpATryToDeleteAnAccount(t *testing.T) {
 	}
 }
 
+func TestDeletingTheAccountSendsOneEmailAndAWrongPasswordSendsNone(t *testing.T) {
+	e := testutil.New(t)
+	session := e.SignUp(t, "budi@example.com")
+
+	if r := deleteAccount(t, e, `{"password":"salah"}`, session); r.Status != http.StatusForbidden {
+		t.Fatalf("a wrong password answered %d", r.Status)
+	}
+
+	if n := e.Mail.DeletedEmails("budi@example.com"); n != 0 {
+		t.Fatalf("a refused delete sent %d emails", n)
+	}
+
+	if r := deleteAccount(t, e, `{"password":"kata sandi baik"}`, session); r.Status != http.StatusNoContent {
+		t.Fatalf("the right password answered %d %v", r.Status, r.Body)
+	}
+
+	if n := e.Mail.DeletedEmails("budi@example.com"); n != 1 {
+		t.Fatalf("a delete sent %d emails, want 1", n)
+	}
+}
+
 func TestACheckOfTheLimiterCountsNothing(t *testing.T) {
 	e := testutil.New(t)
 	limiter := auth.NewLimiter(e.Pool)

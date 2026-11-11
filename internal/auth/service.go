@@ -37,6 +37,7 @@ const (
 type Mailer interface {
 	Verification(to, link string)
 	PasswordReset(to, link string)
+	AccountDeleted(to string)
 }
 
 // The limits of the account routes. A key is an address of a client or an email.
@@ -356,7 +357,14 @@ func (s *Service) DeleteAccount(ctx context.Context, user *User, password string
 		return err
 	}
 
-	return s.store.DeleteBusiness(ctx, user.BusinessID)
+	if err := s.store.DeleteBusiness(ctx, user.BusinessID); err != nil {
+		return err
+	}
+
+	// the address lives only in memory for this one email, and a mail that cannot be queued does not undo a delete that is done
+	s.mailer.AccountDeleted(user.Email)
+
+	return nil
 }
 
 // ConfirmPassword asks the user for the password again before an action that cannot be undone, so a stolen session cannot do it alone.
