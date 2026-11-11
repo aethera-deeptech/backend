@@ -772,6 +772,10 @@ func TestDeletingAGatewayLeavesTheGatewayOfAnotherBusinessAlone(t *testing.T) {
 	mine := enrolledOn(t, e, "budi@example.com", "ESP32-AABBCC", "a")
 	other := enrolledOn(t, e, "ani@example.com", "ESP32-DDEEFF", "b")
 
+	if r := mine.send(t, batch(1, "NODE-0001", "plug", sample(10, 120))); r.Status != http.StatusOK {
+		t.Fatalf("the batch of mine answered %d %v", r.Status, r.Body)
+	}
+
 	// the two batches of the other gateway use different seconds, because a sample with the same time is stored once
 	if r := other.send(t, batch(1, "NODE-0001", "plug", sample(10, 310))); r.Status != http.StatusOK {
 		t.Fatalf("the batch of the other answered %d %v", r.Status, r.Body)
@@ -790,9 +794,9 @@ func TestDeletingAGatewayLeavesTheGatewayOfAnotherBusinessAlone(t *testing.T) {
 		t.Fatalf("delete answered %d %v", r.Status, r.Body)
 	}
 
-	var readings int
-	if err := e.Pool.QueryRow(t.Context(), "SELECT count(*) FROM readings").Scan(&readings); err != nil || readings != 2 {
-		t.Fatalf("after the delete there are %d readings (%v), the two of the other gateway must stay", readings, err)
+	var readings, mineLeft int
+	if err := e.Pool.QueryRow(t.Context(), "SELECT count(*), count(*) FILTER (WHERE gateway_id = $1) FROM readings", mine.gateway).Scan(&readings, &mineLeft); err != nil || readings != 2 || mineLeft != 0 {
+		t.Fatalf("after the delete there are %d readings and %d of the deleted gateway (%v), the two of the other gateway must stay and none of mine", readings, mineLeft, err)
 	}
 }
 
@@ -839,5 +843,29 @@ func TestOnlyASignedInOwnerCanDeleteAGatewayAndABadIDIsNotFound(t *testing.T) {
 	// nothing of this cut the key
 	if r := g.send(t, batch(1, "NODE-0001", "plug", sample(0, 5))); r.Status != http.StatusOK {
 		t.Fatalf("the gateway answered %d %v after refused deletes", r.Status, r.Body)
+	}
+}
+
+func TestDeletingAGatewayEmptiesMoreRowsThanOneBatch(t *testing.T) {
+	g := enrolled(t, "budi@example.com", "ESP32-AABBCC", "a")
+
+	if r := g.send(t, batch(1, "NODE-0001", "plug", sample(0, 310))); r.Status != http.StatusOK {
+		t.Fatalf("the first batch answered %d %v", r.Status, r.Body)
+	}
+
+	// more rows than the 5000 of one batch, so the loop has to run more than once
+	if _, err := g.e.Pool.Exec(t.Context(),
+		"INSERT INTO readings (gateway_id, node_id, t, watts) SELECT $1, 'NODE-0001', now() - make_interval(secs => 100 + n), 10 FROM generate_series(1, 12000) AS n",
+		g.gateway); err != nil {
+		t.Fatal(err)
+	}
+
+	if r := g.e.Call(t, http.MethodDelete, "/v1/gateways/"+g.gateway, "", g.session); r.Status != http.StatusNoContent {
+		t.Fatalf("delete answered %d %v", r.Status, r.Body)
+	}
+
+	var readings int
+	if err := g.e.Pool.QueryRow(t.Context(), "SELECT count(*) FROM readings").Scan(&readings); err != nil || readings != 0 {
+		t.Fatalf("after the delete there are %d readings (%v)", readings, err)
 	}
 }

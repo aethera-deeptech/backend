@@ -621,7 +621,7 @@ paths:
       tags: [Pasang alat]
       operationId: deleteGateway
       summary: Remove a gateway
-      description: "The gateway goes with its nodes, devices, readings, hourly sums, anomalies, tips, relay commands and schedules. It cannot be undone. The rooms stay. The service cuts the key first, so the hardware stops adding rows, and then deletes the big tables in batches and the gateway row last. A 503 `busy` can therefore come after a part of the rows was deleted, and the same call can be repeated until it ends with 204. A 404 on the repeat means that the delete finished or that the id is not a gateway of the business, and the app cannot tell the two apart. The hardware gets 401 `invalid_gateway_key` from then on and can enroll again from the start, and a claim code that waits for the same hardware is removed. An id of another business, an unknown id and an id that is not a plain lower case uuid all answer 404."
+      description: "The gateway goes with its nodes, devices, readings, hourly sums, anomalies, tips, relay commands and schedules. It cannot be undone. The rooms stay. The service cuts the key first, so the hardware stops adding batches, apart from one that was already running, and then deletes the big tables in batches and the gateway row last. A 503 `busy` can therefore come after a part of the rows was deleted, and the same call can be repeated until it ends with 204. A 404 on the repeat means that the delete finished or that the id is not a gateway of the business, and the app cannot tell the two apart. The hardware gets 401 `invalid_gateway_key` from then on and can enroll again from the start, and a claim code that waits for the same hardware is removed. An id of another business, an unknown id and an id that is not a plain lower case uuid all answer 404."
       parameters:
         - name: id
           in: path
@@ -677,7 +677,7 @@ paths:
       tags: [Pasang alat]
       operationId: getPairing
       summary: Read the state of a pairing
-      description: The app asks again every 3 seconds while the status is `searching`. `failed` covers a search that timed out after 3 minutes and a search that the owner stopped. `connected` has the id of the new device. The device exists as soon as the first reading of the node has arrived, so there is no state between `searching` and `connected`.
+      description: The app asks again every 3 seconds while the status is `searching`. `failed` covers a search that timed out after 3 minutes and a search that the owner stopped. `connected` has the id of the new device, or null when the device was deleted later, for example with its gateway. The device exists as soon as the first reading of the node has arrived, so there is no state between `searching` and `connected`.
       responses:
         "200":
           description: The pairing
