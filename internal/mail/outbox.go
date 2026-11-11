@@ -26,6 +26,10 @@ var resetHTML = template.Must(template.New("reset").Parse(`<p>Ketuk tautan ini u
 <p>Tautan ini berlaku 1 jam. Jika Anda tidak memintanya, abaikan email ini dan kata sandi Anda tetap sama.</p>
 `))
 
+const deletedHTML = `<p>Akun Aethera Anda dan semua data bisnis Anda sudah dihapus. Penghapusan ini tidak bisa dibatalkan.</p>
+<p>Jika bukan Anda yang melakukannya, segera hubungi pengelola Aethera.</p>
+`
+
 // Verification queues the email with the link that verifies an address. The plain text part holds the plain URL.
 func (o *Outbox) Verification(to, link string) {
 	o.send(Message{
@@ -43,6 +47,16 @@ func (o *Outbox) PasswordReset(to, link string) {
 		Subject: "Atur ulang kata sandi Aethera",
 		Text:    "Buka tautan ini untuk memilih kata sandi baru.\r\n\r\n" + link + "\r\n\r\nTautan ini berlaku 1 jam. Jika Anda tidak memintanya, abaikan email ini dan kata sandi Anda tetap sama.\r\n",
 		HTML:    render(resetHTML, link),
+	})
+}
+
+// AccountDeleted queues the short email that says the account is gone, so an owner who did not do it hears about it
+func (o *Outbox) AccountDeleted(to string) {
+	o.send(Message{
+		To:      to,
+		Subject: "Akun Aethera Anda sudah dihapus",
+		Text:    "Akun Aethera Anda dan semua data bisnis Anda sudah dihapus. Penghapusan ini tidak bisa dibatalkan.\r\n\r\nJika bukan Anda yang melakukannya, segera hubungi pengelola Aethera.\r\n",
+		HTML:    deletedHTML,
 	})
 }
 
@@ -71,3 +85,6 @@ func (Log) Verification(to, link string) { slog.Info("verification email", "to",
 
 // PasswordReset logs the link
 func (Log) PasswordReset(to, link string) { slog.Info("password reset email", "to", to, "link", link) }
+
+// AccountDeleted logs that the account is gone
+func (Log) AccountDeleted(to string) { slog.Info("account deleted email", "to", to) }

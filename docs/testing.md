@@ -17,7 +17,7 @@ The `Tests` job of [ci.yaml](../.github/workflows/ci.yaml) builds the program an
 
 A route test needs PostgreSQL. `internal/database/dbtest` gives each test its own empty database with every migration applied, and drops it when the test ends. The server comes from the variables `TEST_DB_HOST`, `TEST_DB_PORT`, `TEST_DB_USER` and `TEST_DB_PASSWORD`. Without `TEST_DB_HOST` a test on a machine skips itself, so a plain `go test` still passes. A run with the variable `CI` set fails instead, so CI can never pass with every database test skipped.
 
-`internal/testutil` builds the app in process, signs up an owner, seeds a gateway, a plug and a session, and sends requests through the app with `app.Test`. It starts no network port, and the tests send no real mail. The tests replace the mailer with an outbox that keeps the verification and reset links, and a test reads the link from it when it needs one.
+`internal/testutil` builds the app in process, signs up an owner, seeds a gateway, a plug and a session, and sends requests through the app with `app.Test`. It starts no network port, and the tests send no real mail. The tests replace the mailer with an outbox that keeps the verification and reset links and counts the account deleted mails, and a test reads the link or the count from it when it needs one.
 
 To run them on a machine, point the variables at a throwaway PostgreSQL. A killed run leaves its database behind, so never use a server that holds real data.
 
