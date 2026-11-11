@@ -457,11 +457,44 @@ var bigTablesOfABusiness = []string{
 	"DELETE FROM anomalies WHERE ctid IN (SELECT ctid FROM anomalies WHERE gateway_id IN (SELECT id FROM gateways WHERE business_id = $1) LIMIT $2)",
 }
 
+// CutOffGateways stops every hub of the business from sending, as the delete of one gateway does, so no hub adds readings while the
+// batches of a delete run. A code that waits for the same hardware goes too, because a claim of it would bring a cut key back. The
+// rows are locked in the order of the claim, the waiting codes first and the gateways after them.
+func (s *Store) CutOffGateways(ctx context.Context, businessID string) error {
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return fmt.Errorf("start the cut off of the gateways %w", err)
+	}
+
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	if _, err := tx.Exec(ctx,
+		"DELETE FROM gateway_enrollments WHERE gateway_id IS NULL AND hardware_id IN (SELECT hardware_id FROM gateways WHERE business_id = $1)", businessID); err != nil {
+		return fmt.Errorf("remove the waiting codes of the gateways %w", err)
+	}
+
+	// the key hash becomes a value that no key has, and the revoked time is what stops the hub
+	if _, err := tx.Exec(ctx,
+		"UPDATE gateways SET key_hash = sha256(convert_to(gen_random_uuid()::text, 'UTF8')), key_revoked_at = now() WHERE business_id = $1 AND key_revoked_at IS NULL", businessID); err != nil {
+		return fmt.Errorf("cut off the gateways %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("finish the cut off of the gateways %w", err)
+	}
+
+	return nil
+}
+
 // DeleteBusiness deletes the business, and every other table under it goes with it because the keys cascade. A business can hold millions
 // of readings, and one statement for all of them could run past the deadline of the request every time, so the big tables go first in
-// batches that each commit by themselves, as the janitor does. A call that stops half way has deleted a part of the readings and
-// nothing else, and the next call goes on from there. The business row goes last, in one statement.
+// batches that each commit by themselves, as the janitor does. The hubs are cut off first. A call that stops half way has cut the hubs and
+// deleted a part of the readings and nothing else, and the next call goes on from there. The business row goes last, in one statement.
 func (s *Store) DeleteBusiness(ctx context.Context, businessID string) error {
+	if err := s.CutOffGateways(ctx, businessID); err != nil {
+		return err
+	}
+
 	for _, query := range bigTablesOfABusiness {
 		for {
 			tag, err := s.pool.Exec(ctx, query, businessID, deleteBatch)
