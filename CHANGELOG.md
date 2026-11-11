@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.16.0](https://github.com/aethera-deeptech/backend/compare/v0.15.0...v0.16.0) (2026-11-11)
+
+
+### Features
+
+* **gateway:** ask for the password again before a gateway is removed ([ec3f380](https://github.com/aethera-deeptech/backend/commit/ec3f38000950bc55b8bd556df73359bb27910157))
+* **gateway:** let the owner remove a gateway with its devices and readings ([28d3718](https://github.com/aethera-deeptech/backend/commit/28d3718f1baaab2af2bdfdaa66587380ba6d1cc7))
+* **gateway:** let the owner remove a gateway with its devices and readings ([db43355](https://github.com/aethera-deeptech/backend/commit/db433551b15b9d8b4ae814c608b5add6ac9f6d55))
+
+
+### Bug Fixes
+
+* **build:** bump Go to 1.27.4 for a net/http fix ([3206043](https://github.com/aethera-deeptech/backend/commit/32060437fc0c73e8a60c8fab68ce94c8fad26215))
+* **build:** bump Go to 1.27.4 for a net/http fix ([e4100e6](https://github.com/aethera-deeptech/backend/commit/e4100e669974a5f217a36af91095232eb36c9e28))
+* **build:** keep the floating 1.27 alpine tag and pin its current digest ([722dc51](https://github.com/aethera-deeptech/backend/commit/722dc51688146f9721674d01591cb335d10c769b))
+* **gateway:** end the batch loop on an empty batch and test more than one batch ([73e5ef7](https://github.com/aethera-deeptech/backend/commit/73e5ef78bbd9ed306837809952f33cf9f073443f))
+* **gateway:** give the two batches of the delete test different sample times ([70aac08](https://github.com/aethera-deeptech/backend/commit/70aac08a15fc04261764d6da7ae8f04bbc3ea2b3))
+
 ## [0.15.0](https://github.com/aethera-deeptech/backend/compare/v0.14.0...v0.15.0) (2026-11-10)
 
 
