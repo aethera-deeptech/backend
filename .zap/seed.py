@@ -125,7 +125,15 @@ key = secrets.token_urlsafe(32)
 enroll = need("enroll", call("POST", "/device/v1/enroll", {
     "hardwareId": f"ZAP-{RUN}", "firmware": "zap", "keyHash": hashlib.sha256(key.encode()).hexdigest(),
 }, app=False), 201)
-gateway = need("claim", call("POST", "/v1/gateways", {"claimCode": enroll["claimCode"], "name": "Hub ZAP"}, cookie=cookie), 201)["id"]
+need("claim", call("POST", "/v1/gateways", {"claimCode": enroll["claimCode"], "name": "Hub ZAP"}, cookie=cookie), 201)
+
+# A second hub that only the delete requests use. The replay runs before the attack, so the hub that gets deleted is gone when the
+# attack starts, and the plug above has to stay alive for the rest of the list.
+spare_key = secrets.token_urlsafe(32)
+spare = need("enroll the spare hub", call("POST", "/device/v1/enroll", {
+    "hardwareId": f"ZAP-{RUN}-spare", "firmware": "zap", "keyHash": hashlib.sha256(spare_key.encode()).hexdigest(),
+}, app=False), 201)
+spare_gateway = need("claim the spare hub", call("POST", "/v1/gateways", {"claimCode": spare["claimCode"], "name": "Hub ZAP spare"}, cookie=cookie), 201)["id"]
 
 node = f"PLUG-{RUN}"
 pairing = need("start a pairing", call("POST", "/v1/pairings", {"kind": "plug", "name": "Mesin ZAP", "roomId": room}, cookie=cookie), 201)["id"]
@@ -185,9 +193,10 @@ if FULL:
         {"method": "GET", "path": "/device/v1/enroll/" + enroll["pollId"]},
         {"method": "POST", "path": "/v1/auth/forgot-password", "app": True, "body": {"email": EMAIL}},
         owner("DELETE", f"/v1/devices/{device}/schedule"),
-        # These last requests remove the schedule and then the hub with all that it holds, so keep them at the end.
-        owner("DELETE", f"/v1/gateways/{gateway}", {"password": PASSWORD + "-wrong"}),
-        owner("DELETE", f"/v1/gateways/{gateway}", {"password": PASSWORD}),
+        # The attack only reaches the password check of this route, because the spare hub is gone after the replay and the wrong
+        # passwords of the attack use up the shared budget of five tries
+        owner("DELETE", f"/v1/gateways/{spare_gateway}", {"password": PASSWORD + "-wrong"}),
+        owner("DELETE", f"/v1/gateways/{spare_gateway}", {"password": PASSWORD}),
     ]
 
 with open(OUT, "w", encoding="utf-8") as handle:
