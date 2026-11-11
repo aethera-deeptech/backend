@@ -125,7 +125,7 @@ key = secrets.token_urlsafe(32)
 enroll = need("enroll", call("POST", "/device/v1/enroll", {
     "hardwareId": f"ZAP-{RUN}", "firmware": "zap", "keyHash": hashlib.sha256(key.encode()).hexdigest(),
 }, app=False), 201)
-need("claim", call("POST", "/v1/gateways", {"claimCode": enroll["claimCode"], "name": "Hub ZAP"}, cookie=cookie), 201)
+gateway = need("claim", call("POST", "/v1/gateways", {"claimCode": enroll["claimCode"], "name": "Hub ZAP"}, cookie=cookie), 201)["id"]
 
 node = f"PLUG-{RUN}"
 pairing = need("start a pairing", call("POST", "/v1/pairings", {"kind": "plug", "name": "Mesin ZAP", "roomId": room}, cookie=cookie), 201)["id"]
@@ -184,6 +184,10 @@ if FULL:
         owner("POST", f"/v1/devices/{device}/energy-reset"),
         {"method": "GET", "path": "/device/v1/enroll/" + enroll["pollId"]},
         {"method": "POST", "path": "/v1/auth/forgot-password", "app": True, "body": {"email": EMAIL}},
+        owner("DELETE", f"/v1/devices/{device}/schedule"),
+        # These last requests remove the schedule and then the hub with all that it holds, so keep them at the end.
+        owner("DELETE", f"/v1/gateways/{gateway}", {"password": PASSWORD + "-wrong"}),
+        owner("DELETE", f"/v1/gateways/{gateway}", {"password": PASSWORD}),
     ]
 
 with open(OUT, "w", encoding="utf-8") as handle:
