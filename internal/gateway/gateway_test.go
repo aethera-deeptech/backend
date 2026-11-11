@@ -126,7 +126,7 @@ func TestTheLastSeenTimeOfAGatewayCarriesTheOffsetOfTheBusinessZone(t *testing.T
 			t.Fatalf("answered %d %v", r.Status, r.Body)
 		}
 
-		var text any = r.Body["lastSeenAt"]
+		text := r.Body["lastSeenAt"]
 		if items, ok := r.Body["items"].([]any); ok {
 			text = items[0].(map[string]any)["lastSeenAt"]
 		}
