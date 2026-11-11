@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.17.0](https://github.com/aethera-deeptech/backend/compare/v0.16.0...v0.17.0) (2026-11-11)
+
+
+### Features
+
+* **auth:** send a short email to the owner when an account is deleted ([06c408e](https://github.com/aethera-deeptech/backend/commit/06c408e23324da1f187c3837dc3417e7c3cc3928))
+* **auth:** send a short email to the owner when an account is deleted ([fa2023e](https://github.com/aethera-deeptech/backend/commit/fa2023e5083c68dbc8b5bcbef98899a168be56e2))
+* **gateway:** write the moments of the gateway list and the tips in the zone of the business ([99739b8](https://github.com/aethera-deeptech/backend/commit/99739b85689823ca2052ecc385afd561a473af0e))
+* **gateway:** write the moments of the gateway list and the tips in the zone of the business ([213e4e4](https://github.com/aethera-deeptech/backend/commit/213e4e4401cef091b2d2702f1f950862a31ac667))
+
+
+### Bug Fixes
+
+* **auth:** cut off the hubs of a business before the account delete batches run ([10d4240](https://github.com/aethera-deeptech/backend/commit/10d424059ad9df7aef2c5f41a6f482ce45b83a0b))
+* **auth:** end the account delete batch loop on an empty batch ([201d67f](https://github.com/aethera-deeptech/backend/commit/201d67fff66dc7c6ce926a38748dcd091fae6981))
+* **auth:** end the account delete batch loop on an empty batch ([3f94a09](https://github.com/aethera-deeptech/backend/commit/3f94a0972b72e0c69a608843748dc9f2d1b5ad58))
+
 ## [0.16.0](https://github.com/aethera-deeptech/backend/compare/v0.15.0...v0.16.0) (2026-11-11)
 
 
