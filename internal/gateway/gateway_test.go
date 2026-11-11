@@ -772,7 +772,8 @@ func TestDeletingAGatewayLeavesTheGatewayOfAnotherBusinessAlone(t *testing.T) {
 	mine := enrolledOn(t, e, "budi@example.com", "ESP32-AABBCC", "a")
 	other := enrolledOn(t, e, "ani@example.com", "ESP32-DDEEFF", "b")
 
-	if r := other.send(t, batch(1, "NODE-0001", "plug", sample(0, 310))); r.Status != http.StatusOK {
+	// the two batches of the other gateway use different seconds, because a sample with the same time is stored once
+	if r := other.send(t, batch(1, "NODE-0001", "plug", sample(10, 310))); r.Status != http.StatusOK {
 		t.Fatalf("the batch of the other answered %d %v", r.Status, r.Body)
 	}
 
